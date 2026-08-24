@@ -1,0 +1,51 @@
+name: CI
+
+# Infrastructure Design's required blocking gate: dependency install, typecheck, the deterministic
+# + component test suite, a production build, and the small Playwright smoke suite. All blocking
+# - a failure here prevents merge to protected main (branch protection is configured separately in
+# repo settings; this workflow only defines what "passing" means).
+#
+# The credentialed live-integration suite (King County live, Legistar, Neon, Anthropic) is
+# deliberately NOT part of this workflow - see integration.yml. An external service outage is not
+# application correctness and must never block an otherwise-correct deploy.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Deterministic + component tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke suite
+        run: npm run test:e2e
+        # No DATABASE_URL is provided to this job - the DB-dependent smoke tests inside
+        # e2e/smoke.spec.ts skip themselves cleanly (matching the deterministic suite's own
+        # network/DB-independence discipline); the health-check and page-load checks still run
+        # for real against a locally-started server.
+        env:
+          E2E_BASE_URL: http://localhost:3000

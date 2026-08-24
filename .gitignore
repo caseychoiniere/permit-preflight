@@ -9,3 +9,5 @@ dist/
 .vercel/
 *.log
 .idea/
+playwright-report/
+test-results/

@@ -1,5 +1,19 @@
 # Unit 2 Operations Runbook
 
+> **⚠️ PLATFORM GUIDANCE SUPERSEDED, 2026-08-24 — historical record, not current instructions.**
+> This entire runbook describes Railway, the platform Unit 1/2 were actually deployed to at the
+> time this document was written — that remains an accurate historical record and is **not**
+> rewritten. The founder's deployment-platform pivot
+> (`aidlc-docs/decisions/2026-08-24-deployment-platform-pivot-railway-to-vercel.md`) makes **Vercel**
+> the canonical platform going forward, starting with Unit 2B. Every Railway-specific operational
+> instruction below — checking whether app-sleeping/serverless is disabled, Railway persistent-
+> Service status, the in-process poller's startup log line, `SIGTERM`/`SIGINT` poller-shutdown
+> behavior, Railway-native log/secret/deployment mechanics — is **superseded** for any environment
+> actually running on Vercel. A Vercel-specific operations runbook is expected once Unit 2B reaches
+> its own Operations stage; until then, see the ADR and Unit 2B's amended `infrastructure-design.md`
+> for the current execution model (durable Vercel Workflows plus a low-frequency Cron
+> reconciliation backstop, not an in-process poller).
+
 ## Scope of This Document
 
 Unit 2 is the first unit with a real deployed runtime — one Railway service, one replica, no

@@ -1,0 +1,1 @@
+ALTER TABLE "regulatory_rules" ADD COLUMN "approval_record" jsonb;

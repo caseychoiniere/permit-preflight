@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { computeSetbackDistances, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
+import { computeParcelAreaSqFt, computeSetbackDistances, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
 import { deriveLotLineRoleAssignment } from "../../src/spatial-analysis/lot-line-roles.js";
 import { AUTHORITATIVE_PARCEL_SRID } from "../../src/property-intelligence/king-county-parcel-geometry.js";
 import type { Db } from "../../src/db/client.js";
@@ -45,6 +45,16 @@ describe("PostGIS adapter - fail-closed SRID guard (deterministic, no DB)", () =
   it("[hard invariant] transformPolygonToWgs84 rejects a boundary polygon tagged with the wrong srid", async () => {
     const wrongSrid: Polygon = { ...authoritativeBoundary, srid: 3857 };
     await expect(transformPolygonToWgs84(neverUsedDb, wrongSrid)).rejects.toThrow(/srid/i);
+  });
+
+  it("[hard invariant] computeParcelAreaSqFt (Unit 4) rejects a boundary polygon with no srid at all", async () => {
+    const untagged: Polygon = { units: "FEET", points: authoritativeBoundary.points };
+    await expect(computeParcelAreaSqFt(neverUsedDb, untagged)).rejects.toThrow(/srid/i);
+  });
+
+  it("[hard invariant] computeParcelAreaSqFt (Unit 4) rejects a boundary polygon tagged with the wrong srid", async () => {
+    const wrongSrid: Polygon = { ...authoritativeBoundary, srid: 4326 };
+    await expect(computeParcelAreaSqFt(neverUsedDb, wrongSrid)).rejects.toThrow(/srid/i);
   });
 
   it("INSUFFICIENT lot-line assignment short-circuits before any SRID-dependent computation, returning an empty result", async () => {

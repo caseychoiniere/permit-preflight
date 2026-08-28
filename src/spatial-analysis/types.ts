@@ -28,8 +28,50 @@ export interface Point {
  */
 export interface Polygon {
   points: Point[];
+  /** Unit 5 (Code Generation correction) - interior rings (holes), same closed-ring convention as
+   * `points` (first/last implicitly connected). A real ST_Difference result can legitimately have
+   * a hole (e.g. an ECA exclusion fully interior to the setback-constrained area) - this must be
+   * representable rather than silently dropped. Undefined/empty means "no holes", the ordinary
+   * case for every polygon this project produced before Unit 5. */
+  holes?: Point[][];
   units: "FEET";
   srid?: number;
+}
+
+/** Unit 5 addition - a setback subtraction can legitimately split a parcel's remaining buildable
+ * area into disjoint pieces (NFR-U5-13); this project's PostGIS geometry results must be able to
+ * represent that honestly rather than being narrowed to `Polygon`-only downstream. Each element of
+ * `polygons` is itself a single closed ring (with its own optional `holes`), same convention as
+ * `Polygon.points`. */
+export interface MultiPolygon {
+  polygons: Polygon[];
+  units: "FEET";
+  srid?: number;
+}
+
+/** Unit 5 (Code Generation correction) - a genuine zero-area PostGIS result (e.g. a setback
+ * envelope that fully consumes the parcel) is a real, valid SUCCESS outcome, not representable as
+ * `Polygon { points: [] }` (which downstream WKT construction cannot safely handle - it assumes a
+ * first point exists). This is the explicit, safe representation for that case. */
+export interface EmptyGeometry {
+  kind: "EMPTY";
+  units: "FEET";
+  srid?: number;
+}
+
+/** The full result shape any Unit 5 PostGIS geometry operation may return - never narrowed to
+ * `Polygon` alone (NFR-U5-13), and empty results are never smuggled through as a zero-point
+ * `Polygon` (Code Generation correction). */
+export type Geometry = Polygon | MultiPolygon | EmptyGeometry;
+
+export function isEmptyGeometry(g: Geometry): g is EmptyGeometry {
+  return "kind" in g && g.kind === "EMPTY";
+}
+export function isMultiPolygon(g: Geometry): g is MultiPolygon {
+  return "polygons" in g;
+}
+export function isPolygon<T extends { points: Point[] }>(g: T | MultiPolygon | EmptyGeometry): g is T {
+  return "points" in g;
 }
 
 /** WGS84 (EPSG:4326) longitude/latitude - the browser/MapLibre's native coordinate system.

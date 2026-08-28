@@ -1,9 +1,9 @@
 /**
- * Workflow 4: Regulatory Rule Evaluation for a Shed Project - BR-4, BR-4a (business-rules.md).
+ * Workflow 4: Regulatory Rule Evaluation for a Project - BR-4, BR-4a (business-rules.md).
  * The unit's central deterministic workflow. Pure function: given a PropertyContext (assembled
  * only for a CONFIRMED parcel - see property-intelligence/assemble.ts's type-level precondition),
- * ShedProjectDetails, spatial results, and the currently ACTIVE rule set, produce an
- * EvaluationOutcome. No I/O - fully deterministic and testable.
+ * ProjectDetails (shed or, since Unit 4, garage - BR-U4-2), spatial results, and the currently
+ * ACTIVE rule set, produce an EvaluationOutcome. No I/O - fully deterministic and testable.
  */
 
 import type { PropertyContext } from "../property-intelligence/types.js";
@@ -18,7 +18,7 @@ import {
   FindingClassification,
   GENERAL_LOCATION_ONLY_SETBACK_POLICY_SUBJECT,
 } from "./types.js";
-import type { EvaluationOutcome, Finding, ShedProjectDetails } from "./types.js";
+import type { EvaluationOutcome, Finding, GarageProjectDetails, LotCoverageFacts, ProjectDetails, ShedProjectDetails } from "./types.js";
 
 export interface RearSetbackRuleSpec {
   ruleType: "REAR_SETBACK";
@@ -40,6 +40,14 @@ export interface SideFrontSetbackRuleSpec {
   frontFt: number;
 }
 
+/** Unit 4 - net-new ruleType (no lot-coverage evaluator existed for any project type before this
+ * unit). No numeric threshold lives on the spec itself - the percentage/floor/denominator logic
+ * is computed server-side into LotCoverageFacts (BR-U4-7); this spec's role is to exist as the
+ * ACTIVE governance artifact naming which SMC 23.44.080 provision (L1-L6) a finding cites. */
+export interface LotCoverageRuleSpec {
+  ruleType: "LOT_COVERAGE";
+}
+
 /** A rule type whose evaluation is genuinely ambiguous and requires an approved InferencePolicy
  * to resolve (BR-4's governed-inference requirement) - e.g. "which zone applies when the parcel
  * straddles a zoning boundary." Not exercised by the real shed rule set (which has no such
@@ -51,7 +59,7 @@ export interface RequiresInferencePolicyRuleSpec {
 
 export interface EvaluateProjectInput {
   propertyContext: PropertyContext;
-  project: ShedProjectDetails;
+  project: ProjectDetails;
   /** Only rules whose lifecycleState is ACTIVE are consumed - anything else is ignored and
    * logged, never evaluated (BR-7's one-way-publication invariant, enforced here defensively
    * even though callers are expected to have already filtered to ACTIVE). */
@@ -59,6 +67,42 @@ export interface EvaluateProjectInput {
   ecaFindings: CriticalAreaFinding[];
   /** Only policies whose lifecycleState is ACTIVE may back an INFERRED finding (BR-4). */
   candidateActiveInferencePolicies: InferencePolicy[];
+  /** Unit 4 - required only when project.projectType === "garage" and a LOT_COVERAGE rule is
+   * ACTIVE; assembled server-side (business-rules.md BR-U4-8), never client-supplied. Absent for
+   * shed evaluations (unused) and safe to omit for garage evaluations too - a LOT_COVERAGE rule
+   * evaluated without it simply produces REQUIRES_VERIFICATION rather than throwing. */
+  lotCoverageFacts?: LotCoverageFacts;
+}
+
+/** BR-U4-2's exhaustiveness requirement, exercised at a real decision point (not decorative): the
+ * constraint types a given project type is expected to have ACTIVE rule coverage for
+ * (business-rules.md BR-U4-5). A future third ProjectType without an entry here is a compile-time
+ * error via the `never` branch below. */
+function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"]): { constraintType: string; ruleTypes: string[] }[] {
+  switch (projectType) {
+    case "shed":
+      // BR-U4-5 is a failure mode this unit (Unit 4) introduces for a newly-supported project
+      // type with no ACTIVE coverage yet - shed has had ACTIVE coverage since Unit 1 and is not
+      // retroactively subject to this disclosure.
+      return [];
+    case "garage":
+      return [
+        { constraintType: "setback", ruleTypes: ["REAR_SETBACK", "SIDE_FRONT_SETBACK_STANDARD"] },
+        { constraintType: "height", ruleTypes: ["HEIGHT_LIMIT"] },
+        { constraintType: "lot coverage", ruleTypes: ["LOT_COVERAGE"] },
+      ];
+    default: {
+      const exhaustiveCheck: never = projectType;
+      throw new Error(`Unhandled ProjectType "${String(exhaustiveCheck)}" in expectedConstraintTypesFor.`);
+    }
+  }
+}
+
+function computeUncoveredConstraintTypes(projectType: ProjectDetails["projectType"], activeRules: RegulatoryRule[]): string[] {
+  const activeRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
+  return expectedConstraintTypesFor(projectType)
+    .filter(({ ruleTypes }) => !ruleTypes.some((rt) => activeRuleTypes.has(rt)))
+    .map(({ constraintType }) => constraintType);
 }
 
 export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome {
@@ -73,13 +117,14 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
       status: EvaluationStatus.DEFERRED,
       findings: [],
       deferralReason: "Parcel geometry unavailable - no spatial rule can be evaluated for this property.",
+      uncoveredConstraintTypes: [],
     };
   }
 
   const findings: Finding[] = [];
 
   for (const rule of activeRules) {
-    findings.push(...evaluateRule(rule, input.project, activePolicies));
+    findings.push(...evaluateRule(rule, input.project, activePolicies, input.lotCoverageFacts));
   }
 
   for (const ecaFinding of input.ecaFindings) {
@@ -96,10 +141,14 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
     }
   }
 
-  return { status: EvaluationStatus.COMPLETE, findings };
+  return {
+    status: EvaluationStatus.COMPLETE,
+    findings,
+    uncoveredConstraintTypes: computeUncoveredConstraintTypes(input.project.projectType, activeRules),
+  };
 }
 
-function evaluateRule(rule: RegulatoryRule, project: ShedProjectDetails, activePolicies: InferencePolicy[]): Finding[] {
+function evaluateRule(rule: RegulatoryRule, project: ProjectDetails, activePolicies: InferencePolicy[], lotCoverageFacts?: LotCoverageFacts): Finding[] {
   const spec = rule.ruleSpecification as { ruleType?: string };
   const appliedRule = { id: rule.id, subject: rule.subject, citation: rule.citation };
 
@@ -109,9 +158,27 @@ function evaluateRule(rule: RegulatoryRule, project: ShedProjectDetails, activeP
     case "HEIGHT_LIMIT":
       return [evaluateHeight(rule, appliedRule, spec as unknown as HeightRuleSpec, project)];
     case "DWELLING_SEPARATION":
+      // Shed-only (SRE-GARAGE-1's scope is setback/height/lot-coverage; a garage has no
+      // distanceToDwellingFt fact at all - domain-entities.md). Guarded here, not just by type,
+      // since RegulatoryRule.ruleSpecification is untrusted-at-runtime JSON - a real garage rule
+      // could never legitimately carry this ruleType, but the evaluator fails closed either way.
+      if (project.projectType !== "shed") {
+        return [missingEvidenceFinding(rule.subject, appliedRule, `DWELLING_SEPARATION does not apply to project type "${project.projectType}".`)];
+      }
       return [evaluateDwellingSeparation(rule, appliedRule, spec as unknown as DwellingSeparationRuleSpec, project)];
     case "SIDE_FRONT_SETBACK_STANDARD":
       return evaluateSideFrontSetback(rule, appliedRule, spec as unknown as SideFrontSetbackRuleSpec, project, activePolicies);
+    case "LOT_COVERAGE":
+      // Garage-only (Unit 4). Fails closed to REQUIRES_VERIFICATION - never a KNOWN pass/fail -
+      // whenever the project type is wrong or LotCoverageFacts weren't supplied, rather than
+      // letting a generic numeric helper produce an incorrect result.
+      if (project.projectType !== "garage") {
+        return [missingEvidenceFinding(rule.subject, appliedRule, `LOT_COVERAGE does not apply to project type "${project.projectType}".`)];
+      }
+      if (!lotCoverageFacts) {
+        return [missingEvidenceFinding(rule.subject, appliedRule, "LotCoverageFacts were not supplied for this evaluation.")];
+      }
+      return [evaluateLotCoverage(rule, appliedRule, spec as unknown as LotCoverageRuleSpec, project, lotCoverageFacts)];
     case "REQUIRES_INFERENCE_POLICY":
       return [
         evaluateWithInferencePolicy(rule, appliedRule, spec as unknown as RequiresInferencePolicyRuleSpec, activePolicies),
@@ -133,7 +200,7 @@ function evaluateRearSetback(
   rule: RegulatoryRule,
   appliedRule: Finding["appliedRule"],
   spec: RearSetbackRuleSpec,
-  project: ShedProjectDetails,
+  project: ProjectDetails,
   activePolicies: InferencePolicy[]
 ): Finding {
   if (project.distanceToRearLotLineFt === undefined) {
@@ -157,8 +224,14 @@ function evaluateHeight(
   rule: RegulatoryRule,
   appliedRule: Finding["appliedRule"],
   spec: HeightRuleSpec,
-  project: ShedProjectDetails
+  project: ProjectDetails
 ): Finding {
+  // NOTE (Unit 4): this simple heightFt<=maxFt comparison is correct for the shed HEIGHT_LIMIT
+  // rule this project has today. It does NOT yet model H1/H2's real roof-form/setback-siting
+  // envelope nuance (garage-rule-inventory-and-tier-triage.md) - that content only needs to exist
+  // once a real garage HEIGHT_LIMIT candidate reaches TRIAGED with an actual specification, which
+  // is itself gated behind the deferred professional review (BR-U4-4). Revisit this comparison
+  // when that candidate's real ruleSpecification shape is defined, not before.
   const pass = project.heightFt <= spec.maxFt;
   return {
     classification: FindingClassification.KNOWN,
@@ -194,7 +267,7 @@ function evaluateSideFrontSetback(
   rule: RegulatoryRule,
   appliedRule: Finding["appliedRule"],
   spec: SideFrontSetbackRuleSpec,
-  project: ShedProjectDetails,
+  project: ProjectDetails,
   activePolicies: InferencePolicy[]
 ): Finding[] {
   const findings: Finding[] = [];
@@ -239,6 +312,68 @@ function evaluateSideFrontSetback(
 }
 
 /**
+ * Unit 4 - net-new (garage-rule-inventory-and-tier-triage.md's L1-L6). Always produces
+ * REQUIRES_VERIFICATION today, never KNOWN - `existingStructuresCountableFootprintSqFt` is
+ * USER_SUPPLIED and unverified by construction (business-rules.md BR-U4-3), so the combined
+ * figure can never be authoritative regardless of how the denominator/percentage/floor resolve.
+ * Both branches below still exist because they produce materially different, more useful
+ * explanations - "we don't know the SMC-applicable allowed coverage" vs. "we know it, but the
+ * existing-structures input is still unverified" - matching BR-4's explanation-quality bar.
+ */
+function evaluateLotCoverage(
+  rule: RegulatoryRule,
+  appliedRule: Finding["appliedRule"],
+  _spec: LotCoverageRuleSpec,
+  _project: GarageProjectDetails,
+  facts: LotCoverageFacts
+): Finding {
+  const supportingEvidence = [`proposedGarageCountableFootprintSqFt=${facts.proposedGarageCountableFootprintSqFt}`];
+
+  if (facts.existingStructuresCountableFootprintSqFt === undefined) {
+    return {
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: rule.subject,
+      appliedRule,
+      supportingEvidence,
+      explanationBasis:
+        "Existing-structures countable footprint was not supplied. This figure is always self-reported and unverified (business-rules.md BR-U4-3), so the combined lot-coverage finding cannot reach a KNOWN determination even once supplied - but it is required as an input before any comparison can be made at all.",
+    };
+  }
+  supportingEvidence.push(`existingStructuresCountableFootprintSqFt=${facts.existingStructuresCountableFootprintSqFt}`);
+  const combinedNumeratorSqFt = facts.proposedGarageCountableFootprintSqFt + facts.existingStructuresCountableFootprintSqFt;
+  supportingEvidence.push(`combinedNumeratorSqFt=${combinedNumeratorSqFt}`);
+
+  if (facts.allowedCoverageSqFt === undefined) {
+    const reasons: string[] = [];
+    if (facts.countableLotAreaSqFt === undefined) {
+      reasons.push("the SMC-applicable countable lot area could not be established");
+    }
+    if (facts.applicableCoveragePercentage.status === "REQUIRES_VERIFICATION") {
+      reasons.push(facts.applicableCoveragePercentage.reason);
+    }
+    if (facts.minimumCoverageFloor.status === "REQUIRES_VERIFICATION") {
+      reasons.push(facts.minimumCoverageFloor.reason);
+    }
+    return {
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: rule.subject,
+      appliedRule,
+      supportingEvidence,
+      explanationBasis: `Cannot establish the SMC-applicable allowed coverage amount: ${reasons.join("; ") || "an unresolved input remains"}.`,
+    };
+  }
+
+  supportingEvidence.push(`allowedCoverageSqFt=${facts.allowedCoverageSqFt}`);
+  return {
+    classification: FindingClassification.REQUIRES_VERIFICATION,
+    subject: rule.subject,
+    appliedRule,
+    supportingEvidence,
+    explanationBasis: `Combined coverage of ${combinedNumeratorSqFt} sq ft against an allowed ${facts.allowedCoverageSqFt} sq ft cannot be confirmed KNOWN - the existing-structures figure is self-reported and unverified (business-rules.md BR-U4-3), regardless of how the comparison itself would resolve.`,
+  };
+}
+
+/**
  * BR-U2-10: evidence quality gates KNOWN classification for spatial findings. A finding whose
  * determination materially depends on a GENERAL_LOCATION_ONLY-sourced spatial measurement may be
  * KNOWN only if the applied ACTIVE rule's governed `acceptedEvidenceQuality` explicitly includes
@@ -254,7 +389,7 @@ function classifySpatialFinding(input: {
   appliedRule: Finding["appliedRule"];
   subject: string;
   pass: boolean;
-  spatialEvidenceQuality: ShedProjectDetails["spatialEvidenceQuality"];
+  spatialEvidenceQuality: ProjectDetails["spatialEvidenceQuality"];
   activePolicies: InferencePolicy[];
   supportingEvidence: string[];
   explanationBasis: string;

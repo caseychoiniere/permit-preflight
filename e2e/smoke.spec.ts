@@ -33,7 +33,9 @@ test.describe("requires a running app with DATABASE_URL", () => {
   test.skip(!hasDb, "DATABASE_URL not available in this sandbox");
 
   test("an unknown report token returns 'not found', never a crash or someone else's report", async ({ page }) => {
-    await page.goto("/report/definitely-not-a-real-token");
+    // Corrected 2026-08-25: the token travels as a URL fragment, exchanged client-side for an
+    // HttpOnly cookie via POST /api/reports/access - see app/report/page.tsx.
+    await page.goto("/report#access_token=definitely-not-a-real-token");
     await expect(page.getByText(/not found/i)).toBeVisible();
   });
 

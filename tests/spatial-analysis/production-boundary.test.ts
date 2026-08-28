@@ -98,8 +98,8 @@ describe("Spatial Analysis / PostGIS production boundary", () => {
       candidateActiveInferencePolicies: [],
     };
 
-    const passing = evaluateProject({ ...base, project: { widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 10 } });
-    const failing = evaluateProject({ ...base, project: { widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 1 } });
+    const passing = evaluateProject({ ...base, project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 10 } });
+    const failing = evaluateProject({ ...base, project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 1 } });
 
     const passOutcome = passing.findings.find((f) => f.subject === rearSetbackRule.subject)?.complianceOutcome;
     const failOutcome = failing.findings.find((f) => f.subject === rearSetbackRule.subject)?.complianceOutcome;

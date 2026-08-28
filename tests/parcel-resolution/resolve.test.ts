@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decideAddressResolution, decideIdentifierResolution } from "../../src/parcel-resolution/resolve.js";
+import { confirmCandidate, decideAddressResolution, decideIdentifierResolution } from "../../src/parcel-resolution/resolve.js";
+import { ParcelIdentityProvenance } from "../../src/parcel-resolution/types.js";
 import {
   adversarialFalseConfidence,
   cleanMatch,
@@ -9,9 +10,10 @@ import {
 } from "../fixtures/unit-0b-parcel-cases.js";
 
 describe("Parcel Resolution - BR-1a/BR-2 (address input)", () => {
-  it("confirms a clean match when both sources agree and reverse-validation passes", () => {
+  it("confirms a clean match when both sources agree and reverse-validation passes, honestly labeled ALGORITHMIC", () => {
     const result = decideAddressResolution(cleanMatch.input, cleanMatch.outcome);
     expect(result.status).toBe("CONFIRMED");
+    if (result.status === "CONFIRMED") expect(result.identityProvenance).toBe(ParcelIdentityProvenance.ALGORITHMIC);
   });
 
   it("returns CLARIFICATION_REQUIRED/NO_PIN for the real Unit 0B interpolated-only case, never CONFIRMED", () => {
@@ -91,5 +93,35 @@ describe("Parcel Resolution - BR-1b/BR-2 (identifier input)", () => {
       corroboration: "NOT_AVAILABLE",
     });
     expect(result.status).toBe("RESOLUTION_UNAVAILABLE");
+  });
+});
+
+describe("Parcel Resolution - confirmCandidate (product-correctness amendment, 2026-08-27)", () => {
+  const single = { parcelId: "1959703080", canonicalAddress: "3216 Fuhrman Ave E", source: "ADDRESS_GEOCODE" as const, characteristics: {} };
+  const other = { parcelId: "9999999999", canonicalAddress: "100 Other St", source: "INDEPENDENT_PARCEL_LOOKUP" as const, characteristics: {} };
+
+  it("one candidate + user confirmation -> CONFIRMED, honestly labeled USER_CONFIRMED (never ALGORITHMIC)", () => {
+    const result = confirmCandidate(single, [single]);
+    expect(result.status).toBe("CONFIRMED");
+    if (result.status === "CONFIRMED") {
+      expect(result.confirmedParcel).toEqual(single);
+      expect(result.identityProvenance).toBe(ParcelIdentityProvenance.USER_CONFIRMED);
+    }
+  });
+
+  it("multiple candidates + user selection -> CONFIRMED with the SPECIFIC chosen candidate, not the first/any", () => {
+    const result = confirmCandidate(other, [single, other]);
+    expect(result.status).toBe("CONFIRMED");
+    if (result.status === "CONFIRMED") {
+      expect(result.confirmedParcel).toEqual(other);
+      expect(result.candidates).toEqual([single, other]);
+      expect(result.identityProvenance).toBe(ParcelIdentityProvenance.USER_CONFIRMED);
+    }
+  });
+
+  it("[hard invariant] never fabricates a confirmed candidate the caller didn't actually present - the full candidate list is preserved unchanged as evidence metadata", () => {
+    const result = confirmCandidate(single, [single, other]);
+    expect(result.status).toBe("CONFIRMED");
+    if (result.status === "CONFIRMED") expect(result.candidates).toContainEqual(other); // the non-chosen candidate is preserved, not discarded
   });
 });

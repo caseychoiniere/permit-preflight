@@ -75,10 +75,42 @@ export interface VerificationRecord {
   };
 }
 
+/** Unit 5 (domain-entities.md, Correction 4) - generalizes `applicableProjectType` one level up to
+ * the workflow itself, without a "vacant-land" string shortcut inside `applicableProjectType`.
+ * `EXISTING_PROPERTY` requires `projectType` present (shed/garage, unchanged); `VACANT_LAND`
+ * carries no `projectType` at all - VACANT_LAND is never added to `ProjectType`. */
+export type RegulatoryRuleApplicabilityScope =
+  | { workflowType: "EXISTING_PROPERTY"; projectType: string }
+  | { workflowType: "VACANT_LAND" };
+
+/** Reads a `RegulatoryRule`'s real applicability scope, defaulting an absent
+ * `applicableWorkflowType` to `EXISTING_PROPERTY` (every real, pre-Unit-5 row) - never inferred
+ * from `applicableProjectType`'s own value. */
+export function toApplicabilityScope(rule: Pick<RegulatoryRule, "applicableWorkflowType" | "applicableProjectType">): RegulatoryRuleApplicabilityScope {
+  if (rule.applicableWorkflowType === "VACANT_LAND") {
+    return { workflowType: "VACANT_LAND" };
+  }
+  if (!rule.applicableProjectType) {
+    throw new Error("A RegulatoryRule scoped to EXISTING_PROPERTY must carry a projectType.");
+  }
+  return { workflowType: "EXISTING_PROPERTY", projectType: rule.applicableProjectType };
+}
+
 export interface RegulatoryRule {
   id: string;
   subject: string;
-  applicableProjectType: string;
+  /** Unit 5 (Code Generation Part 1, Step 5 - corrected per founder review): NULLABLE. Required
+   * (non-undefined) only when applicableWorkflowType is 'EXISTING_PROPERTY' (or absent, the
+   * pre-Unit-5 default); MUST be undefined when applicableWorkflowType is 'VACANT_LAND' - never a
+   * bogus shed/garage value assigned merely to satisfy a legacy required field. Use
+   * `toApplicabilityScope`/`RegulatoryRuleApplicabilityScope` rather than reading this field
+   * directly wherever applicability is being evaluated. */
+  applicableProjectType?: string;
+  /** Unit 5 addition - the real discriminant behind `RegulatoryRuleApplicabilityScope`. Absent
+   * (undefined) is read as 'EXISTING_PROPERTY' by `toApplicabilityScope` for backward
+   * compatibility with every pre-Unit-5 row's TypeScript representation, though the persisted DB
+   * row is always explicitly backfilled (never relies on this default at the storage layer). */
+  applicableWorkflowType?: "EXISTING_PROPERTY" | "VACANT_LAND";
   applicableZone: string;
   ruleSpecification: Record<string, unknown>;
   citation: RuleCitation;
@@ -99,6 +131,15 @@ export interface RegulatoryRule {
    * by the governance workflow. A rule with no entry for "GENERAL_LOCATION_ONLY" cannot produce
    * KNOWN from GENERAL_LOCATION_ONLY-sourced evidence (regulatory-rules-engine/evaluate.ts). */
   acceptedEvidenceQuality: EvidenceQuality[];
+  /** Unit 3 addition (2026-08-25, full-repository review) - closes a real pre-existing
+   * auditability gap: approve() required a founderIdentity but never persisted it, so ADM-2 could
+   * not truthfully answer "who approved this rule, and when?" Deliberately NOT inferred from
+   * verificationHistory, updatedAt, or lifecycleState - those are different facts. Absent for
+   * every rule approved before this field existed (no backfill is attempted or fabricated). */
+  approvalRecord?: {
+    founderIdentity: string;
+    approvedAt: string;
+  };
 }
 
 /** Mirrors property-intelligence/types.ts's EvidenceQuality - re-declared here (not imported)

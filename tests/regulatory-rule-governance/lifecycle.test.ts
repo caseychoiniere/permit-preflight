@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   activate,
   approve,
+  disable,
   draft,
   markTested,
+  reenable,
   sourceVerify,
   supersede,
   triage,
@@ -119,7 +121,8 @@ describe("Regulatory Rule Governance lifecycle - BR-6/BR-7/BR-8", () => {
     if (verified.outcome !== "OK") throw new Error("setup failed");
     const tested = markTested(verified.rule, [{ testCaseIndex: 0, passed: true }]);
     if (tested.outcome !== "OK") throw new Error("setup failed");
-    const approved = approve(tested.rule, "founder@example.com", ["AUTHORITATIVE"]);
+    const approvedAt = new Date().toISOString();
+    const approved = approve(tested.rule, "founder@example.com", ["AUTHORITATIVE"], approvedAt);
     if (approved.outcome !== "OK") throw new Error("setup failed");
     const activated = activate(approved.rule);
 
@@ -129,6 +132,8 @@ describe("Regulatory Rule Governance lifecycle - BR-6/BR-7/BR-8", () => {
     // BR-8: caveats persist through to ACTIVE, never cleared on activation.
     expect(activated.rule.caveats).toEqual([caveat]);
     expect(activated.rule.isTestOnlyFixture).toBe(true);
+    // Approval provenance (2026-08-25 correction) survives through to ACTIVE unchanged.
+    expect(activated.rule.approvalRecord).toEqual({ founderIdentity: "founder@example.com", approvedAt });
   });
 
   it("[hard invariant] cannot activate a rule that hasn't been APPROVED", () => {
@@ -139,8 +144,27 @@ describe("Regulatory Rule Governance lifecycle - BR-6/BR-7/BR-8", () => {
 
   it("[hard invariant] cannot approve a rule that hasn't been TESTED", () => {
     const rule = draft(testOnlyDraft());
-    const result = approve(rule, "founder@example.com", ["AUTHORITATIVE"]);
+    const result = approve(rule, "founder@example.com", ["AUTHORITATIVE"], new Date().toISOString());
     expect(result.outcome).toBe("REJECTED");
+  });
+
+  it("[hard invariant] approvalRecord is never present before approve() runs, and approve() never infers founderIdentity/approvedAt from anything else", () => {
+    const rule = draft(testOnlyDraft());
+    expect(rule.approvalRecord).toBeUndefined();
+
+    const triaged = triage(rule, "founder@example.com", "TIER_1");
+    if (triaged.outcome !== "OK") throw new Error("setup failed");
+    const verified = sourceVerify(triaged.rule, { tier: "TIER_1", founderIdentity: "founder@example.com", founderVerifiedAt: "2020-01-01T00:00:00.000Z" });
+    if (verified.outcome !== "OK") throw new Error("setup failed");
+    // sourceVerify's founderVerifiedAt must NOT leak into approvalRecord - they are different facts.
+    expect(verified.rule.approvalRecord).toBeUndefined();
+
+    const tested = markTested(verified.rule, [{ testCaseIndex: 0, passed: true }]);
+    if (tested.outcome !== "OK") throw new Error("setup failed");
+    const approvedAt = "2024-06-15T12:00:00.000Z";
+    const approved = approve(tested.rule, "a-different-founder@example.com", ["AUTHORITATIVE"], approvedAt);
+    if (approved.outcome !== "OK") throw new Error("setup failed");
+    expect(approved.rule.approvalRecord).toEqual({ founderIdentity: "a-different-founder@example.com", approvedAt });
   });
 
   it("[hard invariant] draft() starts with no accepted evidence quality - approve() is the only place a human decides this", () => {
@@ -161,5 +185,47 @@ describe("Regulatory Rule Governance lifecycle - BR-6/BR-7/BR-8", () => {
       expect(validSupersede.rule.old.lifecycleState).toBe("SUPERSEDED");
       expect(validSupersede.rule.new_.supersedesRuleId).toBe("old-001");
     }
+  });
+
+  // --- Unit 3, ADM-7: disable()/reenable() - matching activate()'s own test style exactly. ---
+
+  it("disables an ACTIVE rule (lifecycle-state-only, content untouched)", () => {
+    const caveat = {
+      category: "test-caveat",
+      description: "example",
+      affectedConditionOrInterpretation: "example condition",
+      sourceReferences: ["TEST.0.0"],
+      resolutionStatus: "accepted despite caveat",
+    };
+    const activeRule = { ...draft(testOnlyDraft({ caveats: [caveat] })), lifecycleState: "ACTIVE" as const };
+    const result = disable(activeRule);
+    expect(result.outcome).toBe("OK");
+    if (result.outcome !== "OK") return;
+    expect(result.rule.lifecycleState).toBe("DISABLED");
+    // Lifecycle-state-only: published content is never touched by disable().
+    expect(result.rule.ruleSpecification).toEqual(activeRule.ruleSpecification);
+    expect(result.rule.caveats).toEqual([caveat]);
+  });
+
+  it("[hard invariant] cannot disable a rule that isn't ACTIVE", () => {
+    const rule = draft(testOnlyDraft());
+    const result = disable(rule);
+    expect(result.outcome).toBe("REJECTED");
+  });
+
+  it("re-enables a DISABLED rule back to ACTIVE, the exact same rule version (no content change, no version substitution)", () => {
+    const disabledRule = { ...draft(testOnlyDraft()), lifecycleState: "DISABLED" as const };
+    const result = reenable(disabledRule);
+    expect(result.outcome).toBe("OK");
+    if (result.outcome !== "OK") return;
+    expect(result.rule.lifecycleState).toBe("ACTIVE");
+    expect(result.rule.id).toBe(disabledRule.id);
+    expect(result.rule.ruleSpecification).toEqual(disabledRule.ruleSpecification);
+  });
+
+  it("[hard invariant] cannot re-enable a rule that isn't DISABLED", () => {
+    const rule = { ...draft(testOnlyDraft()), lifecycleState: "ACTIVE" as const };
+    const result = reenable(rule);
+    expect(result.outcome).toBe("REJECTED");
   });
 });

@@ -28,8 +28,14 @@ jobs:
         run: npm run test:integration
         env:
           # King County GIS and Legistar need no credentials (public APIs) and always run.
-          # DATABASE_URL/ANTHROPIC_API_KEY are optional repo secrets - when absent, the
-          # corresponding suites skip cleanly rather than failing (see each *.integration.test.ts
-          # file's own describe.skipIf).
+          # DATABASE_URL/ANTHROPIC_API_KEY/STRIPE_SECRET_KEY are optional repo secrets - when
+          # absent, the corresponding suites skip cleanly rather than failing (see each
+          # *.integration.test.ts file's own describe.skipIf). STRIPE_SECRET_KEY (Unit 2B) is
+          # ALWAYS a Stripe TEST-MODE key here - never a live/production Stripe key.
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+        # Unit 2B note: tests/report-pdf-rendering/render.integration.test.ts (puppeteer-core +
+        # @sparticuz/chromium) needs no credential and runs automatically here too, for real,
+        # since this job's runner is ubuntu-latest (Linux) - its own describe.skipIf only skips on
+        # non-Linux platforms (e.g. a contributor's local macOS run), never in this CI job.

@@ -20,7 +20,7 @@ const availableGeometryContext: PropertyContext = {
   ],
 };
 
-const baseProject = { widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 10 };
+const baseProject = { projectType: "shed" as const, widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 10 };
 
 describe("Regulatory Rules Engine - evidence-quality classification gate (BR-U2-10)", () => {
   it("AUTHORITATIVE evidence (or no spatialEvidenceQuality set) classifies KNOWN as before - unchanged Unit 1 behavior", () => {

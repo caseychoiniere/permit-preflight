@@ -58,7 +58,7 @@ describe("Real Unit 0B shed candidate - honest governance status (not fabricated
     const emptyPropertyContext: PropertyContext = { parcelId: "test", assembledAt: new Date().toISOString(), facts: [] };
     const outcome = evaluateProject({
       propertyContext: emptyPropertyContext,
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6 },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6 },
       candidateActiveRules: [triaged.rule], // deliberately passed in to prove the filter works
       ecaFindings: [],
       candidateActiveInferencePolicies: [],

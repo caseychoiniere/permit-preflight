@@ -11,7 +11,7 @@
 
 import type { RetryResult } from "../shared/retry.js";
 import { addressesSemanticallyEqual } from "./normalize.js";
-import { ClarificationReason, ParcelResolutionStatus } from "./types.js";
+import { ClarificationReason, ParcelIdentityProvenance, ParcelResolutionStatus } from "./types.js";
 import type { CandidateParcel, ParcelResolutionResult } from "./types.js";
 
 export interface GeocodeOutcome {
@@ -94,7 +94,7 @@ export function decideAddressResolution(
     return { status: ParcelResolutionStatus.CLARIFICATION_REQUIRED, clarificationReason: ClarificationReason.ADDRESS_MISMATCH, candidates: allCandidates };
   }
 
-  return { status: ParcelResolutionStatus.CONFIRMED, confirmedParcel: geocodeCandidate, candidates: allCandidates };
+  return { status: ParcelResolutionStatus.CONFIRMED, confirmedParcel: geocodeCandidate, candidates: allCandidates, identityProvenance: ParcelIdentityProvenance.ALGORITHMIC };
 }
 
 export interface IdentifierResolutionSourceOutcome {
@@ -150,10 +150,27 @@ export function decideIdentifierResolution(outcome: IdentifierResolutionSourceOu
 
   // Addressless/vacant parcels are fully supported here - no canonical-address check is
   // required for the identifier path (BR-1b), unlike BR-1a's reverse-validation.
-  return { status: ParcelResolutionStatus.CONFIRMED, confirmedParcel: candidate, candidates: [candidate] };
+  return { status: ParcelResolutionStatus.CONFIRMED, confirmedParcel: candidate, candidates: [candidate], identityProvenance: ParcelIdentityProvenance.ALGORITHMIC };
 }
 
 function describeFailure(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+/**
+ * Product-correctness amendment (2026-08-27) - "fail closed on claims, not on completion." The
+ * smallest concrete parcel-confirmation mechanism: given a CLARIFICATION_REQUIRED result's own
+ * candidates (one plausible candidate lacking independent corroboration, or the user's pick among
+ * several/conflicting candidates), the user's explicit confirmation of a SPECIFIC candidate is a
+ * real, honest form of identity confirmation - never silently relabeled as algorithmic corroboration
+ * (identityProvenance: USER_CONFIRMED, never ALGORITHMIC). `chosen` MUST be one of `candidates` -
+ * this function never fabricates a candidate that wasn't actually presented to the user.
+ *
+ * Independent corroboration (or its absence, or a conflict) remains available as evidence metadata
+ * via the caller's own already-known clarificationReason - it is not re-derived or discarded here,
+ * merely no longer a precondition for progression once the user has explicitly confirmed identity.
+ */
+export function confirmCandidate(chosen: CandidateParcel, candidates: CandidateParcel[]): ParcelResolutionResult {
+  return { status: ParcelResolutionStatus.CONFIRMED, confirmedParcel: chosen, candidates, identityProvenance: ParcelIdentityProvenance.USER_CONFIRMED };
 }

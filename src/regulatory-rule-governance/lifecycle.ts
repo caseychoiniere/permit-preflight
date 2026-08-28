@@ -6,8 +6,9 @@
  *     path that reaches these states without one being supplied by a caller.
  *   - Tier 2 rules require a recorded escalated-professional opinion before SOURCE_VERIFIED,
  *     in addition to (never instead of) founder sign-off (RRAG-5).
- *   - DISABLED is defined but this module exposes no function that produces it - that
- *     transition/tooling belongs to Unit 3 (ADM-7), per the approved scope boundary.
+ *   - disable()/reenable() (Unit 3, ADM-7) are the only functions that produce/reverse DISABLED -
+ *     both are pure lifecycle-state-only toggles; the DB-level concurrency-correctness boundary
+ *     for a real HTTP request lives in repository.ts's transitionLifecycleState, not here.
  */
 
 import { LifecycleState, Tier } from "./types.js";
@@ -18,7 +19,13 @@ export type LifecycleResult<T> = { outcome: "OK"; rule: T } | { outcome: "REJECT
 export interface DraftedRuleInput {
   id: string;
   subject: string;
-  applicableProjectType: string;
+  /** Unit 5: required for an EXISTING_PROPERTY-scoped candidate (unchanged, shed/garage), MUST be
+   * omitted for a VACANT_LAND-scoped candidate - never a bogus shed/garage value. See
+   * applicableWorkflowType below. */
+  applicableProjectType?: string;
+  /** Unit 5 addition - omit (defaults to EXISTING_PROPERTY, unchanged behavior) or set explicitly
+   * to "VACANT_LAND" for a Unit 5 candidate. */
+  applicableWorkflowType?: "EXISTING_PROPERTY" | "VACANT_LAND";
   applicableZone: string;
   ruleSpecification: Record<string, unknown>;
   citation: RuleCitation;
@@ -109,10 +116,16 @@ export function markTested(rule: RegulatoryRule, results: { testCaseIndex: numbe
  * classification (BR-U2-10) - the same "explicit human decision, not an implicit default"
  * discipline this codebase already applies to tier confirmation and Tier 2 escalation. Pass []
  * if the rule should continue accepting only AUTHORITATIVE evidence. */
+/**
+ * `approvedAt` is received explicitly, not read from the clock internally (2026-08-25 correction)
+ * - keeps this function deterministic/testable like every other lifecycle transition, and makes
+ * the caller (not this module) responsible for what "now" means at call time.
+ */
 export function approve(
   rule: RegulatoryRule,
   founderIdentity: string,
-  acceptedEvidenceQuality: EvidenceQuality[]
+  acceptedEvidenceQuality: EvidenceQuality[],
+  approvedAt: string
 ): LifecycleResult<RegulatoryRule> {
   if (rule.lifecycleState !== LifecycleState.TESTED) {
     return { outcome: "REJECTED", reason: `Cannot approve from state ${rule.lifecycleState}; must be TESTED.` };
@@ -120,7 +133,10 @@ export function approve(
   if (!founderIdentity.trim()) {
     return { outcome: "REJECTED", reason: "founderIdentity is required to approve a rule." };
   }
-  return { outcome: "OK", rule: { ...rule, lifecycleState: LifecycleState.APPROVED, acceptedEvidenceQuality } };
+  return {
+    outcome: "OK",
+    rule: { ...rule, lifecycleState: LifecycleState.APPROVED, acceptedEvidenceQuality, approvalRecord: { founderIdentity, approvedAt } },
+  };
 }
 
 /** APPROVED -> ACTIVE. The one-way publication to the Regulatory Rules Engine's consumption
@@ -129,6 +145,34 @@ export function approve(
 export function activate(rule: RegulatoryRule): LifecycleResult<RegulatoryRule> {
   if (rule.lifecycleState !== LifecycleState.APPROVED) {
     return { outcome: "REJECTED", reason: `Cannot activate from state ${rule.lifecycleState}; must be APPROVED.` };
+  }
+  return { outcome: "OK", rule: { ...rule, lifecycleState: LifecycleState.ACTIVE } };
+}
+
+/** ACTIVE -> DISABLED (ADM-7, Unit 3). A reversible lifecycle-state-only toggle - never permission
+ * to mutate published content (ruleSpecification/citation/caveats/testCases are untouched here).
+ * Operator attribution/reason is AdminActionLog's job (BR-U3-9/Q5), not a parameter of this pure
+ * function. This function alone is NOT the concurrency-correctness boundary for a real HTTP
+ * request - see regulatory-rule-governance/repository.ts's transitionLifecycleState for the
+ * conditional-UPDATE persistence guard a concurrent/stale request needs; this function is the
+ * tested domain-rule expression that guard's expected {from, to} pair is derived from. */
+export function disable(rule: RegulatoryRule): LifecycleResult<RegulatoryRule> {
+  if (rule.lifecycleState !== LifecycleState.ACTIVE) {
+    return { outcome: "REJECTED", reason: `Cannot disable from state ${rule.lifecycleState}; must be ACTIVE.` };
+  }
+  return { outcome: "OK", rule: { ...rule, lifecycleState: LifecycleState.DISABLED } };
+}
+
+/** DISABLED -> ACTIVE (ADM-7, Unit 3). Legal only for the exact rule row being re-enabled - no
+ * version substitution is possible through this path (this function takes and returns the same
+ * RegulatoryRule object; it never constructs a new version). If correcting the underlying problem
+ * requires changing any regulatory logic/applicability/threshold/citation content, this function
+ * must NOT be used - a new version goes through the full RESEARCHED->...->ACTIVE pipeline instead.
+ * See disable()'s docstring re: the separate DB-level concurrency guard this function does not
+ * itself provide. */
+export function reenable(rule: RegulatoryRule): LifecycleResult<RegulatoryRule> {
+  if (rule.lifecycleState !== LifecycleState.DISABLED) {
+    return { outcome: "REJECTED", reason: `Cannot re-enable from state ${rule.lifecycleState}; must be DISABLED.` };
   }
   return { outcome: "OK", rule: { ...rule, lifecycleState: LifecycleState.ACTIVE } };
 }

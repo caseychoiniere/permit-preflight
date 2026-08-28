@@ -64,8 +64,27 @@ export const ParcelResolutionStatus = {
 } as const;
 export type ParcelResolutionStatus = (typeof ParcelResolutionStatus)[keyof typeof ParcelResolutionStatus];
 
+/**
+ * Product-correctness amendment (2026-08-27, "fail closed on claims, not on completion" -
+ * see aidlc-docs/decisions/2026-08-27-fail-closed-on-claims-not-completion-correction.md).
+ * Distinguishes HOW a CONFIRMED result was reached - never silently collapsed into one
+ * undifferentiated "confirmed" the way an ALGORITHMIC (independently-corroborated) match and a
+ * USER_CONFIRMED (explicit user confirmation after CLARIFICATION_REQUIRED) result would otherwise
+ * be indistinguishable. "Do not pretend independent corroboration succeeded" when it didn't.
+ */
+export const ParcelIdentityProvenance = {
+  ALGORITHMIC: "ALGORITHMIC",
+  USER_CONFIRMED: "USER_CONFIRMED",
+} as const;
+export type ParcelIdentityProvenance = (typeof ParcelIdentityProvenance)[keyof typeof ParcelIdentityProvenance];
+
 export type ParcelResolutionResult =
-  | { status: typeof ParcelResolutionStatus.CONFIRMED; confirmedParcel: CandidateParcel; candidates: CandidateParcel[] }
+  | {
+      status: typeof ParcelResolutionStatus.CONFIRMED;
+      confirmedParcel: CandidateParcel;
+      candidates: CandidateParcel[];
+      identityProvenance: ParcelIdentityProvenance;
+    }
   | {
       status: typeof ParcelResolutionStatus.CLARIFICATION_REQUIRED;
       clarificationReason: ClarificationReason;

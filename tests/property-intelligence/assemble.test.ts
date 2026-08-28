@@ -5,6 +5,7 @@ const confirmed: ConfirmedParcelResolution = {
   status: "CONFIRMED",
   confirmedParcel: { parcelId: "1959703080", canonicalAddress: "3216 Fuhrman Ave E", source: "ADDRESS_GEOCODE", characteristics: {} },
   candidates: [],
+  identityProvenance: "ALGORITHMIC",
 };
 
 describe("Workflow 2: PropertyContext Assembly", () => {

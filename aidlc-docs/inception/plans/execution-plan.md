@@ -185,6 +185,44 @@ regulatory rule-governance workflow itself) remains reusable independent of this
 
 ---
 
+## FOUNDER DECISION — COMMERCIAL VALUE GATE NO LONGER BLOCKS CONSTRUCTION (2026-08-24)
+
+**This amends the TWO-GATE MODEL above; it does not rewrite it.** The two-gate model's description
+of what was decided on 2026-08-19, and why, is preserved as-is immediately above for the historical
+record. This section records a subsequent, explicit founder decision that changes what the gate
+*does* going forward.
+
+**Decision**: Permit Preflight continues Construction without requiring Unit 0C customer interviews
+first. Commercial validation is no longer a prerequisite for continuing Construction. Technical GO
+remains valid and, on its own, now authorizes Unit 2B onward (Unit 3 remains its own separate,
+still-binding operational gate for Units 4-11 — unaffected by this decision).
+
+**Unit 0C status**: **DEFERRED — OPTIONAL COMMERCIAL VALIDATION**. Not COMPLETE, PASSED, FAILED,
+GO, or NO-GO. No interviews have been conducted. The interview protocol was designed
+(`unit-0c-customer-value-interview-protocol.md`) but the founder elected to continue building
+before conducting it. Materials are preserved for possible later use, not discarded.
+
+**What this does NOT do**: it does not convert any unvalidated commercial assumption into a
+validated fact. Willingness to pay, the $9.99 (or any other) price point, repeat-professional
+demand, market size/conversion assumptions, and direct paid-customer demand all remain
+**UNVALIDATED / HYPOTHESIS**, exactly as before this decision.
+
+**Operating model going forward**: BUILD → TEST → SHIP → OBSERVE → AMEND. Real product usage,
+attempted purchases, completed purchases, abandonment, support feedback, and repeat usage may
+become genuine commercial-validation evidence once the product reaches real users — a later,
+different evidentiary source than Unit 0C interviews, not a substitute already in hand.
+
+**Binding on future AI-DLC stages**: do not stop or refuse to proceed with Construction merely
+because Unit 0C interviews have not occurred, willingness-to-pay has not been empirically
+established, or a separate "Commercial GO" has not been declared. Do not reintroduce this gate by
+citing the TWO-GATE MODEL section above as still-binding policy — it is superseded specifically on
+the point of blocking Construction; its factual/historical content otherwise stands.
+
+**Next unit**: Unit 2B — Commercial Payment & Fulfillment. See `aidlc-state.md`'s FOUNDER DECISION
+section for the authoritative, single source of truth on this decision.
+
+---
+
 ## [HISTORICAL] Unit 0 Gate & GO / PIVOT / NO-GO Decision Model (added 2026-08-19, user clarification)
 
 **Sequence**: Inception (this plan) → Application Design → Units Generation → Inception approval gate → **Unit 0: Pre-Construction Validation** → explicit **GO / PIVOT / NO-GO** decision → only then substantial production Construction.

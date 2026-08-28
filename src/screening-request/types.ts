@@ -1,6 +1,7 @@
 /**
- * Screening Request domain types (Functional Design domain-entities.md). Unit 2 exercises only
- * the EXISTING_PROPERTY / shed path.
+ * Screening Request domain types (Functional Design domain-entities.md). EXISTING_PROPERTY is the
+ * only WorkflowType exercised through Unit 4; ProjectType now covers both shed (Unit 2) and
+ * garage (Unit 4).
  */
 
 import { z } from "zod";
@@ -53,42 +54,124 @@ export interface ShedProjectConfiguration {
   distanceInputMode?: DistanceInputMode;
 }
 
+/** Unit 4 (domain-entities.md) - garage-specific intake fields beyond the shed shape.
+ * `existingStructuresFootprintSqFt` is USER_SUPPLIED and unverified (business-rules.md BR-U4-3,
+ * revised for SMC-countable-area numerator semantics) - undefined means "not supplied", never
+ * defaulted to 0; an explicit 0 is a deliberate user assertion. `stackedDwellingUnits` is the L6
+ * applicability fact (garage-rule-inventory-and-tier-triage.md) - undefined means "not
+ * established", never inferred. Both must reach the server as `undefined`, not `null` or a
+ * coerced `0`/`false`, so the Boundary Validator schema below can tell "not answered" apart from
+ * an explicit answer. */
+export interface GarageProjectConfiguration {
+  widthFt: number;
+  depthFt: number;
+  heightFt: number;
+  alleyAdjacent: boolean;
+  proposedPlacement?: ProposedPlacement;
+  lotLineRoleAssignment?: LotLineRoleAssignment;
+  distanceInputMode?: DistanceInputMode;
+  existingStructuresFootprintSqFt?: number;
+  stackedDwellingUnits?: boolean;
+}
+
+/** Unit 4 - `ProjectDetails` (domain-entities.md). Neither member carries its own `projectType`
+ * discriminant field - the sibling `ScreeningRequest.projectType` column is the actual
+ * discriminant (a plain `jsonb` column has no way to enforce a matching internal tag, so code
+ * must consistently branch on the SIBLING field, then narrow/cast - never trust an internal tag
+ * inside untrusted JSON as authoritative on its own). See `screening-request/repository.ts` and
+ * `report-generation-orchestrator/pipeline.ts` for the actual branch points. */
+export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration;
+
 export const ValidationState = {
   DRAFT: "DRAFT",
   VALID: "VALID",
 } as const;
 export type ValidationState = (typeof ValidationState)[keyof typeof ValidationState];
 
-/** Unit 2 exercises only this one workflow/project type - kept as a canonical const (not an
+/** Unit 5 adds VACANT_LAND as this project's first second-*workflow* implementation (not a third
+ * project type - `domain-entities.md`'s own design invariant). Kept as a canonical const (not an
  * inline literal) so every construction site references the same source of truth as the set
- * of supported types grows (screening-request/authorization.ts, repository.ts). */
+ * of supported workflows grows (screening-request/authorization.ts, repository.ts). */
 export const WorkflowType = {
   EXISTING_PROPERTY: "EXISTING_PROPERTY",
+  VACANT_LAND: "VACANT_LAND",
 } as const;
 export type WorkflowType = (typeof WorkflowType)[keyof typeof WorkflowType];
 
 export const ProjectType = {
   SHED: "shed",
+  GARAGE: "garage",
 } as const;
 export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
 
-export interface ScreeningRequest {
+/** Single source of truth for which project types the system currently persists/evaluates
+ * (Unit 4 business-rules.md BR-U4-1, revised - intake/evaluability, NOT public purchase
+ * eligibility, which is a separate, additional gate - see authorization.ts's Garage Screening
+ * Coverage Readiness check). Every call site that previously redeclared its own copy of this set
+ * (screening-request/repository.ts, screening-request/authorization.ts,
+ * checkout-fulfillment/index.ts, app/api/screening-requests/route.ts) now imports this one. */
+export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE]);
+
+export const VacantLandScreeningIntent = {
+  VACANT_PARCEL: "VACANT_PARCEL",
+  REDEVELOP_EXISTING_PARCEL: "REDEVELOP_EXISTING_PARCEL",
+} as const;
+export type VacantLandScreeningIntent = (typeof VacantLandScreeningIntent)[keyof typeof VacantLandScreeningIntent];
+
+/** Unit 5 (domain-entities.md) - deliberately minimal, per VL-1's "no Project Configuration step."
+ * Every other fact the vacant-land evaluation needs comes from the existing Property
+ * Intelligence/Spatial Analysis pipeline, keyed off the confirmed parcel alone. */
+export interface VacantLandDetails {
+  screeningIntent: VacantLandScreeningIntent;
+}
+
+export const VacantLandDetailsSchema = z.object({
+  screeningIntent: z.enum([VacantLandScreeningIntent.VACANT_PARCEL, VacantLandScreeningIntent.REDEVELOP_EXISTING_PARCEL]),
+});
+export type VacantLandDetailsInput = z.infer<typeof VacantLandDetailsSchema>;
+
+interface ScreeningRequestBase {
   id: string;
-  workflowType: WorkflowType;
   confirmedParcelId: string;
-  projectType: ProjectType;
-  projectDetails: ShedProjectConfiguration;
   validationState: ValidationState;
-  snapshot?: ScreeningRequestSnapshot;
   snapshotTakenAt?: string;
 }
 
+/** Unit 5 BR-U5-1: `ScreeningRequest`/`ScreeningRequestSnapshot` are `workflowType`-discriminated
+ * unions, not one interface with loosely-optional fields - a `VACANT_LAND` variant structurally
+ * cannot carry `projectType`/`projectDetails` at all (not optional-and-unset), and vice versa. */
+export interface ExistingPropertyScreeningRequest extends ScreeningRequestBase {
+  workflowType: typeof WorkflowType.EXISTING_PROPERTY;
+  projectType: ProjectType;
+  projectDetails: ProjectConfiguration;
+  snapshot?: ExistingPropertyScreeningRequestSnapshot;
+}
+
+export interface VacantLandScreeningRequest extends ScreeningRequestBase {
+  workflowType: typeof WorkflowType.VACANT_LAND;
+  screeningIntent: VacantLandScreeningIntent;
+  vacantLandDetails: VacantLandDetails;
+  snapshot?: VacantLandScreeningRequestSnapshot;
+}
+
+export type ScreeningRequest = ExistingPropertyScreeningRequest | VacantLandScreeningRequest;
+
 /** The immutable copy taken at generation-authorization time (BR-U2-2/RGD-4). */
-export interface ScreeningRequestSnapshot {
+export interface ExistingPropertyScreeningRequestSnapshot {
+  workflowType: typeof WorkflowType.EXISTING_PROPERTY;
   confirmedParcelId: string;
   projectType: ProjectType;
-  projectDetails: ShedProjectConfiguration;
+  projectDetails: ProjectConfiguration;
 }
+
+export interface VacantLandScreeningRequestSnapshot {
+  workflowType: typeof WorkflowType.VACANT_LAND;
+  confirmedParcelId: string;
+  screeningIntent: VacantLandScreeningIntent;
+  vacantLandDetails: VacantLandDetails;
+}
+
+export type ScreeningRequestSnapshot = ExistingPropertyScreeningRequestSnapshot | VacantLandScreeningRequestSnapshot;
 
 const GeographicPointSchema = z.object({
   lng: z.number().finite().min(-180).max(180),
@@ -134,3 +217,24 @@ export const ShedProjectConfigurationSchema = z.object({
 });
 
 export type ShedProjectConfigurationInput = z.infer<typeof ShedProjectConfigurationSchema>;
+
+/** Unit 4's Boundary Validator schema for garage intake (mirrors ShedProjectConfigurationSchema's
+ * dimensional bounds). `existingStructuresFootprintSqFt`/`stackedDwellingUnits` are optional and
+ * deliberately NOT given a `.default(...)` - zod's `.optional()` alone preserves the
+ * undefined-vs-explicit-value distinction BR-U4-3/L6 require; a `.default()` would silently
+ * collapse "not answered" into a concrete value, exactly what the intake UI's 3-choice contract
+ * (frontend-components.md) is designed to prevent. `existingStructuresFootprintSqFt` allows 0 (an
+ * explicit "no existing structures" assertion) but rejects negative/non-finite values. */
+export const GarageProjectConfigurationSchema = z.object({
+  widthFt: z.number().finite().positive().max(200),
+  depthFt: z.number().finite().positive().max(200),
+  heightFt: z.number().finite().positive().max(50),
+  alleyAdjacent: z.boolean(),
+  proposedPlacement: ProposedPlacementSchema.optional(),
+  lotLineRoleAssignment: LotLineRoleAssignmentSchema.optional(),
+  distanceInputMode: z.enum([DistanceInputMode.MAP_PLACEMENT, DistanceInputMode.MANUAL_FALLBACK]).optional(),
+  existingStructuresFootprintSqFt: z.number().finite().nonnegative().max(1_000_000).optional(),
+  stackedDwellingUnits: z.boolean().optional(),
+});
+
+export type GarageProjectConfigurationInput = z.infer<typeof GarageProjectConfigurationSchema>;

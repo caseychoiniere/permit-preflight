@@ -23,7 +23,8 @@ in this unit, not real payment — see unit-of-work.md's implementation note.)*
 - **Report Generation & Delivery**: RGD-1, RGD-2, RGD-3, RGD-4, RGD-5, RGD-6 (6)
 
 ## Unit 2B: Commercial Payment & Fulfillment — 7 stories
-*(New 2026-08-19, split from the original Unit 2 — BLOCKED pending Commercial GO / Unit 0C)*
+*(New 2026-08-19, split from the original Unit 2. **AUTHORIZED 2026-08-24** — founder decision
+removed the Commercial GO/Unit 0C dependency; see aidlc-state.md's FOUNDER DECISION section.)*
 - **Payment & Orders**: PO-0, PO-1, PO-2, PO-3, PO-4, PO-5 (6)
 - **Accounts**: ACC-1 (guest checkout only) (1)
 

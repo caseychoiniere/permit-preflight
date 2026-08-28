@@ -1,8 +1,12 @@
 # Unit 0C: Customer Value Validation — Interview Protocol & Evidence-Capture Template
 
-**Status**: Prepared for the user to conduct. No AI-simulated interviews. No production code.
-Unit 0 remains at **PIVOT** until real conversations happen and are synthesized against the
-decision framework at the end of this document.
+**Status**: **DEFERRED — OPTIONAL COMMERCIAL VALIDATION** (founder decision, 2026-08-24; see
+`aidlc-docs/aidlc-state.md`'s FOUNDER DECISION section). Not COMPLETE, not PASSED, not FAILED, not
+GO, not NO-GO — no interviews have been conducted. This protocol was designed and is preserved
+here unchanged for possible later use, but the founder elected to continue Construction (Unit 2B
+onward) before conducting it, and it is no longer a prerequisite for any unit. If conducted later,
+synthesize real conversations against the decision framework at the end of this document at that
+time. No AI-simulated interviews. No production code.
 
 **Materials to use**: the three realistic sample reports in
 [`sample-reports.md`](sample-reports.md) — including Sample Report 2, the

@@ -1,5 +1,12 @@
 # Permit Preflight — Units of Work
 
+**Founder decision, 2026-08-24**: Commercial GO (Unit 0C) is no longer a Construction blocker.
+Unit 2B is authorized on Technical GO alone; Unit 3 remains its own operational gate for Units
+4-11, independent of Commercial GO/Unit 0C. See `aidlc-docs/aidlc-state.md`'s FOUNDER DECISION
+section for the full record. The two-gate history below is preserved as originally written; treat
+every "Commercial GO" dependency in this document as amended per this note, not deleted from the
+historical record.
+
 **Revised 2026-08-19 (latest)** — Two-gate model adopted (Technical Feasibility Gate vs. Commercial
 Value Gate, see execution-plan.md). Unit 2 split into Unit 2 (Report Generation & Presentation
 Prototype, authorized under Technical GO) and **Unit 2B** (Commercial Payment & Fulfillment, gated
@@ -101,7 +108,10 @@ technically.
 **Stands up**: Order & Payment, Checkout & Fulfillment Service, Account (guest mode +
 `authorizeReportAccess`'s guest-credential path).
 
-**Depends on**: Unit 2, **Commercial GO** (Unit 0C produces GO — not yet satisfied).
+**Depends on**: Unit 2 (COMPLETE). ~~Commercial GO (Unit 0C produces GO)~~ — **removed as a
+dependency by founder decision, 2026-08-24** (see aidlc-state.md's FOUNDER DECISION section).
+Technical GO alone now authorizes this unit. Unit 0C remains open/optional, pursued opportunistically,
+not a prerequisite.
 
 **Exit criteria**: Unchanged from the original Unit 2 exit criteria — a guest user can pay via
 Stripe Checkout at the current server-determined price and receive report access via secure link,
@@ -136,7 +146,10 @@ hard requirement — flagged for your review like the other sequencing decisions
 **Stands up**: Admin/Support Service (8 of 9 stories — ADM-9 and Support Case explicitly excluded
 here).
 
-**Depends on**: Unit 2B, **Commercial GO** (revised 2026-08-19 — needs real orders to inspect, which only exist once Unit 2B's live payment exists; explicitly gated behind Commercial GO alongside Unit 2B per the two-gate model, not authorized under Technical GO alone).
+**Depends on**: Unit 2B (needs real orders to inspect, which only exist once Unit 2B's live payment
+exists). ~~Commercial GO~~ — removed as a separate dependency by founder decision, 2026-08-24; Unit
+3 remains its own hard operational gate on the reasoning above (real orders must exist first), just
+no longer additionally conditioned on Commercial GO/Unit 0C.
 
 **Gates**: Units 4 through 11 (see the explicit operational-gate dependency in
 `unit-of-work-dependency.md` — this is now a stated hard dependency, not merely a recommended
@@ -155,7 +168,7 @@ additional paid project type or account-linked customer surface goes live.
 
 **Extends**: Regulatory Rules Engine (new rule set), Project Preflight Service (garage path).
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 ---
 
@@ -171,7 +184,7 @@ early product-risk experiment, per the user's explicit rationale for this positi
 (`evaluateVacantLand`), Spatial Analysis (buildable-envelope calculation), Report Explanation
 (`explainVacantLandAssessment`, deterministic-assessment/LLM-explains-only framing).
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 **Exit criteria**: A user can screen a vacant parcel and receive a preliminary screening assessment
 (not a "recommendation") with defensible-only buildable-area/scenario information and explicit
@@ -189,10 +202,10 @@ the Vacant-Land and upcoming project-type units.
 **Extends**: Account (adds ACC-2/3/4 on top of Unit 2's guest-only baseline), Screening Request
 (save/resume, PC-3).
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate
-model — account deletion/disputes are exactly the kind of new support surface Unit 3's minimum
-capability exists to handle, and this unit is explicitly listed as deferred "optional account
-sophistication" until Commercial GO).
+**Depends on**: Unit 2B, **and Unit 3** (account deletion/disputes are exactly the kind of new
+support surface Unit 3's minimum capability exists to handle). ~~and Commercial GO~~ — removed as a
+separate dependency by founder decision, 2026-08-24; this unit was originally also listed as
+deferred "optional account sophistication" until Commercial GO, which no longer applies.
 
 **Exit criteria**: A user can create an account, see their report history (server-enforced
 ownership), link a prior guest purchase with proof of control, save and resume an in-progress
@@ -205,7 +218,7 @@ request, and delete their account per the retention policy.
 **Delivers**: The third structure project type — deliberately low-complexity. Candidate for the C3
 case-by-case low-value review if early data shows low report value.
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 ---
 
@@ -213,7 +226,7 @@ case-by-case low-value review if early data shows low report value.
 
 **Delivers**: Adds attachment-to-primary-structure and height-above-grade evaluation.
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 ---
 
@@ -225,7 +238,7 @@ REQUIRES VERIFICATION results. Built after the REQUIRES VERIFICATION UX pattern 
 above) — the complaint-investigation workflow ships alongside the project type most likely to need
 it.
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 ---
 
@@ -234,7 +247,7 @@ it.
 **Delivers**: Higher-complexity evaluation — existing nonconforming-structure handling, multiple
 setback categories.
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 ---
 
@@ -243,7 +256,7 @@ setback categories.
 **Delivers**: The highest-regulatory-complexity, highest-professional-persona-value project type —
 the focused "deep" build once the pipeline is thoroughly proven.
 
-**Depends on**: Unit 2B, **and Unit 3**, **and Commercial GO** (revised 2026-08-19, two-gate model).
+**Depends on**: Unit 2B, **and Unit 3** (Commercial GO/Unit 0C dependency removed by founder decision, 2026-08-24 — see aidlc-state.md).
 
 ---
 

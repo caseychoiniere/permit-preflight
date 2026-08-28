@@ -19,7 +19,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("produces a KNOWN PASS finding for a compliant rear setback", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6 },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6 },
       candidateActiveRules: [rearSetbackRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -31,7 +31,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("produces a KNOWN FAIL finding for a non-compliant rear setback", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 2 },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 2 },
       candidateActiveRules: [rearSetbackRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -42,7 +42,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("[hard invariant] missing evidence produces REQUIRES_VERIFICATION, never a silently favorable finding", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false }, // distanceToRearLotLineFt intentionally omitted
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false }, // distanceToRearLotLineFt intentionally omitted
       candidateActiveRules: [rearSetbackRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -54,7 +54,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("[hard invariant] only ACTIVE rules are consumed - a DRAFTED rule passed in is silently excluded from findings", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 200, alleyAdjacent: false }, // would clearly FAIL notYetActiveRule's 1ft max if evaluated
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 200, alleyAdjacent: false }, // would clearly FAIL notYetActiveRule's 1ft max if evaluated
       candidateActiveRules: [notYetActiveRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -65,7 +65,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("evaluates height and dwelling separation correctly", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 15, alleyAdjacent: false, distanceToDwellingFt: 2 },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 15, alleyAdjacent: false, distanceToDwellingFt: 2 },
       candidateActiveRules: [heightRule, dwellingSeparationRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -80,6 +80,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
       project: {
+        projectType: "shed",
         widthFt: 8,
         depthFt: 10,
         heightFt: 10,
@@ -100,7 +101,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("[hard invariant] INFERRED requires a matching approved InferencePolicy - falls to REQUIRES_VERIFICATION without one", () => {
     const withoutPolicy = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false },
       candidateActiveRules: [zoneBoundaryInferenceRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [], // no policy available
@@ -110,7 +111,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
 
     const withPolicy = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false },
       candidateActiveRules: [zoneBoundaryInferenceRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [approvedZoneBoundaryPolicy],
@@ -122,7 +123,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("[hard invariant] deterministic reproducibility - identical inputs produce an identical EvaluationOutcome (NFR-1)", () => {
     const input = {
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6, distanceToDwellingFt: 4 },
+      project: { projectType: "shed" as const, widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6, distanceToDwellingFt: 4 },
       candidateActiveRules: [rearSetbackRule, dwellingSeparationRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -135,7 +136,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
   it("[hard invariant] every finding carries provenance (supportingEvidence/appliedRule/explanationBasis) populated at creation", () => {
     const outcome = evaluateProject({
       propertyContext: propertyContext(),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6 },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 6 },
       candidateActiveRules: [rearSetbackRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],
@@ -155,7 +156,7 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
           availabilityState: "UNAVAILABLE",
         },
       ]),
-      project: { widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false },
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false },
       candidateActiveRules: [rearSetbackRule],
       ecaFindings: [],
       candidateActiveInferencePolicies: [],

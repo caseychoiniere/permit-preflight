@@ -47,7 +47,7 @@ describe.skipIf(!hasDb)("Unit 2 persisted entities - live Neon integration", () 
     expect(secondClaim).toBeUndefined();
   });
 
-  it("stale-claim recovery only reclaims a job past the configured threshold", async () => {
+  it("stale-claim recovery only reclaims a job past the configured threshold, releasing it back to QUEUED (corrected 2026-08-25)", async () => {
     const [request] = await db
       .insert(screeningRequests)
       .values({ confirmedParcelId: "TEST-PIN-2", projectType: "shed", projectDetails: {}, validationState: "VALID" })
@@ -64,6 +64,17 @@ describe.skipIf(!hasDb)("Unit 2 persisted entities - live Neon integration", () 
 
     const reclaimed = await reclaimStaleJob(db, job.id, 0); // any claim age counts as stale
     expect(reclaimed?.retryAttempts).toBeGreaterThanOrEqual(2);
+    // Corrected 2026-08-25: released back to QUEUED (not re-set to IN_PROGRESS) so a freshly
+    // started replacement reportGenerationWorkflow's own claimQueuedJob step can actually claim it
+    // - see report-generation-job/repository.ts's reclaimStaleJob docstring.
+    expect(reclaimed?.state).toBe("QUEUED");
+
+    // The released job is now genuinely re-claimable via the ordinary atomic claim, proving the
+    // replacement workflow's own claim step would succeed (checkout-fulfillment/reconciliation.
+    // integration.test.ts's "must still win the normal DB claim" test covers this same invariant
+    // in the Cron-check context specifically).
+    const reclaimedAgain = await claimQueuedJob(db, job.id);
+    expect(reclaimedAgain?.state).toBe("IN_PROGRESS");
   });
 
   it("EvidenceReportArtifact + ReportAccessCredential: create, resolve by token, revoke", async () => {

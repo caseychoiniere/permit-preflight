@@ -23,7 +23,24 @@ export type LogEvent =
   | "PDF_RENDER_FAILURE"
   | "CREDENTIAL_REVOKED"
   | "CREDENTIAL_ROTATED"
-  | "RATE_LIMIT_TRIGGERED";
+  | "RATE_LIMIT_TRIGGERED"
+  // Unit 2B additions (BR-U2B-1/4/10, Infrastructure Design's Cron backstop). Never include a raw
+  // Stripe secret, webhook signature, refundIdempotencyKey, or full Stripe Checkout Session ID
+  // value in `detail` for these events (Pattern 4/8's logging-hygiene discipline).
+  | "DUPLICATE_PAYMENT_ANOMALY"
+  | "GUEST_DELIVERY_NO_EMAIL"
+  | "GUEST_DELIVERY_FAILED"
+  | "GUEST_DELIVERY_RECONCILIATION_FAILED"
+  | "RECONCILIATION_COMPLETE"
+  | "STRIPE_WEBHOOK_SIGNATURE_INVALID"
+  | "INTERNAL_PROTOTYPE_AUTHORIZED"
+  // Unit 3 addition - never include AdminActionLog.reason, ADMIN_OPERATOR_ID, or Basic Auth
+  // credential material in `detail` for this event.
+  | "DATA_SOURCE_HEALTH_RECORDING_FAILED"
+  // Unit 6 additions - never include a raw magic-link token, tokenHash, AccountSession token, or
+  // Account email in `detail` for any of these events (matches the report-access credential
+  // events' own discipline above - only sourceKeyHash-style non-reversible markers are logged).
+  | "LOGIN_LINK_REQUEST_FAILED";
 
 export interface LogDetail {
   [key: string]: string | number | boolean | undefined;

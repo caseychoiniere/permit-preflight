@@ -40,7 +40,19 @@ export type LogEvent =
   // Unit 6 additions - never include a raw magic-link token, tokenHash, AccountSession token, or
   // Account email in `detail` for any of these events (matches the report-access credential
   // events' own discipline above - only sourceKeyHash-style non-reversible markers are logged).
-  | "LOGIN_LINK_REQUEST_FAILED";
+  | "LOGIN_LINK_REQUEST_FAILED"
+  // 2026-08-28 addition (report-explanation/anthropic-wiring.ts) - never include
+  // ANTHROPIC_API_KEY or any request header value in `detail`; `reason` here is always
+  // createAnthropicCompletionClient's or explainFindings' own human-readable failure message,
+  // neither of which ever echoes back credential material by construction.
+  | "REPORT_EXPLANATION_DEGRADED"
+  // Building intelligence v1 (2026-08-29) - never include raw parcel PIN in a way that couples
+  // this to PII (PINs are public tax-parcel identifiers, not personal data, same treatment the
+  // existing SOURCE_FAILURE event already gives parcelId elsewhere).
+  | "BUILDING_OUTLINES_DISPLAY_FETCH_FAILED"
+  // Regression diagnostics (2026-08-30) - counts/booleans only, see pipeline.ts's own comment at
+  // the call site for exactly what is (and isn't) included.
+  | "SHED_REPORT_DIAGNOSTICS";
 
 export interface LogDetail {
   [key: string]: string | number | boolean | undefined;

@@ -8,18 +8,21 @@
 import { eq, and } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { screeningRequests, regulatoryRules, inferencePolicies, type ReportGenerationJobRow } from "../db/schema.js";
-import type { GarageProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
+import type { GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
 import { ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestSnapshot } from "../screening-request/hydrate.js";
 import { assemblePropertyContext, type FactRetriever } from "../property-intelligence/assemble.js";
 import { createKingCountyParcelGeometryRetriever } from "../property-intelligence/king-county-parcel-geometry.js";
+import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence/seattle-building-outlines.js";
+import { classifyExistingStructures, findPrimaryDwelling, type ExistingStructure, type RawBuildingFootprint } from "../property-intelligence/existing-structures.js";
 import { AvailabilityState, getFact } from "../property-intelligence/types.js";
 import type { PropertyFact } from "../property-intelligence/types.js";
 import { recordIngestionResult } from "../data-source-registry/index.js";
 import type { EvidenceQuality } from "../property-intelligence/types.js";
-import type { Polygon } from "../spatial-analysis/types.js";
+import type { GeographicPoint, Polygon } from "../spatial-analysis/types.js";
 import {
   computeBuildableEnvelope,
+  computeDistanceToDwelling,
   computeEcaExclusionGeometry,
   computeParcelAreaSqFt,
   computeSetbackConstrainedArea,
@@ -30,13 +33,12 @@ import { evaluateProject } from "../regulatory-rules-engine/evaluate.js";
 import { evaluateVacantLand, findActiveScenarioRule, SCENARIO_DEFINITIONS, toAppliedRuleRef } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import type { VacantLandSetbackRuleSpec } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import { EvaluationStatus } from "../regulatory-rules-engine/types.js";
-import type { LotCoverageFacts, ProjectDetails } from "../regulatory-rules-engine/types.js";
+import type { LotCoverageFacts, ProjectDetails, ShedProjectDetails, Finding } from "../regulatory-rules-engine/types.js";
 import type { BuildableEnvelopeFacts, DensityFacts, LotLineRoles } from "../regulatory-rules-engine/vacant-land-types.js";
 import { LifecycleState, toApplicabilityScope } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule, InferencePolicy } from "../regulatory-rule-governance/types.js";
 import { CandidateParcelSource, ParcelIdentityProvenance, ParcelResolutionStatus } from "../parcel-resolution/types.js";
-import { explainFindings } from "../report-explanation/index.js";
-import type { AiCompletionClient } from "../rule-research-assistant/index.js";
+import type { ExplanationResult } from "../report-explanation/index.js";
 import { createEvidenceReportArtifact } from "../evidence-report-artifact/index.js";
 import { markJobComplete, markJobFailed } from "../report-generation-job/repository.js";
 import { withStageTiming } from "./stage-timing.js";
@@ -44,7 +46,15 @@ import { logger } from "../shared/logger.js";
 import type { ConfirmedParcelResolution } from "../property-intelligence/assemble.js";
 
 export interface PipelineDependencies {
-  reportExplanationClient?: AiCompletionClient;
+  /** Product-correctness correction (2026-08-28): a self-contained operation, not a raw
+   * AiCompletionClient - the caller (report-generation-workflow.ts's runPipelineStep,
+   * generate-prototype-report.ts) owns constructing the real Anthropic client AND calling
+   * explainFindings entirely within its own execution (see
+   * report-explanation/anthropic-wiring.ts's generateReportExplanation), so this pipeline never
+   * sees, holds, or forwards an API key or client object - only a plain callback that returns the
+   * already-serializable ExplanationResult. Injectable in tests with a fake implementation, same
+   * as the AiCompletionClient it replaced. */
+  generateExplanation?: (findings: Finding[]) => Promise<ExplanationResult>;
 }
 
 /** Runs the full pipeline for one claimed (IN_PROGRESS) job. Never throws for an ordinary
@@ -83,12 +93,20 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // of this value) never reads identityProvenance; it exists purely to satisfy the type.
       identityProvenance: ParcelIdentityProvenance.ALGORITHMIC,
     };
+    // Building intelligence v1 - Seattle Building Outlines are only ever needed for a shed's own
+    // DWELLING_SEPARATION fact (a garage has no equivalent field or rule; vacant land has no
+    // placed structure to measure from at all) - scoped here rather than fetched unconditionally,
+    // so garage/vacant-land requests never pay for a network call they can't use.
     const retrievers: FactRetriever[] = [createKingCountyParcelGeometryRetriever()];
+    if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
+      retrievers.push(createSeattleBuildingOutlinesRetriever());
+    }
     const propertyContext = await withStageTiming("PROPERTY_INTELLIGENCE", job.id, () =>
       assemblePropertyContext(confirmedParcel, { retrievers })
     );
 
     const geometryFact = getFact<Polygon>(propertyContext, "parcel-geometry-available");
+    const buildingFootprintsFact = getFact<RawBuildingFootprint[]>(propertyContext, "building-footprints-available");
 
     // Unit 3, 2026-08-25: wires the existing recordIngestionResult contract into this already-
     // implemented authoritative retrieval path (property-intelligence/assemble.ts itself is NOT
@@ -105,6 +123,24 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       }
     } catch (err) {
       logger.warn("DATA_SOURCE_HEALTH_RECORDING_FAILED", { sourceId: "king-county-parcel-polygon", error: err instanceof Error ? err.message : String(err) });
+    }
+
+    // Same best-effort health recording as above, only when the retriever was actually included
+    // (shed only - see the conditional push above). A zero-footprint AVAILABLE result is a real
+    // success, not a failure - only SOURCE_ERROR counts as unhealthy.
+    if (buildingFootprintsFact) {
+      try {
+        if (buildingFootprintsFact.availabilityState === AvailabilityState.AVAILABLE) {
+          await recordIngestionResult(db, "seattle-building-outlines", { success: true });
+        } else {
+          await recordIngestionResult(db, "seattle-building-outlines", {
+            success: false,
+            reason: "Seattle Building Outlines retrieval failed during report generation.",
+          });
+        }
+      } catch (err) {
+        logger.warn("DATA_SOURCE_HEALTH_RECORDING_FAILED", { sourceId: "seattle-building-outlines", error: err instanceof Error ? err.message : String(err) });
+      }
     }
 
     // Unit 5 - a new, sibling top-level branch on workflowType BEFORE the existing shed/garage
@@ -130,6 +166,30 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // placement/lot-line-role-assignment status (unlike the setback distances below, which
     // specifically require a proposed footprint to measure against).
     let rawParcelAreaSqFt: number | undefined;
+    // Building intelligence v1 (shed only) - populated below, once footprintProjected exists, from
+    // the user's own primaryDwellingSelection re-validated against a fresh fetch. Left undefined
+    // for every other case (no footprints, no selection, selection no longer present) - the
+    // existing, unmodified DWELLING_SEPARATION evaluator already turns that into
+    // REQUIRES_VERIFICATION, never a blocked report.
+    let distanceToDwellingFt: number | undefined;
+    // Carried into `evidence` below regardless of whether a PRIMARY_DWELLING was established, so
+    // the report's own evidence can show what was fetched and what (if anything) the user
+    // confirmed - geometry provenance and classification basis stay structurally distinct per
+    // structure (existing-structures.ts).
+    let existingStructuresForEvidence: ExistingStructure[] | undefined;
+    // Regression fix (2026-08-30): the raw fact above is SRID 2926 (authoritative/projected) -
+    // useless to any browser map without a transform, and no transform was ever computed or
+    // persisted, so ReviewPlacementMap/ReportMap had no display geometry for existing structures
+    // at all (only the parcel boundary and proposed shed footprint got this treatment). Mirrors
+    // boundaryPolygonWgs84/footprintWgs84's own established pattern exactly - computed once here,
+    // via real PostGIS ST_Transform, and persisted as its own display evidence entry so the paid
+    // report never needs to re-fetch Building Outlines to render what was actually evaluated.
+    let existingStructuresWgs84Display: { outlineId: string; footprintWgs84: GeographicPoint[]; areaSqFt?: number; classification: string }[] | undefined;
+    // Set only in the one case actually worth explaining to the user: a dwelling WAS selected
+    // during configuration, but the fresh re-fetch at generation time no longer contains that
+    // outlineId (BR: never guess a replacement - see classifyExistingStructures). Left undefined
+    // for the ordinary "no selection was ever made" case, which needs no special explanation.
+    let dwellingSelectionNotMatchedExplanation: string | undefined;
 
     if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value) {
       rawParcelAreaSqFt = await computeParcelAreaSqFt(db, geometryFact.value);
@@ -200,6 +260,37 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         lotCoverageFacts = buildLotCoverageFacts(rawParcelAreaSqFt, garageDetails);
       }
     } else {
+      // Building intelligence v1 - only attempted once the shed's own footprint was actually
+      // established (footprintProjected), mirroring the same gating the setback distances above
+      // already use. classifyExistingStructures re-validates the user's stored selection against
+      // THIS fetch's own outlineIds - a selection that no longer matches anything returned resolves
+      // every footprint to UNKNOWN, never a guess.
+      if (buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected) {
+        const shedDetails = snapshot.projectDetails as ShedProjectConfiguration;
+        const structures = classifyExistingStructures(buildingFootprintsFact.value, buildingFootprintsFact.provenance, shedDetails.primaryDwellingSelection);
+        existingStructuresForEvidence = structures;
+        existingStructuresWgs84Display = await Promise.all(
+          structures.map(async (s) => ({
+            outlineId: s.outlineId,
+            footprintWgs84: await transformPolygonToWgs84(db, s.footprint),
+            areaSqFt: s.areaSqFt,
+            classification: s.classification,
+          }))
+        );
+        const primaryDwelling = findPrimaryDwelling(structures);
+        if (primaryDwelling) {
+          distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
+        } else if (shedDetails.primaryDwellingSelection?.status === "SELECTED") {
+          // The user selected a specific building during configuration, but it's not among the
+          // footprints this fresh, generation-time re-fetch returned (removed/redrawn upstream,
+          // or a genuinely stale selection) - never guessed at or silently re-mapped to a
+          // different footprint (classifyExistingStructures' own hard invariant).
+          dwellingSelectionNotMatchedExplanation =
+            "The building you previously selected as the primary dwelling could not be matched against the current Seattle Building Outlines data, " +
+            "so dwelling separation could not be evaluated for this report. Other applicable findings below are unaffected.";
+        }
+      }
+
       project = {
         projectType: "shed",
         widthFt: snapshot.projectDetails.widthFt,
@@ -209,6 +300,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         distanceToRearLotLineFt,
         distanceToSideLotLineFt,
         distanceToFrontLotLineFt,
+        distanceToDwellingFt,
         spatialEvidenceQuality,
       };
     }
@@ -229,9 +321,57 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       return;
     }
 
+    // Regression diagnostics (2026-08-30, expanded per founder follow-up) - the exact fields the
+    // founder asked to see for one job when "why did findings come back empty" can't be answered
+    // from the artifact alone (e.g. ACTIVE rule coverage vanishing from the DB, or a rule/zone
+    // combination the founder didn't expect, is invisible to the artifact itself, which only ever
+    // sees whatever candidateActiveRules it was handed). Counts, ids, subjects, and rule-type/zone
+    // labels only - no address, no PIN, no citation text, no evidence payloads, no findings'
+    // supportingEvidence/explanationBasis prose.
+    //
+    // rulesEligible equals rulesLoaded today because evaluateProject applies NO further zone-based
+    // filtering of its own (confirmed by reading evaluate.ts - only lifecycleState is re-checked
+    // there; a rule's applicableZone is descriptive metadata on the row, never compared against
+    // anything). Property Intelligence also does not currently retrieve any independent "parcel
+    // zone" fact for the shed/garage path at all - eligibleRuleZones below is the zone(s) the
+    // LOADED RULES themselves declare, not a zone Property Intelligence produced (there is none to
+    // compare it against) - logged honestly as what actually exists, not a fabricated match/mismatch
+    // check against a fact this pipeline never fetches.
+    if (snapshot.projectType === ProjectType.SHED) {
+      const shedProject = project as ShedProjectDetails;
+      const shedDetails = snapshot.projectDetails as ShedProjectConfiguration;
+      logger.info("SHED_REPORT_DIAGNOSTICS", {
+        reportGenerationJobId: job.id,
+        workflowType: snapshot.workflowType,
+        projectType: snapshot.projectType,
+        rulesLoaded: activeRuleRows.length,
+        rulesEligible: activeRuleRows.length,
+        eligibleRuleSubjects: activeRuleRows.map((r) => r.subject).join(" | "),
+        eligibleRuleTypes: activeRuleRows.map((r) => (r.ruleSpecification as Record<string, unknown> | null)?.["ruleType"]).join(","),
+        eligibleRuleZones: [...new Set(activeRuleRows.map((r) => r.applicableZone))].join(","),
+        widthFt: shedProject.widthFt,
+        depthFt: shedProject.depthFt,
+        heightFt: shedProject.heightFt,
+        alleyAdjacent: shedProject.alleyAdjacent,
+        distanceToRearLotLineFt: shedProject.distanceToRearLotLineFt,
+        distanceToFrontLotLineFt: shedProject.distanceToFrontLotLineFt,
+        distanceToSideLotLineFt: shedProject.distanceToSideLotLineFt,
+        distanceToDwellingFt: shedProject.distanceToDwellingFt,
+        findingsProduced: outcome.findings.length,
+        findingSubjectsAndClassifications: outcome.findings.map((f) => `${f.subject}:${f.classification}`).join(" | "),
+        buildingOutlinesReturned: buildingFootprintsFact?.value?.length ?? 0,
+        primaryDwellingSelectionPresent: shedDetails.primaryDwellingSelection?.status === "SELECTED",
+        // "selected outline ID matched fresh source data" - i.e. the outlineId the user picked
+        // during configuration was actually present in THIS generation's fresh re-fetch.
+        primaryDwellingSelectionMatchedFreshData: Boolean(existingStructuresForEvidence && findPrimaryDwelling(existingStructuresForEvidence)),
+        primaryDwellingEstablished: Boolean(existingStructuresForEvidence && findPrimaryDwelling(existingStructuresForEvidence)),
+        distanceToDwellingFtComputed: distanceToDwellingFt !== undefined,
+      });
+    }
+
     // Report Explanation (AI, optional) - never fails the job on unavailability (BR-U2-8).
-    const explanationResult = deps.reportExplanationClient
-      ? await withStageTiming("REPORT_EXPLANATION", job.id, () => explainFindings(outcome.findings, deps.reportExplanationClient!))
+    const explanationResult = deps.generateExplanation
+      ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
       : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
 
     // Evidence & Report Artifact - immutable, generates the first access credential. `value` is
@@ -243,6 +383,19 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
       ...(boundaryPolygonWgs84 ? [{ factType: "parcel-boundary-wgs84-display", value: boundaryPolygonWgs84, provenance: {} }] : []),
       ...(footprintWgs84 ? [{ factType: "proposed-footprint-wgs84-display", value: footprintWgs84, provenance: {} }] : []),
+      // Building intelligence v1 - the classified existing-structure list (geometry provenance and
+      // classification basis stay distinct per structure, never conflated - see
+      // property-intelligence/existing-structures.ts). Omitted entirely when the retriever wasn't
+      // even attempted (garage/vacant-land) or footprintProjected was never established.
+      ...(existingStructuresForEvidence ? [{ factType: "existing-structures-classified", value: existingStructuresForEvidence, provenance: {} }] : []),
+      // Regression fix (2026-08-30) - the display-ready WGS84 counterpart, see the declaration
+      // comment above. This is what ReviewPlacementMap/ReportMap actually render; the codebase's
+      // "no independent re-fetch/reconstruction of evaluated geometry" invariant depends on this
+      // entry existing.
+      ...(existingStructuresWgs84Display ? [{ factType: "existing-structures-wgs84-display", value: existingStructuresWgs84Display, provenance: {} }] : []),
+      ...(dwellingSelectionNotMatchedExplanation
+        ? [{ factType: "dwelling-selection-outcome", value: { outcome: "SELECTION_NOT_MATCHED", explanation: dwellingSelectionNotMatchedExplanation }, provenance: {} }]
+        : []),
       // Unit 4 (BR-U4-5) - persisted at generation time, part of this immutable snapshot, never
       // recomputed at report-view time (ACTIVE rule state could change later). Empty for shed
       // today. Report rendering must consume this to show NoActiveRuleCoverageNotice per
@@ -384,10 +537,8 @@ async function runVacantLandPipeline(
     )
   );
 
-  const explanationResult = deps.reportExplanationClient
-    ? await withStageTiming("REPORT_EXPLANATION", job.id, () =>
-        explainFindings([...outcome.buildabilityFindings, ...outcome.diligenceRisks], deps.reportExplanationClient!)
-      )
+  const explanationResult = deps.generateExplanation
+    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!([...outcome.buildabilityFindings, ...outcome.diligenceRisks]))
     : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
 
   const evidence = [

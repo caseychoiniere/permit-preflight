@@ -88,7 +88,7 @@ async function transformAnchorToProjectedCrs(db: Db, anchor: GeographicPoint, ta
       ST_X(t) AS x,
       ST_Y(t) AS y
     FROM (
-      SELECT ST_Transform(ST_SetSRID(ST_MakePoint(${anchor.lng}, ${anchor.lat}), ${WGS84_SRID}), ${targetSrid}) AS t
+      SELECT ST_Transform(ST_SetSRID(ST_MakePoint(${anchor.lng}, ${anchor.lat}), ${WGS84_SRID}::int), ${targetSrid}::int) AS t
     ) transformed
   `);
   const row = result.rows[0] as { x: number | string; y: number | string } | undefined;
@@ -122,8 +122,8 @@ function buildFootprintInProjectedCrs(anchorProjected: { x: number; y: number },
 async function distanceToEdge(db: Db, footprintWkt: string, edgeWkt: string, srid: number): Promise<number> {
   const result = await db.execute(sql`
     SELECT ST_Distance(
-      ST_SetSRID(ST_GeomFromText(${footprintWkt}), ${srid}),
-      ST_SetSRID(ST_GeomFromText(${edgeWkt}), ${srid})
+      ST_SetSRID(ST_GeomFromText(${footprintWkt}), ${srid}::int),
+      ST_SetSRID(ST_GeomFromText(${edgeWkt}), ${srid}::int)
     ) AS distance_ft
   `);
   const row = result.rows[0] as { distance_ft: number | string } | undefined;
@@ -195,6 +195,20 @@ export async function computeSetbackDistances(
 }
 
 /**
+ * Building intelligence v1 - minimum polygon-to-polygon distance between the proposed shed
+ * footprint and a user-confirmed primary-dwelling footprint, via PostGIS's own ST_Distance (the
+ * same distanceToEdge helper computeSetbackDistances already uses for lot-line setbacks, applied
+ * here to two full polygons instead of a polygon and an edge line) - NEVER centroid distance,
+ * NEVER browser-calculated, NEVER user-entered. Both polygons must already be tagged
+ * srid=AUTHORITATIVE_PARCEL_SRID (fails closed otherwise, same as every other entry point here).
+ */
+export async function computeDistanceToDwelling(db: Db, shedFootprint: Polygon, dwellingFootprint: Polygon): Promise<number> {
+  assertAuthoritativeSrid(shedFootprint);
+  assertAuthoritativeSrid(dwellingFootprint);
+  return distanceToEdge(db, polygonToWkt(shedFootprint), polygonToWkt(dwellingFootprint), AUTHORITATIVE_PARCEL_SRID);
+}
+
+/**
  * Transforms a parcel boundary from its authoritative projected CRS into WGS84, for browser/
  * MapLibre display only - never used for computation. The only other place this codebase ever
  * touches WGS84/projected conversion (alongside `computeSetbackDistances`'s anchor transform),
@@ -204,7 +218,7 @@ export async function transformPolygonToWgs84(db: Db, polygon: Polygon): Promise
   assertAuthoritativeSrid(polygon);
   const wkt = polygonToWkt(polygon);
   const result = await db.execute(sql`
-    SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromText(${wkt}), ${polygon.srid}), ${WGS84_SRID})) AS geojson
+    SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromText(${wkt}), ${polygon.srid}::int), ${WGS84_SRID}::int)) AS geojson
   `);
   const row = result.rows[0] as { geojson: string } | undefined;
   if (!row) throw new Error("ST_Transform to WGS84 returned no rows.");
@@ -228,7 +242,7 @@ export async function computeParcelAreaSqFt(db: Db, boundaryPolygon: Polygon): P
   assertAuthoritativeSrid(boundaryPolygon);
   const wkt = polygonToWkt(boundaryPolygon);
   const result = await db.execute(sql`
-    SELECT ST_Area(ST_SetSRID(ST_GeomFromText(${wkt}), ${boundaryPolygon.srid})) AS area_sq_ft
+    SELECT ST_Area(ST_SetSRID(ST_GeomFromText(${wkt}), ${boundaryPolygon.srid}::int)) AS area_sq_ft
   `);
   const row = result.rows[0] as { area_sq_ft: number | string } | undefined;
   if (!row) throw new Error("ST_Area of the parcel boundary returned no rows.");
@@ -314,7 +328,7 @@ function assertAuthoritativeGeometrySrid(geom: Geometry, label: string): void {
 async function checkIsValidWkt(db: Db, wkt: string, srid: number, label: string): Promise<boolean> {
   let row: { is_valid: boolean } | undefined;
   try {
-    const result = await db.execute(sql`SELECT ST_IsValid(ST_SetSRID(ST_GeomFromText(${wkt}), ${srid})) AS is_valid`);
+    const result = await db.execute(sql`SELECT ST_IsValid(ST_SetSRID(ST_GeomFromText(${wkt}), ${srid}::int)) AS is_valid`);
     row = result.rows[0] as typeof row;
   } catch (err) {
     throw new SpatialComputationError(`PostGIS ST_IsValid check failed for ${label}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
@@ -402,9 +416,9 @@ export async function computeSetbackConstrainedArea(
   // Real, role-aware differential subtraction: each edge's own required setback buffers ONLY that
   // edge's LINESTRING, subtracted from the running geometry in sequence - never a single uniform
   // inward offset applied to every edge alike.
-  let geomExpr: SQL = sql`ST_SetSRID(ST_GeomFromText(${wkt}), ${srid})`;
+  let geomExpr: SQL = sql`ST_SetSRID(ST_GeomFromText(${wkt}), ${srid}::int)`;
   for (const { edgeWkt, setbackFt } of edgeSetbacks) {
-    geomExpr = sql`ST_Difference(${geomExpr}, ST_Buffer(ST_SetSRID(ST_GeomFromText(${edgeWkt}), ${srid}), ${setbackFt}, 'endcap=flat join=round'))`;
+    geomExpr = sql`ST_Difference(${geomExpr}, ST_Buffer(ST_SetSRID(ST_GeomFromText(${edgeWkt}), ${srid}::int), ${setbackFt}, 'endcap=flat join=round'))`;
   }
 
   let row: { geojson: string | null; area_sq_ft: number | string } | undefined;
@@ -467,8 +481,8 @@ export async function computeEcaExclusionGeometry(db: Db, boundaryPolygon: Polyg
         ST_Area(intersected.geom) AS area_sq_ft
       FROM (
         SELECT ST_Intersection(
-          ST_SetSRID(ST_GeomFromText(${boundaryWkt}), ${srid}),
-          ST_SetSRID(ST_GeomFromText(${ecaWkt}), ${srid})
+          ST_SetSRID(ST_GeomFromText(${boundaryWkt}), ${srid}::int),
+          ST_SetSRID(ST_GeomFromText(${ecaWkt}), ${srid}::int)
         ) AS geom
       ) intersected
     `);
@@ -511,7 +525,7 @@ export async function computeBuildableEnvelope(db: Db, setbackConstrainedGeometr
     const wkt = geometryToWkt(setbackConstrainedGeometry);
     let row: { area_sq_ft: number | string } | undefined;
     try {
-      const result = await db.execute(sql`SELECT ST_Area(ST_SetSRID(ST_GeomFromText(${wkt}), ${srid})) AS area_sq_ft`);
+      const result = await db.execute(sql`SELECT ST_Area(ST_SetSRID(ST_GeomFromText(${wkt}), ${srid}::int)) AS area_sq_ft`);
       row = result.rows[0] as typeof row;
     } catch (err) {
       throw new SpatialComputationError(`PostGIS buildable-envelope area computation failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
@@ -530,8 +544,8 @@ export async function computeBuildableEnvelope(db: Db, setbackConstrainedGeometr
         ST_Area(diffed.geom) AS area_sq_ft
       FROM (
         SELECT ST_Difference(
-          ST_SetSRID(ST_GeomFromText(${setbackWkt}), ${srid}),
-          ST_SetSRID(ST_GeomFromText(${ecaWkt}), ${srid})
+          ST_SetSRID(ST_GeomFromText(${setbackWkt}), ${srid}::int),
+          ST_SetSRID(ST_GeomFromText(${ecaWkt}), ${srid}::int)
         ) AS geom
       ) diffed
     `);

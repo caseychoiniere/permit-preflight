@@ -53,6 +53,39 @@ describe("researchCandidateRule (RRAG-1)", () => {
     ).rejects.toThrow(/schema validation/i);
   });
 
+  it(
+    "[hard invariant, real-bug regression 2026-08-30] a bare string in place of a test case's " +
+      "required {complianceOutcome} object is REJECTED, never coerced/guessed into an object - " +
+      "the real Anthropic model has produced exactly this shape (e.g. expected: \"PASS\"); the fix " +
+      "for it lives in the prompt (buildResearchPrompt's explicit shape example), not in loosening " +
+      "this schema, per researchCandidateRule's own 'never coerced or repaired' contract",
+    async () => {
+      const badExpected = {
+        ...validPackage,
+        proposedTestCases: [{ kind: "POSITIVE", description: "6ft from rear line - passes", input: { distanceToRearLotLineFt: 6 }, expected: "PASS" }],
+      };
+      await expect(
+        researchCandidateRule(
+          { targetRuleNeed: "shed rear setback", applicableProjectType: "shed", applicableZone: "NR", evidenceBundle },
+          fakeClient(badExpected)
+        )
+      ).rejects.toThrow(/schema validation/i);
+    }
+  );
+
+  it("[hard invariant, real-bug regression 2026-08-30] a caveat missing resolutionStatus entirely is REJECTED, never defaulted to a fabricated status - the real Anthropic model has omitted this required field for one caveat in a multi-caveat response", async () => {
+    const missingResolutionStatus = {
+      ...validPackage,
+      caveats: [{ category: "ambiguity", description: "text", affectedConditionOrInterpretation: "text", sourceReferences: ["SMC 23.44.090"] /* resolutionStatus omitted */ }],
+    };
+    await expect(
+      researchCandidateRule(
+        { targetRuleNeed: "shed rear setback", applicableProjectType: "shed", applicableZone: "NR", evidenceBundle },
+        fakeClient(missingResolutionStatus)
+      )
+    ).rejects.toThrow(/schema validation/i);
+  });
+
   it("rejects a response missing required fields entirely (e.g. a free-text answer instead of structured JSON)", async () => {
     await expect(
       researchCandidateRule(
@@ -92,6 +125,35 @@ describe("researchCandidateRule (RRAG-1)", () => {
     expect(result).not.toHaveProperty("lifecycleState");
     expect(result).not.toHaveProperty("id");
     expect(result.suggestedTier).toBe("TIER_2");
+  });
+
+  it("[hard invariant, real-bug regression 2026-08-30] an explicit JSON null on an optional citation/caveat field is normalized to undefined, not rejected - the real Anthropic model emits null rather than omitting an unknown optional field", async () => {
+    const withNulls = {
+      ...validPackage,
+      citation: { smcSections: ["SMC 23.44.090 Table A"], ordinanceNumber: null, effectiveDate: null, effectiveDateBasis: null },
+      caveats: [{ category: "ambiguity", description: "text", affectedConditionOrInterpretation: "text", sourceReferences: ["SMC 23.44.090"], reviewerNotes: null, resolutionStatus: "OPEN" }],
+    };
+    const result = await researchCandidateRule(
+      { targetRuleNeed: "shed rear setback", applicableProjectType: "shed", applicableZone: "NR", evidenceBundle },
+      fakeClient(withNulls)
+    );
+    expect(result.citation.ordinanceNumber).toBeUndefined();
+    expect(result.citation.effectiveDate).toBeUndefined();
+    expect(result.citation.effectiveDateBasis).toBeUndefined();
+    expect(result.caveats[0]!.reviewerNotes).toBeUndefined();
+    // Never a literal null leaking into the domain shape - RuleCitation/AmbiguityCaveat declare
+    // these as `string | undefined`, never `string | null`.
+    expect(result.citation).not.toHaveProperty("ordinanceNumber", null);
+    expect(Object.values(result.citation)).not.toContain(null);
+  });
+
+  it("still accepts a cleanly-omitted optional field (the key missing entirely, not null) - both real shapes work", async () => {
+    const omitted = { ...validPackage, citation: { smcSections: ["SMC 23.44.090 Table A"] } };
+    const result = await researchCandidateRule(
+      { targetRuleNeed: "shed rear setback", applicableProjectType: "shed", applicableZone: "NR", evidenceBundle },
+      fakeClient(omitted)
+    );
+    expect(result.citation.ordinanceNumber).toBeUndefined();
   });
 
   it("[hard invariant] AI cannot activate or self-determine final tier: this module has no import statement pulling in regulatory-rule-governance/lifecycle.ts", () => {

@@ -21,17 +21,66 @@
  */
 
 import { useEffect, useState } from "react";
-import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection } from "../components/ParcelPlacementMap.js";
+import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection, type ExistingStructureDisplay, type DwellingSelection } from "../components/ParcelPlacementMap.js";
+import { checkPlacementCompleteness } from "../components/parcel-placement-helpers.js";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
 import { DistanceInputMode, LotLineRoleStatus, ProjectType } from "../../src/screening-request/types.js";
 import { ParcelResolutionStatus, type CandidateParcel, type ClarificationReason } from "../../src/parcel-resolution/types.js";
 import { confirmCandidate } from "../../src/parcel-resolution/resolve.js";
+import { Card } from "../components/ui/Card.js";
+import { Button } from "../components/ui/Button.js";
+import { SampleReportPreview } from "../components/SampleReportPreview.js";
+import { ReviewPlacementMap } from "../components/ReviewPlacementMap.js";
 
 type Step = "ADDRESS" | "TYPE" | "DETAILS" | "PLACEMENT" | "SUMMARY";
 type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | null;
 /** undefined = not answered (never coerced to a concrete value); tri-state matches
  * frontend-components.md's explicit 3-choice contract for both garage-only fields. */
 type TriState = boolean | undefined;
+
+const STEPS: { key: Step; label: string }[] = [
+  { key: "ADDRESS", label: "Address" },
+  { key: "TYPE", label: "Project type" },
+  { key: "DETAILS", label: "Details" },
+  { key: "PLACEMENT", label: "Placement" },
+  { key: "SUMMARY", label: "Review" },
+];
+
+/** Purely visual step tracker - reads `step` only, never drives navigation or validation. */
+function StepTracker({ step }: { step: Step }) {
+  const currentIndex = STEPS.findIndex((s) => s.key === step);
+  return (
+    <ol className="mb-8 flex items-center gap-2 text-xs font-medium text-slate-400 sm:text-sm">
+      {STEPS.map((s, i) => (
+        <li key={s.key} className="flex items-center gap-2">
+          <span
+            className={
+              i < currentIndex
+                ? "flex items-center gap-1.5 text-emerald-600"
+                : i === currentIndex
+                  ? "flex items-center gap-1.5 text-indigo-600"
+                  : "flex items-center gap-1.5 text-slate-400"
+            }
+          >
+            <span
+              className={
+                i < currentIndex
+                  ? "flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px]"
+                  : i === currentIndex
+                    ? "flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] text-white"
+                    : "flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[10px]"
+              }
+            >
+              {i + 1}
+            </span>
+            <span className="hidden sm:inline">{s.label}</span>
+          </span>
+          {i < STEPS.length - 1 && <span className="h-px w-4 bg-slate-200 sm:w-8" aria-hidden="true" />}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export default function ConfigurePage() {
   const [step, setStep] = useState<Step>("ADDRESS");
@@ -46,6 +95,10 @@ export default function ConfigurePage() {
   const [boundaryPolygon, setBoundaryPolygon] = useState<Polygon | null>(null);
   const [boundaryPolygonWgs84, setBoundaryPolygonWgs84] = useState<GeographicPoint[] | null>(null);
   const [qualityCaveat, setQualityCaveat] = useState<string | null>(null);
+  // Building intelligence v1 - fetched alongside the parcel boundary (same request); best-effort,
+  // never blocks the flow if it comes back empty or the server-side fetch failed.
+  const [existingStructures, setExistingStructures] = useState<ExistingStructureDisplay[]>([]);
+  const [dwellingSelection, setDwellingSelection] = useState<DwellingSelection | null>(null);
 
   // Unit 4 (BR-U4-9, corrected) - which project types the TYPE step may publicly offer. Fetched
   // from the server rather than assumed; defaults to shed-only until the fetch resolves, matching
@@ -81,6 +134,21 @@ export default function ConfigurePage() {
   const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [authorizedMessage, setAuthorizedMessage] = useState<string | null>(null);
 
+  /** Placement-step UX pass (2026-08-30) - a real customer previously purchased a report without
+   * ever confirming the dwelling, because "Next: review" was gated on `placement` alone. This is
+   * the single source of truth both the Next button's disabled state and the "Before continuing:"
+   * checklist read from, so they can never disagree. `lotLineSelection !== null` already means the
+   * front/rear picking process reached a definite outcome (ASSIGNED or the equally-legitimate
+   * INSUFFICIENT - see checkPlacementCompleteness's own doc comment for why INSUFFICIENT must
+   * still count as "decided," not "blocked"). Shed-only for the dwelling requirement, matching
+   * DWELLING_SEPARATION's own shed-only scope - existingStructures is always [] for garage. */
+  const placementCompleteness = checkPlacementCompleteness({
+    lotLineDecided: lotLineSelection !== null,
+    hasPlacement: placement !== null,
+    hasBuildingsToAskAbout: projectType === ProjectType.SHED && existingStructures.length > 0,
+    dwellingAnswered: dwellingSelection !== null,
+  });
+
   /** Shared by both the algorithmically-CONFIRMED path and the user-confirmation path below -
    * neither is a "more trusted" way to reach the TYPE step; both produce a real, identified
    * parcel, honestly labeled at the resolution layer (identityProvenance). */
@@ -95,6 +163,7 @@ export default function ConfigurePage() {
     setBoundaryPolygon(boundaryResult.boundaryPolygon);
     setBoundaryPolygonWgs84(boundaryResult.boundaryPolygonWgs84);
     setQualityCaveat(boundaryResult.qualityCaveat);
+    setExistingStructures(Array.isArray(boundaryResult.existingStructures) ? boundaryResult.existingStructures : []);
     setStep("TYPE");
   }
 
@@ -160,6 +229,11 @@ export default function ConfigurePage() {
         proposedPlacement: placement,
         lotLineRoleAssignment: { ...lotLineSelection, method: "USER_INDICATED" },
         distanceInputMode: DistanceInputMode.MAP_PLACEMENT,
+        // Building intelligence v1 - shed-only (mirrors distanceToDwellingFt's own shed-only
+        // scope). Omitted entirely when the user was never shown a dwelling-confirmation prompt at
+        // all (existingStructures was empty) - never fabricated as UNKNOWN in that case; the
+        // pipeline's own fresh fetch already resolves "nothing to select" the same way either way.
+        ...(projectType === ProjectType.SHED && dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
       }),
     });
     const result = await res.json();
@@ -192,82 +266,159 @@ export default function ConfigurePage() {
     }
   }
 
+  /** Purely a navigation change - every step's own state (address, dimensions, placement, ...) is
+   * already held in this component's state and is never cleared on a step change, so moving back
+   * and then forward again shows exactly what the user already entered. Never re-submits anything
+   * to the server by itself. */
+  function goToPreviousStep() {
+    const currentIndex = STEPS.findIndex((s) => s.key === step);
+    if (currentIndex > 0) setStep(STEPS[currentIndex - 1]!.key);
+  }
+
   return (
-    <main style={{ maxWidth: 640, margin: "0 auto", padding: 24 }}>
-      <h1>Permit Preflight - Screening (Prototype)</h1>
+    // Layout pass (2026-08-30) - the Placement step specifically needs more horizontal room than
+    // Container's shared max-w-3xl (768px) allows, for its two-column map+controls layout
+    // (ParcelPlacementMap.tsx targets ~1000px internally). Widening Container itself would widen
+    // EVERY step/page that uses it - out of scope ("prefer widening this Placement-step layout
+    // specifically") - so this inlines Container's own classes with a step-conditional max-width
+    // instead, touching nothing else.
+    <div className={`mx-auto w-full px-4 py-8 sm:px-6 lg:px-8 ${step === "PLACEMENT" ? "max-w-[1000px]" : "max-w-3xl"}`}>
+      <StepTracker step={step} />
 
       {step === "ADDRESS" && (
-        <section>
-          <label>
+        <Card>
+          <h1 className="text-lg font-semibold text-slate-900">Where is the project?</h1>
+          <p className="mt-1 text-sm text-slate-500">Enter the property address to look up its parcel.</p>
+          <label className="mt-4 block text-sm font-medium text-slate-700">
             Property address
-            <input value={address} onChange={(e) => setAddress(e.target.value)} aria-label="Property address" />
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              aria-label="Property address"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           </label>
-          <button type="button" onClick={submitAddress}>Find parcel</button>
-          {addressError && <p role="alert">{addressError}</p>}
+          <Button variant="primary" className="mt-4" onClick={submitAddress}>
+            Find parcel
+          </Button>
+          {addressError && (
+            <p role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {addressError}
+            </p>
+          )}
 
           {pendingClarification && (
-            <div role="alert" style={{ marginTop: 16, padding: 12, border: "1px solid #ddd" }}>
+            <div role="alert" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
               {pendingClarification.candidates.length === 1 ? (
                 <>
-                  <p>
+                  <p className="text-sm text-amber-900">
                     We found this parcel but couldn&apos;t independently verify it ({pendingClarification.reason.toLowerCase().replace(/_/g, " ")}).
                   </p>
-                  <p>
-                    <strong>{pendingClarification.candidates[0]!.canonicalAddress ?? `Parcel ${pendingClarification.candidates[0]!.parcelId}`}</strong>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {pendingClarification.candidates[0]!.canonicalAddress ?? `Parcel ${pendingClarification.candidates[0]!.parcelId}`}
                   </p>
-                  <p>Is this the property you want to evaluate?</p>
-                  <button type="button" onClick={() => confirmParcelCandidate(pendingClarification.candidates[0]!)}>
-                    Yes, this is the property
-                  </button>{" "}
-                  <button type="button" onClick={() => setPendingClarification(null)}>
-                    No, let me revise the address
-                  </button>
+                  <p className="mt-2 text-sm text-amber-900">Is this the property you want to evaluate?</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="primary" onClick={() => confirmParcelCandidate(pendingClarification.candidates[0]!)}>
+                      Yes, this is the property
+                    </Button>
+                    <Button variant="secondary" onClick={() => setPendingClarification(null)}>
+                      No, let me revise the address
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <>
-                  <p>We found more than one possible match. Which one is the property you want to evaluate?</p>
-                  {pendingClarification.candidates.map((c) => (
-                    <div key={c.parcelId} style={{ marginBottom: 8 }}>
-                      <button type="button" onClick={() => confirmParcelCandidate(c)}>
+                  <p className="text-sm text-amber-900">We found more than one possible match. Which one is the property you want to evaluate?</p>
+                  <div className="mt-3 flex flex-col items-start gap-2">
+                    {pendingClarification.candidates.map((c) => (
+                      <Button key={c.parcelId} variant="secondary" onClick={() => confirmParcelCandidate(c)}>
                         {c.canonicalAddress ?? `Parcel ${c.parcelId}`}
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setPendingClarification(null)}>
+                      </Button>
+                    ))}
+                  </div>
+                  <Button variant="ghost" className="mt-2" onClick={() => setPendingClarification(null)}>
                     None of these - let me revise the address
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
           )}
-        </section>
+        </Card>
       )}
 
       {step === "TYPE" && (
-        <section>
-          <p>Parcel confirmed: {parcelId}</p>
-          {availableProjectTypes.includes(ProjectType.SHED) && (
-            <button type="button" onClick={() => selectProjectType(ProjectType.SHED)}>Screen a shed / accessory structure</button>
-          )}
-          {availableProjectTypes.includes(ProjectType.GARAGE) && (
-            <button type="button" onClick={() => selectProjectType(ProjectType.GARAGE)}>Screen a detached garage</button>
-          )}
-        </section>
+        <Card>
+          <p className="text-sm text-slate-500">
+            Parcel confirmed: <span className="font-medium text-slate-900">{parcelId}</span>
+          </p>
+          <h1 className="mt-2 text-lg font-semibold text-slate-900">What are you planning to build?</h1>
+          <div className="mt-4 flex flex-col items-start gap-2">
+            {availableProjectTypes.includes(ProjectType.SHED) && (
+              <Button variant="primary" onClick={() => selectProjectType(ProjectType.SHED)}>
+                Screen a shed / accessory structure
+              </Button>
+            )}
+            {availableProjectTypes.includes(ProjectType.GARAGE) && (
+              <Button variant="primary" onClick={() => selectProjectType(ProjectType.GARAGE)}>
+                Screen a detached garage
+              </Button>
+            )}
+          </div>
+          <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
+            &larr; Previous
+          </Button>
+        </Card>
       )}
 
       {step === "DETAILS" && (
-        <section>
-          <h2>{projectType === ProjectType.GARAGE ? "Detached garage details" : "Shed details"}</h2>
-          <label>Width (ft) <input type="number" value={dimensions.widthFt} onChange={(e) => setDimensions((d) => ({ ...d, widthFt: Number(e.target.value) }))} /></label>
-          <label>Depth (ft) <input type="number" value={dimensions.depthFt} onChange={(e) => setDimensions((d) => ({ ...d, depthFt: Number(e.target.value) }))} /></label>
-          <label>Height (ft) <input type="number" value={dimensions.heightFt} onChange={(e) => setDimensions((d) => ({ ...d, heightFt: Number(e.target.value) }))} /></label>
-          <label><input type="checkbox" checked={dimensions.alleyAdjacent} onChange={(e) => setDimensions((d) => ({ ...d, alleyAdjacent: e.target.checked }))} /> Rear lot line is alley-adjacent</label>
+        <Card>
+          <h1 className="text-lg font-semibold text-slate-900">{projectType === ProjectType.GARAGE ? "Detached garage details" : "Shed details"}</h1>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <label className="block text-sm font-medium text-slate-700">
+              Width (ft)
+              <input
+                type="number"
+                value={dimensions.widthFt}
+                onChange={(e) => setDimensions((d) => ({ ...d, widthFt: Number(e.target.value) }))}
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Depth (ft)
+              <input
+                type="number"
+                value={dimensions.depthFt}
+                onChange={(e) => setDimensions((d) => ({ ...d, depthFt: Number(e.target.value) }))}
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Height (ft)
+              <input
+                type="number"
+                value={dimensions.heightFt}
+                onChange={(e) => setDimensions((d) => ({ ...d, heightFt: Number(e.target.value) }))}
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </label>
+          </div>
+          <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={dimensions.alleyAdjacent}
+              onChange={(e) => setDimensions((d) => ({ ...d, alleyAdjacent: e.target.checked }))}
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Rear lot line is alley-adjacent
+          </label>
 
           {projectType === ProjectType.GARAGE && (
             <>
-              <fieldset>
-                <legend>Existing structures on this parcel</legend>
-                <p>
+              <fieldset className="mt-6 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">Existing structures on this parcel</legend>
+                <p className="text-sm text-slate-500">
                   Enter the combined square footage of existing structures on this parcel that would count
                   toward SMC lot-coverage - garages, sheds, other accessory buildings, and the principal
                   dwelling - excluding underground portions, minor eave/roof overhangs, low decks, and small
@@ -275,80 +426,222 @@ export default function ConfigurePage() {
                   resulting lot-coverage finding will always be marked &quot;requires verification,&quot;
                   regardless of what you enter (business-rules.md BR-U4-3).
                 </p>
-                <label>
-                  <input type="radio" name="existingStructuresChoice" checked={existingStructuresChoice === "ENTER"} onChange={() => setExistingStructuresChoice("ENTER")} />
-                  Enter square footage
-                </label>
-                {existingStructuresChoice === "ENTER" && (
-                  <input
-                    type="number"
-                    min={0}
-                    value={existingStructuresValue}
-                    onChange={(e) => setExistingStructuresValue(Number(e.target.value))}
-                    aria-label="Existing structures countable square footage"
-                  />
-                )}
-                <label>
-                  <input type="radio" name="existingStructuresChoice" checked={existingStructuresChoice === "ZERO"} onChange={() => setExistingStructuresChoice("ZERO")} />
-                  There are no existing structures on this parcel
-                </label>
-                <label>
-                  <input type="radio" name="existingStructuresChoice" checked={existingStructuresChoice === "UNANSWERED"} onChange={() => setExistingStructuresChoice("UNANSWERED")} />
-                  I don&apos;t know / skip this
-                </label>
+                <div className="mt-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="existingStructuresChoice"
+                      checked={existingStructuresChoice === "ENTER"}
+                      onChange={() => setExistingStructuresChoice("ENTER")}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Enter square footage
+                  </label>
+                  {existingStructuresChoice === "ENTER" && (
+                    <input
+                      type="number"
+                      min={0}
+                      value={existingStructuresValue}
+                      onChange={(e) => setExistingStructuresValue(Number(e.target.value))}
+                      aria-label="Existing structures countable square footage"
+                      className="ml-6 block w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  )}
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="existingStructuresChoice"
+                      checked={existingStructuresChoice === "ZERO"}
+                      onChange={() => setExistingStructuresChoice("ZERO")}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    There are no existing structures on this parcel
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="existingStructuresChoice"
+                      checked={existingStructuresChoice === "UNANSWERED"}
+                      onChange={() => setExistingStructuresChoice("UNANSWERED")}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    I don&apos;t know / skip this
+                  </label>
+                </div>
               </fieldset>
 
-              <fieldset>
-                <legend>Stacked dwelling units</legend>
-                <p>Does this lot currently have stacked dwelling units (e.g. an apartment/condo-style building with units stacked vertically - not a single-family home, duplex, or attached townhomes)?</p>
-                <label><input type="radio" name="stackedDwellingUnits" checked={stackedDwellingUnits === true} onChange={() => setStackedDwellingUnits(true)} /> Yes</label>
-                <label><input type="radio" name="stackedDwellingUnits" checked={stackedDwellingUnits === false} onChange={() => setStackedDwellingUnits(false)} /> No</label>
-                <label><input type="radio" name="stackedDwellingUnits" checked={stackedDwellingUnits === undefined} onChange={() => setStackedDwellingUnits(undefined)} /> I don&apos;t know</label>
+              <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">Stacked dwelling units</legend>
+                <p className="text-sm text-slate-500">
+                  Does this lot currently have stacked dwelling units (e.g. an apartment/condo-style building with units stacked vertically - not a single-family home, duplex, or attached townhomes)?
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="stackedDwellingUnits"
+                      checked={stackedDwellingUnits === true}
+                      onChange={() => setStackedDwellingUnits(true)}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Yes
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="stackedDwellingUnits"
+                      checked={stackedDwellingUnits === false}
+                      onChange={() => setStackedDwellingUnits(false)}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    No
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="stackedDwellingUnits"
+                      checked={stackedDwellingUnits === undefined}
+                      onChange={() => setStackedDwellingUnits(undefined)}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    I don&apos;t know
+                  </label>
+                </div>
               </fieldset>
             </>
           )}
 
-          <button type="button" onClick={() => setStep("PLACEMENT")}>Next: place on parcel</button>
-        </section>
+          <div className="mt-6 flex gap-2">
+            <Button variant="secondary" onClick={goToPreviousStep}>
+              &larr; Previous
+            </Button>
+            <Button variant="primary" onClick={() => setStep("PLACEMENT")}>
+              Next: place on parcel
+            </Button>
+          </div>
+        </Card>
       )}
 
       {step === "PLACEMENT" && boundaryPolygon && boundaryPolygonWgs84 && (
-        <section>
-          <h2>Approximate placement</h2>
-          {qualityCaveat && <p><em>{qualityCaveat}</em></p>}
-          <ParcelPlacementMap
-            boundaryPolygon={boundaryPolygon}
-            boundaryPolygonWgs84={boundaryPolygonWgs84}
-            onPlacementChange={setPlacement}
-            onLotLineRolesChange={setLotLineSelection}
-          />
+        <Card>
+          <h1 className="text-lg font-semibold text-slate-900">Approximate placement</h1>
+          {qualityCaveat && <p className="mt-1 text-sm italic text-slate-500">{qualityCaveat}</p>}
+          <div className="mt-4">
+            <ParcelPlacementMap
+              boundaryPolygon={boundaryPolygon}
+              boundaryPolygonWgs84={boundaryPolygonWgs84}
+              widthFt={dimensions.widthFt}
+              depthFt={dimensions.depthFt}
+              onPlacementChange={setPlacement}
+              onLotLineRolesChange={setLotLineSelection}
+              initialPlacement={placement ?? undefined}
+              initialLotLineSelection={lotLineSelection ?? undefined}
+              existingStructures={projectType === ProjectType.SHED ? existingStructures : []}
+              onDwellingSelectionChange={setDwellingSelection}
+              initialDwellingSelection={dwellingSelection ?? undefined}
+            />
+          </div>
           {lotLineSelection?.status === LotLineRoleStatus.INSUFFICIENT && (
-            <p role="alert">Lot-line roles could not be determined for this parcel shape - setback findings depending on them will show as REQUIRES VERIFICATION rather than a guess.</p>
+            <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Lot-line roles could not be determined for this parcel shape - setback findings depending on them will show as REQUIRES VERIFICATION rather than a guess.
+            </p>
           )}
-          {serverErrors.length > 0 && <ul role="alert">{serverErrors.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
-          <button type="button" onClick={submitPlacement} disabled={!placement}>Next: review</button>
-        </section>
+          {serverErrors.length > 0 && (
+            <ul role="alert" className="mt-4 list-inside list-disc rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {serverErrors.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          )}
+          {/* Placement-step UX pass (2026-08-30, regression item 10) - makes incomplete
+           * requirements VISIBLE rather than silently disabling Next with no explanation; only
+           * ever shows whichever items are still missing. */}
+          {!placementCompleteness.complete && (
+            <div role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p className="font-medium">Before continuing:</p>
+              <ul className="mt-1 list-inside list-disc">
+                {placementCompleteness.missing.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-4 flex gap-2">
+            <Button variant="secondary" onClick={goToPreviousStep}>
+              &larr; Previous
+            </Button>
+            <Button variant="primary" onClick={submitPlacement} disabled={!placementCompleteness.complete}>
+              Next: review
+            </Button>
+          </div>
+        </Card>
       )}
 
       {step === "SUMMARY" && (
-        <section>
-          <h2>Review</h2>
-          <p>Parcel: {parcelId}</p>
-          <p>
-            {projectType === ProjectType.GARAGE ? "Detached garage" : "Shed"}: {dimensions.widthFt}ft x {dimensions.depthFt}ft x {dimensions.heightFt}ft
-            {dimensions.alleyAdjacent ? " (alley-adjacent)" : ""}
-          </p>
-          {projectType === ProjectType.GARAGE && (
-            <p>
-              Existing structures: {existingStructuresFootprintSqFt === undefined ? "not answered" : `${existingStructuresFootprintSqFt} sq ft (self-reported)`}
-              {" - "}
-              Stacked dwelling units: {stackedDwellingUnits === undefined ? "not answered" : stackedDwellingUnits ? "yes" : "no"}
-            </p>
-          )}
-          <button type="button" onClick={checkout}>Continue to payment</button>
-          {authorizedMessage && <p role="alert">{authorizedMessage}</p>}
-        </section>
+        <>
+          <Card>
+            <h1 className="text-lg font-semibold text-slate-900">Review</h1>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Parcel</dt>
+                <dd className="font-medium text-slate-900">{parcelId}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">{projectType === ProjectType.GARAGE ? "Detached garage" : "Shed"}</dt>
+                <dd className="font-medium text-slate-900">
+                  {dimensions.widthFt}ft x {dimensions.depthFt}ft x {dimensions.heightFt}ft
+                  {dimensions.alleyAdjacent ? " (alley-adjacent)" : ""}
+                </dd>
+              </div>
+              {projectType === ProjectType.GARAGE && (
+                <>
+                  <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                    <dt className="text-slate-500">Existing structures</dt>
+                    <dd className="font-medium text-slate-900">
+                      {existingStructuresFootprintSqFt === undefined ? "not answered" : `${existingStructuresFootprintSqFt} sq ft (self-reported)`}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4 pb-2">
+                    <dt className="text-slate-500">Stacked dwelling units</dt>
+                    <dd className="font-medium text-slate-900">
+                      {stackedDwellingUnits === undefined ? "not answered" : stackedDwellingUnits ? "yes" : "no"}
+                    </dd>
+                  </div>
+                </>
+              )}
+            </dl>
+            {boundaryPolygonWgs84 && placement && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+                <ReviewPlacementMap
+                  boundaryPolygonWgs84={boundaryPolygonWgs84}
+                  anchor={placement.anchor}
+                  orientationDeg={placement.orientationDeg}
+                  widthFt={dimensions.widthFt}
+                  depthFt={dimensions.depthFt}
+                  existingStructures={projectType === ProjectType.SHED ? existingStructures : []}
+                  selectedDwellingOutlineId={dwellingSelection?.status === "SELECTED" ? dwellingSelection.outlineId : undefined}
+                  frontEdgeRef={lotLineSelection?.frontEdgeRef}
+                  rearEdgeRef={lotLineSelection?.rearEdgeRef}
+                />
+              </div>
+            )}
+            <div className="mt-6 flex gap-2">
+              <Button variant="secondary" onClick={goToPreviousStep}>
+                &larr; Previous
+              </Button>
+              <Button variant="primary" onClick={checkout}>
+                Continue to payment
+              </Button>
+            </div>
+            {authorizedMessage && (
+              <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {authorizedMessage}
+              </p>
+            )}
+          </Card>
+          <SampleReportPreview />
+        </>
       )}
-    </main>
+    </div>
   );
 }

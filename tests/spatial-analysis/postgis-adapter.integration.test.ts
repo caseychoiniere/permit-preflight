@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { getDb, type Db } from "../../src/db/client.js";
-import { computeSetbackDistances, checkPostgisEnabled, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
+import { computeDistanceToDwelling, computeSetbackDistances, checkPostgisEnabled, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
 import { deriveLotLineRoleAssignment } from "../../src/spatial-analysis/lot-line-roles.js";
 import { AUTHORITATIVE_PARCEL_SRID } from "../../src/property-intelligence/king-county-parcel-geometry.js";
 import type { Polygon } from "../../src/spatial-analysis/types.js";
@@ -29,6 +29,20 @@ const KNOWN_WGS84_POINT = { lng: -122.319872934, lat: 47.650800805 };
 const KNOWN_PROJECTED_POINT = { x: 1274044.7379, y: 240930.785 }; // King County's own outSR=2926 reprojection of the same point.
 const TOLERANCE_FT = 5; // generous - cross-checking two different reprojection implementations, not asserting bit-for-bit equality.
 
+/** Drizzle's neon-http driver wraps a real Postgres error as `Failed query: ...` with the actual
+ * underlying error (e.g. NeonDbError "transform: Invalid coordinate") on `.cause`, not in the
+ * outer message - joins every message in the cause chain so a test can match against the real
+ * underlying error without swallowing an unrelated one. */
+function causeChainMessages(err: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = err;
+  while (current instanceof Error) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+  return messages.join(" | ");
+}
+
 describe.skipIf(!hasDb)("PostGIS CRS transform and setback computation - live integration", () => {
   let db: Db;
 
@@ -46,7 +60,7 @@ describe.skipIf(!hasDb)("PostGIS CRS transform and setback computation - live in
     const { sql } = await import("drizzle-orm");
     const result = await db.execute(sql`
       SELECT ST_X(t) AS x, ST_Y(t) AS y FROM (
-        SELECT ST_Transform(ST_SetSRID(ST_MakePoint(${KNOWN_WGS84_POINT.lng}, ${KNOWN_WGS84_POINT.lat}), 4326), ${AUTHORITATIVE_PARCEL_SRID}) AS t
+        SELECT ST_Transform(ST_SetSRID(ST_MakePoint(${KNOWN_WGS84_POINT.lng}, ${KNOWN_WGS84_POINT.lat}), 4326), ${AUTHORITATIVE_PARCEL_SRID}::int) AS t
       ) s
     `);
     const row = result.rows[0] as { x: number; y: number };
@@ -55,16 +69,35 @@ describe.skipIf(!hasDb)("PostGIS CRS transform and setback computation - live in
     void assignment;
   });
 
-  it("[hard invariant] longitude/latitude are not accidentally reversed - a swapped pair transforms to a wildly different (wrong-hemisphere) location", async () => {
+  it("[hard invariant] longitude/latitude are not accidentally reversed - a swapped pair either lands far from the real point or PostGIS rejects it as an invalid coordinate", async () => {
     const { sql } = await import("drizzle-orm");
-    const swapped = await db.execute(sql`
-      SELECT ST_X(t) AS x, ST_Y(t) AS y FROM (
-        SELECT ST_Transform(ST_SetSRID(ST_MakePoint(${KNOWN_WGS84_POINT.lat}, ${KNOWN_WGS84_POINT.lng}), 4326), ${AUTHORITATIVE_PARCEL_SRID}) AS t
-      ) s
-    `);
-    const row = swapped.rows[0] as { x: number; y: number };
-    // A swapped lng/lat is a materially different location - must NOT land near the real point.
-    expect(Math.abs(Number(row.x) - KNOWN_PROJECTED_POINT.x)).toBeGreaterThan(TOLERANCE_FT);
+    // Corrected 2026-08-27 (first live run against real PostGIS/PROJ - this suite could not run
+    // before a real DATABASE_URL existed). For THIS real Seattle point, the swapped pair
+    // (x=lat=47.65, y=lng=-122.32) is not merely "a different but still-valid location" - y is
+    // outside a valid latitude's [-90, 90] range, so PostGIS/PROJ correctly REJECTS it as an
+    // invalid coordinate (NeonDbError "transform: Invalid coordinate") rather than silently
+    // transforming it. That rejection is exactly as strong a proof lng/lat are not silently
+    // swapped as landing far away would be - asserting only the "lands far away" branch was this
+    // test's own incorrect assumption about what a swap always produces, never previously
+    // exercised live. Both outcomes are accepted; a query that succeeds AND lands near the real
+    // point still correctly fails this test either way.
+    try {
+      const swapped = await db.execute(sql`
+        SELECT ST_X(t) AS x, ST_Y(t) AS y FROM (
+          SELECT ST_Transform(ST_SetSRID(ST_MakePoint(${KNOWN_WGS84_POINT.lat}, ${KNOWN_WGS84_POINT.lng}), 4326), ${AUTHORITATIVE_PARCEL_SRID}::int) AS t
+        ) s
+      `);
+      const row = swapped.rows[0] as { x: number; y: number };
+      expect(Math.abs(Number(row.x) - KNOWN_PROJECTED_POINT.x)).toBeGreaterThan(TOLERANCE_FT);
+    } catch (err) {
+      // Corrected: Drizzle's neon-http driver wraps the real Postgres error as `Failed query: ...`
+      // with the actual NeonDbError ("transform: Invalid coordinate") on `.cause`, not in the
+      // outer message - String(err) alone never contains "invalid coordinate". Walk the cause
+      // chain so this stays narrowly matched (an unrelated real regression, e.g. the SRID
+      // text/integer overload bug this same file's other tests guard against, is never silently
+      // swallowed here).
+      expect(causeChainMessages(err)).toMatch(/invalid coordinate/i);
+    }
   });
 
   it("computes real setback distances for a known synthetic footprint placement, with the parcel and footprint reaching PostGIS in the same CRS", async () => {
@@ -107,6 +140,25 @@ describe.skipIf(!hasDb)("PostGIS CRS transform and setback computation - live in
     await expect(
       computeSetbackDistances(db, wronglyTaggedBoundary, { anchor: KNOWN_WGS84_POINT, orientationDeg: 0 }, { widthFt: 8, depthFt: 10 }, assignment)
     ).rejects.toThrow(/srid/i);
+  });
+
+  it("computeDistanceToDwelling (building intelligence v1) computes a real polygon-to-polygon minimum distance via ST_Distance, never centroid distance", async () => {
+    // Two disjoint 10x10 squares, 20 ft apart edge-to-edge along x (dwelling spans x=[100,110],
+    // shed spans x=[0,10]) - the true minimum polygon-to-polygon distance is exactly 90 ft
+    // (110->? no: gap between x=10 and x=100 is 90). A centroid-distance implementation would
+    // instead report the distance between (5,5) and (105,5) = 100 ft - the two values are
+    // distinguishable, proving this is genuinely edge-to-edge, not centroid-to-centroid.
+    const shedFootprint: Polygon = { units: "FEET", srid: AUTHORITATIVE_PARCEL_SRID, points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }] };
+    const dwellingFootprint: Polygon = { units: "FEET", srid: AUTHORITATIVE_PARCEL_SRID, points: [{ x: 100, y: 0 }, { x: 110, y: 0 }, { x: 110, y: 10 }, { x: 100, y: 10 }] };
+    const distance = await computeDistanceToDwelling(db, shedFootprint, dwellingFootprint);
+    expect(distance).toBeCloseTo(90, 6);
+  });
+
+  it("[hard invariant] computeDistanceToDwelling returns 0 for overlapping footprints, never a negative or fabricated positive value", async () => {
+    const shedFootprint: Polygon = { units: "FEET", srid: AUTHORITATIVE_PARCEL_SRID, points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }] };
+    const overlapping: Polygon = { units: "FEET", srid: AUTHORITATIVE_PARCEL_SRID, points: [{ x: 5, y: 5 }, { x: 15, y: 5 }, { x: 15, y: 15 }, { x: 5, y: 15 }] };
+    const distance = await computeDistanceToDwelling(db, shedFootprint, overlapping);
+    expect(distance).toBe(0);
   });
 
   it("transformPolygonToWgs84 produces a display polygon with the same point count as the source, and real geographic coordinates", async () => {

@@ -9,8 +9,21 @@
 
 import { useState } from "react";
 import type { AdminOrderView } from "../../../src/order-payment/admin-view.js";
+import { WideContainer } from "../../components/ui/Container.js";
+import { Card } from "../../components/ui/Card.js";
+import { Button } from "../../components/ui/Button.js";
+import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
 
 type SearchKind = "orderId" | "email" | "reportId";
+
+const ORDER_STATE_TONE: Record<string, BadgeTone> = {
+  PENDING: "info",
+  PAID: "success",
+  REFUND_PENDING: "warning",
+  REFUNDED: "neutral",
+  REFUND_FAILED: "danger",
+  EXPIRED: "neutral",
+};
 
 export default function AdminOrdersPage() {
   const [kind, setKind] = useState<SearchKind>("email");
@@ -43,60 +56,72 @@ export default function AdminOrdersPage() {
   const placeholder = kind === "email" ? "customer@example.com" : kind === "orderId" ? "order UUID" : "report/artifact UUID";
 
   return (
-    <div style={{ padding: 24, maxWidth: 960 }}>
-      <p>
-        <a href="/admin">&larr; Admin home</a>
-      </p>
-      <h1>Order Search</h1>
-      <p style={{ color: "#555" }}>Exact match only - order ID, customer email, or report/artifact ID. No partial/wildcard search.</p>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <select value={kind} onChange={(e) => setKind(e.target.value as SearchKind)} style={{ padding: 8 }}>
-          <option value="email">Customer email</option>
-          <option value="orderId">Order ID</option>
-          <option value="reportId">Report/Artifact ID</option>
-        </select>
-        <input
-          type={kind === "email" ? "email" : "text"}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={placeholder}
-          style={{ flex: 1, padding: 8 }}
-          onKeyDown={(e) => e.key === "Enter" && search()}
-        />
-        <button onClick={search} disabled={loading || !value.trim()}>
-          {loading ? "Searching..." : "Search"}
-        </button>
-      </div>
-      {error && <p style={{ color: "#a00" }}>{error}</p>}
-      {orders && orders.length === 0 && <p>No matching orders found.</p>}
+    <WideContainer>
+      <a href="/admin" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        &larr; Admin home
+      </a>
+      <h1 className="mt-3 text-xl font-semibold text-slate-900">Order Search</h1>
+      <p className="mt-1 text-sm text-slate-500">Exact match only - order ID, customer email, or report/artifact ID. No partial/wildcard search.</p>
+
+      <Card className="mt-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as SearchKind)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="email">Customer email</option>
+            <option value="orderId">Order ID</option>
+            <option value="reportId">Report/Artifact ID</option>
+          </select>
+          <input
+            type={kind === "email" ? "email" : "text"}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            onKeyDown={(e) => e.key === "Enter" && search()}
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <Button variant="primary" onClick={search} disabled={loading || !value.trim()}>
+            {loading ? "Searching..." : "Search"}
+          </Button>
+        </div>
+      </Card>
+
+      {error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {orders && orders.length === 0 && <p className="mt-4 text-sm text-slate-500">No matching orders found.</p>}
       {orders && orders.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full border-collapse text-sm">
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-                <th style={{ padding: 8 }}>Order ID</th>
-                <th style={{ padding: 8 }}>State</th>
-                <th style={{ padding: 8 }}>Price</th>
-                <th style={{ padding: 8 }}>Paid At</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Order ID</th>
+                <th className="px-4 py-3">State</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Paid At</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order) => (
-                <tr key={order.id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={{ padding: 8 }}>
-                    <a href={`/admin/orders/${order.id}`}>{order.id}</a>
+                <tr key={order.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 py-3">
+                    <a href={`/admin/orders/${order.id}`} className="font-medium text-indigo-600 hover:text-indigo-500">
+                      {order.id}
+                    </a>
                   </td>
-                  <td style={{ padding: 8 }}>{order.state}</td>
-                  <td style={{ padding: 8 }}>
+                  <td className="px-4 py-3">
+                    <Badge tone={ORDER_STATE_TONE[order.state] ?? "neutral"}>{order.state}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">
                     {(order.priceCents / 100).toFixed(2)} {order.currency.toUpperCase()}
                   </td>
-                  <td style={{ padding: 8 }}>{order.paidAt ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{order.paidAt ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-    </div>
+    </WideContainer>
   );
 }

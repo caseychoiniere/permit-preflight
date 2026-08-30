@@ -8,6 +8,19 @@ import { use, useState } from "react";
 import type { AdminOrderView } from "../../../../src/order-payment/admin-view.js";
 import { RefundReason } from "../../../../src/order-payment/types.js";
 import type { AccessCredentialSummary } from "../../../../src/report-access/repository.js";
+import { WideContainer } from "../../../components/ui/Container.js";
+import { Card } from "../../../components/ui/Card.js";
+import { Button } from "../../../components/ui/Button.js";
+import { Badge, type BadgeTone } from "../../../components/ui/Badge.js";
+
+const ORDER_STATE_TONE: Record<string, BadgeTone> = {
+  PENDING: "info",
+  PAID: "success",
+  REFUND_PENDING: "warning",
+  REFUNDED: "neutral",
+  REFUND_FAILED: "danger",
+  EXPIRED: "neutral",
+};
 
 interface JobWithCredentials {
   id: string;
@@ -44,13 +57,17 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
 
   if (!loaded) {
     void load();
-    return <div style={{ padding: 24 }}>Loading...</div>;
+    return (
+      <WideContainer>
+        <p className="text-sm text-slate-500">Loading...</p>
+      </WideContainer>
+    );
   }
   if (notFound || !order) {
     return (
-      <div style={{ padding: 24 }}>
-        <p>Order not found.</p>
-      </div>
+      <WideContainer>
+        <p className="text-sm text-slate-600">Order not found.</p>
+      </WideContainer>
     );
   }
 
@@ -96,139 +113,153 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ ord
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 960 }}>
-      <p>
-        <a href="/admin/orders">&larr; Order search</a>
-      </p>
-      <h1>Order {order.id}</h1>
-      <table style={{ borderCollapse: "collapse", marginBottom: 24 }}>
-        <tbody>
-          <tr>
-            <td style={{ padding: 4, fontWeight: "bold" }}>State</td>
-            <td style={{ padding: 4 }}>{order.state}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: 4, fontWeight: "bold" }}>Price</td>
-            <td style={{ padding: 4 }}>
+    <WideContainer>
+      <a href="/admin/orders" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        &larr; Order search
+      </a>
+      <h1 className="mt-3 text-xl font-semibold text-slate-900">Order {order.id}</h1>
+
+      <Card className="mt-4">
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+          <div className="flex justify-between border-b border-slate-100 pb-2 sm:border-0 sm:pb-0">
+            <dt className="font-medium text-slate-500">State</dt>
+            <dd>
+              <Badge tone={ORDER_STATE_TONE[order.state] ?? "neutral"}>{order.state}</Badge>
+            </dd>
+          </div>
+          <div className="flex justify-between border-b border-slate-100 pb-2 sm:border-0 sm:pb-0">
+            <dt className="font-medium text-slate-500">Price</dt>
+            <dd className="text-slate-900">
               {(order.priceCents / 100).toFixed(2)} {order.currency.toUpperCase()}
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: 4, fontWeight: "bold" }}>Customer Email</td>
-            <td style={{ padding: 4 }}>{order.customerEmail ?? "—"}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: 4, fontWeight: "bold" }}>Paid At</td>
-            <td style={{ padding: 4 }}>{order.paidAt ?? "—"}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: 4, fontWeight: "bold" }}>Refund Reason</td>
-            <td style={{ padding: 4 }}>{order.refundReason ?? "—"}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: 4, fontWeight: "bold" }}>Refund Confirmed At</td>
-            <td style={{ padding: 4 }}>{order.refundConfirmedAt ?? "—"}</td>
-          </tr>
-        </tbody>
-      </table>
+            </dd>
+          </div>
+          <div className="flex justify-between border-b border-slate-100 pb-2 sm:border-0 sm:pb-0">
+            <dt className="font-medium text-slate-500">Customer Email</dt>
+            <dd className="text-slate-900">{order.customerEmail ?? "—"}</dd>
+          </div>
+          <div className="flex justify-between border-b border-slate-100 pb-2 sm:border-0 sm:pb-0">
+            <dt className="font-medium text-slate-500">Paid At</dt>
+            <dd className="text-slate-900">{order.paidAt ?? "—"}</dd>
+          </div>
+          <div className="flex justify-between border-b border-slate-100 pb-2 sm:border-0 sm:pb-0">
+            <dt className="font-medium text-slate-500">Refund Reason</dt>
+            <dd className="text-slate-900">{order.refundReason ?? "—"}</dd>
+          </div>
+          <div className="flex justify-between pb-2">
+            <dt className="font-medium text-slate-500">Refund Confirmed At</dt>
+            <dd className="text-slate-900">{order.refundConfirmedAt ?? "—"}</dd>
+          </div>
+        </dl>
+      </Card>
 
-      <h2>Report Generation Jobs</h2>
-      {jobs.length === 0 && <p>None.</p>}
-      {jobs.map((job) => (
-        <div key={job.id} style={{ border: "1px solid #ddd", padding: 12, marginBottom: 12 }}>
-          <p>
-            Job {job.id} - {job.state}
-          </p>
-          {job.evidenceReportArtifactId && (
-            <p>
-              <a href={`/api/admin/reports/${job.evidenceReportArtifactId}/provenance`}>View provenance (JSON)</a>
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Report Generation Jobs</h2>
+      {jobs.length === 0 && <p className="text-sm text-slate-500">None.</p>}
+      <div className="flex flex-col gap-3">
+        {jobs.map((job) => (
+          <Card key={job.id}>
+            <p className="text-sm text-slate-900">
+              Job {job.id} - <Badge tone="neutral">{job.state}</Badge>
             </p>
-          )}
-          {job.accessCredentials.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ padding: 4, textAlign: "left" }}>Active</th>
-                    <th style={{ padding: 4, textAlign: "left" }}>Created</th>
-                    <th style={{ padding: 4, textAlign: "left" }}>Revoked</th>
-                    <th style={{ padding: 4, textAlign: "left" }}>Delivery</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {job.accessCredentials.map((c, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: 4 }}>{c.active ? "yes" : "no"}</td>
-                      <td style={{ padding: 4 }}>{c.createdAt}</td>
-                      <td style={{ padding: 4 }}>{c.revokedAt ?? "—"}</td>
-                      <td style={{ padding: 4 }}>{c.deliveryStatus ?? "—"}</td>
+            {job.evidenceReportArtifactId && (
+              <p className="mt-2">
+                <a
+                  href={`/api/admin/reports/${job.evidenceReportArtifactId}/provenance`}
+                  className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                >
+                  View provenance (JSON)
+                </a>
+              </p>
+            )}
+            {job.accessCredentials.length > 0 && (
+              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                      <th className="px-3 py-2">Active</th>
+                      <th className="px-3 py-2">Created</th>
+                      <th className="px-3 py-2">Revoked</th>
+                      <th className="px-3 py-2">Delivery</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      ))}
+                  </thead>
+                  <tbody>
+                    {job.accessCredentials.map((c, i) => (
+                      <tr key={i} className="border-b border-slate-100 last:border-0">
+                        <td className="px-3 py-2">{c.active ? "yes" : "no"}</td>
+                        <td className="px-3 py-2 text-slate-500">{c.createdAt}</td>
+                        <td className="px-3 py-2 text-slate-500">{c.revokedAt ?? "—"}</td>
+                        <td className="px-3 py-2 text-slate-500">{c.deliveryStatus ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
 
-      <h2>Refund</h2>
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Refund</h2>
       {refundMode === "NONE" && (
-        <p style={{ color: "#555" }}>
+        <p className="text-sm text-slate-500">
           No refund command is available in state {order.state}
           {order.state === "REFUND_FAILED" ? " - manual/support resolution only, never automatically reopened here." : "."}
         </p>
       )}
       {refundMode === "NEW" && (
-        <div style={{ maxWidth: 480 }}>
-          <label style={{ display: "block", marginBottom: 8 }}>
+        <Card className="max-w-md">
+          <label className="block text-sm font-medium text-slate-700">
             Reason
-            <select value={refundReason} onChange={(e) => setRefundReason(e.target.value as RefundReason)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}>
+            <select
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value as RefundReason)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
               <option value={RefundReason.CUSTOMER_REQUEST}>Customer request</option>
               <option value={RefundReason.GOODWILL}>Goodwill</option>
             </select>
           </label>
-          <label style={{ display: "block", marginBottom: 8 }}>
+          <label className="mt-3 block text-sm font-medium text-slate-700">
             Justification (required)
             <textarea
               value={justification}
               onChange={(e) => setJustification(e.target.value)}
               rows={3}
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </label>
-          <button onClick={submitRefund} disabled={submitting}>
+          <Button variant="danger" className="mt-3" onClick={submitRefund} disabled={submitting}>
             {submitting ? "Submitting..." : "Initiate Refund"}
-          </button>
-          {refundError && <p style={{ color: "#a00" }}>{refundError}</p>}
-          {refundStatus && <p style={{ color: "#070" }}>{refundStatus}</p>}
-        </div>
+          </Button>
+          {refundError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{refundError}</p>}
+          {refundStatus && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{refundStatus}</p>}
+        </Card>
       )}
       {refundMode === "RESUME" && (
-        <div style={{ maxWidth: 480 }}>
-          <p style={{ color: "#a60", border: "1px solid #a60", padding: 8 }}>
+        <Card className="max-w-md">
+          <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
             Refund pending. This is not a new refund - it resumes the same logical refund attempt already in flight, using its existing
             persisted reason and idempotency key.
           </p>
-          <p>
+          <p className="mt-3 text-sm text-slate-700">
             <strong>Existing reason:</strong> {order.refundReason ?? "—"} (read-only - not selectable here)
           </p>
-          <label style={{ display: "block", marginBottom: 8 }}>
+          <label className="mt-3 block text-sm font-medium text-slate-700">
             Retry justification (required)
             <textarea
               value={justification}
               onChange={(e) => setJustification(e.target.value)}
               rows={3}
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
               placeholder="Why are you manually resuming this refund submission?"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </label>
-          <button onClick={submitRefund} disabled={submitting}>
+          <Button variant="danger" className="mt-3" onClick={submitRefund} disabled={submitting}>
             {submitting ? "Submitting..." : "Resume Refund Submission"}
-          </button>
-          {refundError && <p style={{ color: "#a00" }}>{refundError}</p>}
-          {refundStatus && <p style={{ color: "#070" }}>{refundStatus}</p>}
-        </div>
+          </Button>
+          {refundError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{refundError}</p>}
+          {refundStatus && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{refundStatus}</p>}
+        </Card>
       )}
-    </div>
+    </WideContainer>
   );
 }

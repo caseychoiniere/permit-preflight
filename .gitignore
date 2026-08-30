@@ -17,3 +17,5 @@ test-results/
 # context.zip), so this can't normally be committed - kept as defense-in-depth in case that ever
 # changes, and to ignore a stray copy someone drops back into the tree.
 permit-preflight-chatgpt-context.zip
+.vercel
+.env*.local

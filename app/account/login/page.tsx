@@ -8,6 +8,9 @@
  */
 
 import { useState } from "react";
+import { Container } from "../../components/ui/Container.js";
+import { Card } from "../../components/ui/Card.js";
+import { Button } from "../../components/ui/Button.js";
 
 export default function AccountLoginPage() {
   const [email, setEmail] = useState("");
@@ -30,24 +33,29 @@ export default function AccountLoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <h1>Sign in</h1>
-      {sent ? (
-        <p>If that address has an account (or doesn&apos;t yet), check your email for a sign-in link.</p>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          <label>
-            Email address
-            <br />
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: "100%", padding: 8 }} />
-          </label>
-          <br />
-          <br />
-          <button type="submit" disabled={submitting}>
-            Send sign-in link
-          </button>
-        </form>
-      )}
-    </main>
+    <Container className="max-w-md">
+      <Card>
+        <h1 className="text-lg font-semibold text-slate-900">Sign in</h1>
+        {sent ? (
+          <p className="mt-3 text-sm text-slate-600">If that address has an account (or doesn&apos;t yet), check your email for a sign-in link.</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-4">
+            <label className="block text-sm font-medium text-slate-700">
+              Email address
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </label>
+            <Button type="submit" variant="primary" className="mt-4" disabled={submitting}>
+              Send sign-in link
+            </Button>
+          </form>
+        )}
+      </Card>
+    </Container>
   );
 }

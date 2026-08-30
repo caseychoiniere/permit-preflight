@@ -7,6 +7,7 @@
  * customer Order rather than inventing one. */
 
 import { useEffect, useState } from "react";
+import { WideContainer } from "../../components/ui/Container.js";
 
 interface FailedJob {
   id: string;
@@ -29,37 +30,43 @@ export default function AdminFailedJobsPage() {
   }, []);
 
   return (
-    <div style={{ padding: 24, maxWidth: 960 }}>
-      <p>
-        <a href="/admin">&larr; Admin home</a>
-      </p>
-      <h1>Failed Report Jobs</h1>
-      <p style={{ color: "#555" }}>Read-only. There is no retry action for a FAILED job.</p>
-      {!jobs && <p>Loading...</p>}
-      {jobs && jobs.length === 0 && <p>None.</p>}
+    <WideContainer>
+      <a href="/admin" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        &larr; Admin home
+      </a>
+      <h1 className="mt-3 text-xl font-semibold text-slate-900">Failed Report Jobs</h1>
+      <p className="mt-1 text-sm text-slate-500">Read-only. There is no retry action for a FAILED job.</p>
+      {!jobs && <p className="mt-4 text-sm text-slate-500">Loading...</p>}
+      {jobs && jobs.length === 0 && <p className="mt-4 text-sm text-slate-500">None.</p>}
       {jobs && jobs.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full border-collapse text-sm">
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-                <th style={{ padding: 8 }}>Job ID</th>
-                <th style={{ padding: 8 }}>Retry Attempts</th>
-                <th style={{ padding: 8 }}>Failure Reasons</th>
-                <th style={{ padding: 8 }}>Created</th>
-                <th style={{ padding: 8 }}>Updated</th>
-                <th style={{ padding: 8 }}>Affected Order</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Job ID</th>
+                <th className="px-4 py-3">Retry Attempts</th>
+                <th className="px-4 py-3">Failure Reasons</th>
+                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3">Updated</th>
+                <th className="px-4 py-3">Affected Order</th>
               </tr>
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={{ padding: 8 }}>{job.id}</td>
-                  <td style={{ padding: 8 }}>{job.retryAttempts}</td>
-                  <td style={{ padding: 8 }}>{(job.failureReasons ?? []).join("; ") || "—"}</td>
-                  <td style={{ padding: 8 }}>{job.createdAt}</td>
-                  <td style={{ padding: 8 }}>{job.updatedAt}</td>
-                  <td style={{ padding: 8 }}>
-                    {job.orderId ? <a href={`/admin/orders/${job.orderId}`}>{job.orderId}</a> : "No customer order (INTERNAL_PROTOTYPE)"}
+                <tr key={job.id} className="border-b border-slate-100 last:border-0">
+                  <td className="px-4 py-3 font-medium text-slate-900">{job.id}</td>
+                  <td className="px-4 py-3 text-slate-700">{job.retryAttempts}</td>
+                  <td className="px-4 py-3 text-slate-700">{(job.failureReasons ?? []).join("; ") || "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{job.createdAt}</td>
+                  <td className="px-4 py-3 text-slate-500">{job.updatedAt}</td>
+                  <td className="px-4 py-3">
+                    {job.orderId ? (
+                      <a href={`/admin/orders/${job.orderId}`} className="font-medium text-indigo-600 hover:text-indigo-500">
+                        {job.orderId}
+                      </a>
+                    ) : (
+                      <span className="text-slate-500">No customer order (INTERNAL_PROTOTYPE)</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -67,6 +74,6 @@ export default function AdminFailedJobsPage() {
           </table>
         </div>
       )}
-    </div>
+    </WideContainer>
   );
 }

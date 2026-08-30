@@ -18,11 +18,25 @@ import { RuleTestCaseKind, Tier } from "../regulatory-rule-governance/types.js";
 import type { AmbiguityCaveat, RuleCitation, RuleTestCase } from "../regulatory-rule-governance/types.js";
 import type { PermittedSourceEvidenceBundle } from "../regulatory-source-access/index.js";
 
+/**
+ * Live-discovered contract mismatch (2026-08-30, real Anthropic integration run): for an optional
+ * string field it has no value for, the model emits an explicit JSON `null` rather than omitting
+ * the key - a common real-world LLM behavior this plain "respond with JSON" prompt (no JSON-Schema/
+ * tool-use constraint) doesn't prevent. Plain `z.string().optional()` only accepts a MISSING key
+ * (`undefined`), not an explicit `null`, so real output failed Boundary Validation outright. Fixed
+ * by accepting BOTH real shapes here (the AI's actual `null` output as well as a cleanly-omitted
+ * key) - deliberately NOT via `.transform()` (that produces a schema whose Input/Output types
+ * differ, which `validateAtBoundary`'s `schema: ZodType<T>` parameter cannot infer `T` from
+ * correctly - a real, confirmed TypeScript inference gap, not a style preference). `null` is
+ * normalized to `undefined` in `toCandidateRulePackage` below, once, right after the boundary, so
+ * `RuleCitation`/`AmbiguityCaveat` (regulatory-rule-governance/types.ts) keep their existing
+ * `string | undefined` shape unchanged - nothing downstream of that normalization ever sees `null`.
+ */
 const RuleCitationSchema = z.object({
   smcSections: z.array(z.string()),
-  ordinanceNumber: z.string().optional(),
-  effectiveDate: z.string().optional(),
-  effectiveDateBasis: z.string().optional(),
+  ordinanceNumber: z.string().nullable().optional(),
+  effectiveDate: z.string().nullable().optional(),
+  effectiveDateBasis: z.string().nullable().optional(),
 });
 
 const AmbiguityCaveatSchema = z.object({
@@ -30,7 +44,7 @@ const AmbiguityCaveatSchema = z.object({
   description: z.string(),
   affectedConditionOrInterpretation: z.string(),
   sourceReferences: z.array(z.string()),
-  reviewerNotes: z.string().optional(),
+  reviewerNotes: z.string().nullable().optional(),
   resolutionStatus: z.string(),
 });
 
@@ -112,7 +126,25 @@ export async function researchCandidateRule(
   if (validated.outcome === "INVALID") {
     throw new Error(`AI-produced candidate rule package failed schema validation: ${validated.issues.join("; ")}`);
   }
-  return validated.data;
+  return toCandidateRulePackage(validated.data);
+}
+
+/** Strips the AI's real `null` output on optional citation/caveat fields down to the exact
+ * `string | undefined` shape `CandidateRulePackage`/`RuleCitation`/`AmbiguityCaveat` declare (see
+ * the schema comment above for why this happens here, post-validation, rather than via a
+ * `.transform()` inside the schema itself). Everything else on `validated.data` passes through
+ * unchanged - this never adds, drops, or reinterprets a field beyond that one normalization. */
+function toCandidateRulePackage(data: z.infer<typeof CandidateRulePackageSchema>): CandidateRulePackage {
+  return {
+    ...data,
+    citation: {
+      smcSections: data.citation.smcSections,
+      ordinanceNumber: data.citation.ordinanceNumber ?? undefined,
+      effectiveDate: data.citation.effectiveDate ?? undefined,
+      effectiveDateBasis: data.citation.effectiveDateBasis ?? undefined,
+    },
+    caveats: data.caveats.map((c) => ({ ...c, reviewerNotes: c.reviewerNotes ?? undefined })),
+  };
 }
 
 function buildResearchPrompt(input: ResearchCandidateRuleInput): string {
@@ -132,7 +164,23 @@ function buildResearchPrompt(input: ResearchCandidateRuleInput): string {
     `reasoningChain (string), proposedTestCases (array of {kind: POSITIVE|NEGATIVE|BOUNDARY|EXCEPTION,`,
     `description, input, expected}), caveats (array of {category, description,`,
     `affectedConditionOrInterpretation, sourceReferences: string[], reviewerNotes?, resolutionStatus}),`,
-    `suggestedTier (TIER_1 or TIER_2). No markdown fences, no commentary outside the JSON object.`,
+    `suggestedTier (TIER_1 or TIER_2). Fields marked with ? are optional: if the evidence doesn't`,
+    `establish a value, OMIT the key entirely - never include it with a null or empty-string value.`,
+    ``,
+    `Each proposedTestCases entry's "input" and "expected" MUST be JSON OBJECTS (never a bare`,
+    `string or number) - "input" holds whatever fact fields the rule actually depends on (e.g.`,
+    `{"distanceToRearLotLineFt": 3, "alleyAdjacent": false}), and "expected" is always`,
+    `{"complianceOutcome": "PASS"} or {"complianceOutcome": "FAIL"}. Example test case:`,
+    `{"kind": "NEGATIVE", "description": "3ft from rear line, not alley-adjacent - fails the 5ft`,
+    `minimum", "input": {"distanceToRearLotLineFt": 3, "alleyAdjacent": false}, "expected":`,
+    `{"complianceOutcome": "FAIL"}}.`,
+    ``,
+    `Every caveats entry's "resolutionStatus" is REQUIRED (never omitted, even when the caveat is`,
+    `still open) - a short free-text sentence stating whether/how it's resolved, e.g. "Not yet`,
+    `reviewed by a domain professional." or "Not a governance blocker - the evidence gap is real`,
+    `and stays REQUIRES_VERIFICATION regardless of tier."`,
+    ``,
+    `No markdown fences, no commentary outside the JSON object.`,
     ``,
     `Evidence:`,
     excerpts,

@@ -12,8 +12,13 @@ import { useEffect, useState } from "react";
 import { ParcelResolutionStatus, type CandidateParcel, type ClarificationReason } from "../../src/parcel-resolution/types.js";
 import { confirmCandidate } from "../../src/parcel-resolution/resolve.js";
 import { VacantLandScreeningIntent } from "../../src/screening-request/types.js";
+import { Container } from "../components/ui/Container.js";
+import { Card } from "../components/ui/Card.js";
+import { Button } from "../components/ui/Button.js";
 
 type Step = "ADDRESS" | "SCREENING_INTENT" | "SUMMARY";
+
+const STEP_ORDER: Step[] = ["ADDRESS", "SCREENING_INTENT", "SUMMARY"];
 
 export default function VacantLandPage() {
   const [step, setStep] = useState<Step>("ADDRESS");
@@ -123,6 +128,14 @@ export default function VacantLandPage() {
     }
   }
 
+  /** Purely a navigation change - mirrors /configure's own goToPreviousStep. Every step's state
+   * (address, parcelId, ...) is already held in this component and is never cleared on a step
+   * change. */
+  function goToPreviousStep() {
+    const currentIndex = STEP_ORDER.indexOf(step);
+    if (currentIndex > 0) setStep(STEP_ORDER[currentIndex - 1]!);
+  }
+
   // Code Generation review Correction 6 - BR-U5-9 fail-closed: while coverage readiness is not
   // confirmed `true` (the real, deployed default throughout the POC), the normal public route
   // exposes NONE of the journey steps (address entry, screening-intent buttons, request creation,
@@ -131,88 +144,133 @@ export default function VacantLandPage() {
   // public page while readiness is false.
   if (!coverageAvailable) {
     return (
-      <main style={{ maxWidth: 640, margin: "0 auto", padding: 24 }}>
-        <h1>Vacant-Land Preliminary Screening</h1>
-        <p role="status">Vacant-land screening is not yet available.</p>
-      </main>
+      <Container>
+        <Card>
+          <h1 className="text-lg font-semibold text-slate-900">Vacant-Land Preliminary Screening</h1>
+          <p role="status" className="mt-2 text-sm text-slate-500">
+            Vacant-land screening is not yet available.
+          </p>
+        </Card>
+      </Container>
     );
   }
 
   return (
-    <main style={{ maxWidth: 640, margin: "0 auto", padding: 24 }}>
-      <h1>Vacant-Land Preliminary Screening (Prototype)</h1>
-
+    <Container>
       {step === "ADDRESS" && (
-        <section>
-          <label>
+        <Card>
+          <h1 className="text-lg font-semibold text-slate-900">Vacant-Land Preliminary Screening</h1>
+          <p className="mt-1 text-sm text-slate-500">Enter the property address to look up its parcel.</p>
+          <label className="mt-4 block text-sm font-medium text-slate-700">
             Property address
-            <input value={address} onChange={(e) => setAddress(e.target.value)} aria-label="Property address" />
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              aria-label="Property address"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           </label>
-          <button type="button" onClick={submitAddress}>Find parcel</button>
-          {addressError && <p role="alert">{addressError}</p>}
+          <Button variant="primary" className="mt-4" onClick={submitAddress}>
+            Find parcel
+          </Button>
+          {addressError && (
+            <p role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {addressError}
+            </p>
+          )}
 
           {pendingClarification && (
-            <div role="alert" style={{ marginTop: 16, padding: 12, border: "1px solid #ddd" }}>
+            <div role="alert" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
               {pendingClarification.candidates.length === 1 ? (
                 <>
-                  <p>
+                  <p className="text-sm text-amber-900">
                     We found this parcel but couldn&apos;t independently verify it ({pendingClarification.reason.toLowerCase().replace(/_/g, " ")}).
                   </p>
-                  <p>
-                    <strong>{pendingClarification.candidates[0]!.canonicalAddress ?? `Parcel ${pendingClarification.candidates[0]!.parcelId}`}</strong>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {pendingClarification.candidates[0]!.canonicalAddress ?? `Parcel ${pendingClarification.candidates[0]!.parcelId}`}
                   </p>
-                  <p>Is this the property you want to evaluate?</p>
-                  <button type="button" onClick={() => confirmParcelCandidate(pendingClarification.candidates[0]!)}>
-                    Yes, this is the property
-                  </button>{" "}
-                  <button type="button" onClick={() => setPendingClarification(null)}>
-                    No, let me revise the address
-                  </button>
+                  <p className="mt-2 text-sm text-amber-900">Is this the property you want to evaluate?</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="primary" onClick={() => confirmParcelCandidate(pendingClarification.candidates[0]!)}>
+                      Yes, this is the property
+                    </Button>
+                    <Button variant="secondary" onClick={() => setPendingClarification(null)}>
+                      No, let me revise the address
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <>
-                  <p>We found more than one possible match. Which one is the property you want to evaluate?</p>
-                  {pendingClarification.candidates.map((c) => (
-                    <div key={c.parcelId} style={{ marginBottom: 8 }}>
-                      <button type="button" onClick={() => confirmParcelCandidate(c)}>
+                  <p className="text-sm text-amber-900">We found more than one possible match. Which one is the property you want to evaluate?</p>
+                  <div className="mt-3 flex flex-col items-start gap-2">
+                    {pendingClarification.candidates.map((c) => (
+                      <Button key={c.parcelId} variant="secondary" onClick={() => confirmParcelCandidate(c)}>
                         {c.canonicalAddress ?? `Parcel ${c.parcelId}`}
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setPendingClarification(null)}>
+                      </Button>
+                    ))}
+                  </div>
+                  <Button variant="ghost" className="mt-2" onClick={() => setPendingClarification(null)}>
                     None of these - let me revise the address
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
           )}
-        </section>
+        </Card>
       )}
 
       {step === "SCREENING_INTENT" && (
-        <section>
-          <p>Parcel confirmed: {parcelId}</p>
-          {parcelIsVacant && (
-            <button type="button" onClick={() => selectScreeningIntent(VacantLandScreeningIntent.VACANT_PARCEL)}>
-              Screen this vacant lot
-            </button>
+        <Card>
+          <p className="text-sm text-slate-500">
+            Parcel confirmed: <span className="font-medium text-slate-900">{parcelId}</span>
+          </p>
+          <h1 className="mt-2 text-lg font-semibold text-slate-900">What kind of screening do you need?</h1>
+          <div className="mt-4 flex flex-col items-start gap-2">
+            {parcelIsVacant && (
+              <Button variant="primary" onClick={() => selectScreeningIntent(VacantLandScreeningIntent.VACANT_PARCEL)}>
+                Screen this vacant lot
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => selectScreeningIntent(VacantLandScreeningIntent.REDEVELOP_EXISTING_PARCEL)}>
+              Screen for potential redevelopment
+            </Button>
+          </div>
+          {createError && (
+            <p role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {createError}
+            </p>
           )}
-          <button type="button" onClick={() => selectScreeningIntent(VacantLandScreeningIntent.REDEVELOP_EXISTING_PARCEL)}>
-            Screen for potential redevelopment
-          </button>
-          {createError && <p role="alert">{createError}</p>}
-        </section>
+          <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
+            &larr; Previous
+          </Button>
+        </Card>
       )}
 
       {step === "SUMMARY" && (
-        <section>
-          <h2>Review</h2>
-          <p>Parcel: {parcelId}</p>
-          <p>Screening request created. This is a preliminary screening assessment, not a recommendation.</p>
-          <button type="button" onClick={checkout}>Continue to payment</button>
-          {authorizedMessage && <p role="alert">{authorizedMessage}</p>}
-        </section>
+        <Card>
+          <h1 className="text-lg font-semibold text-slate-900">Review</h1>
+          <dl className="mt-4 space-y-2 text-sm">
+            <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+              <dt className="text-slate-500">Parcel</dt>
+              <dd className="font-medium text-slate-900">{parcelId}</dd>
+            </div>
+          </dl>
+          <p className="mt-4 text-sm text-slate-500">Screening request created. This is a preliminary screening assessment, not a recommendation.</p>
+          <div className="mt-6 flex gap-2">
+            <Button variant="secondary" onClick={goToPreviousStep}>
+              &larr; Previous
+            </Button>
+            <Button variant="primary" onClick={checkout}>
+              Continue to payment
+            </Button>
+          </div>
+          {authorizedMessage && (
+            <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {authorizedMessage}
+            </p>
+          )}
+        </Card>
       )}
-    </main>
+    </Container>
   );
 }

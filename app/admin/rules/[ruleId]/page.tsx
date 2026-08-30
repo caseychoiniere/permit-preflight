@@ -6,6 +6,22 @@
 
 import { use, useState } from "react";
 import type { RegulatoryRule } from "../../../../src/regulatory-rule-governance/types.js";
+import { Container } from "../../../components/ui/Container.js";
+import { Card } from "../../../components/ui/Card.js";
+import { Button } from "../../../components/ui/Button.js";
+import { Badge, type BadgeTone } from "../../../components/ui/Badge.js";
+
+const LIFECYCLE_TONE: Record<string, BadgeTone> = {
+  RESEARCHED: "neutral",
+  DRAFTED: "neutral",
+  TRIAGED: "info",
+  SOURCE_VERIFIED: "info",
+  TESTED: "info",
+  APPROVED: "info",
+  ACTIVE: "success",
+  SUPERSEDED: "neutral",
+  DISABLED: "danger",
+};
 
 export default function AdminRuleDetailPage({ params }: { params: Promise<{ ruleId: string }> }) {
   const { ruleId } = use(params);
@@ -27,13 +43,17 @@ export default function AdminRuleDetailPage({ params }: { params: Promise<{ rule
 
   if (!loaded) {
     void load();
-    return <div style={{ padding: 24 }}>Loading...</div>;
+    return (
+      <Container>
+        <p className="text-sm text-slate-500">Loading...</p>
+      </Container>
+    );
   }
   if (!rule) {
     return (
-      <div style={{ padding: 24 }}>
-        <p>Rule not found.</p>
-      </div>
+      <Container>
+        <p className="text-sm text-slate-600">Rule not found.</p>
+      </Container>
     );
   }
 
@@ -68,101 +88,124 @@ export default function AdminRuleDetailPage({ params }: { params: Promise<{ rule
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 720 }}>
-      <p>
-        <a href="/admin/rules">&larr; Rule list</a>
-      </p>
-      <h1>{rule.subject}</h1>
-      <p>
-        <strong>Lifecycle state:</strong> {rule.lifecycleState}
-        {rule.lifecycleState === "DISABLED" && " - operator-toggled off, reversible, content unchanged (ADM-7)."}
-        {rule.lifecycleState === "SUPERSEDED" && " - permanently replaced by a newer version; not an operator toggle."}
-      </p>
-      <p>
-        <strong>Applicable:</strong> {rule.applicableProjectType} / {rule.applicableZone}
-      </p>
-      <p>
-        <strong>Tier:</strong> {rule.tier ?? "—"}
-      </p>
+    <Container>
+      <a href="/admin/rules" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        &larr; Rule list
+      </a>
+      <h1 className="mt-3 text-xl font-semibold text-slate-900">{rule.subject}</h1>
 
-      <h2>Citation</h2>
-      <p>
-        <strong>SMC sections:</strong> {rule.citation.smcSections.join(", ") || "—"}
-      </p>
-      <p>
-        <strong>Ordinance number:</strong> {rule.citation.ordinanceNumber ?? "—"}
-      </p>
-      <p>
-        <strong>Effective date:</strong> {rule.citation.effectiveDate ?? "—"}
-        {rule.citation.effectiveDateBasis ? ` (${rule.citation.effectiveDateBasis})` : ""}
-      </p>
-
-      <h2>Approval Provenance</h2>
-      {rule.approvalRecord ? (
-        <p>
-          Approved by <strong>{rule.approvalRecord.founderIdentity}</strong> at {rule.approvalRecord.approvedAt}
+      <Card className="mt-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium text-slate-500">Lifecycle state:</span>
+          <Badge tone={LIFECYCLE_TONE[rule.lifecycleState] ?? "neutral"}>{rule.lifecycleState}</Badge>
+          {rule.lifecycleState === "DISABLED" && <span className="text-slate-500">operator-toggled off, reversible, content unchanged (ADM-7).</span>}
+          {rule.lifecycleState === "SUPERSEDED" && <span className="text-slate-500">permanently replaced by a newer version; not an operator toggle.</span>}
+        </div>
+        <p className="mt-3 text-sm text-slate-700">
+          <strong className="font-medium text-slate-500">Applicable:</strong> {rule.applicableProjectType} / {rule.applicableZone}
         </p>
-      ) : (
-        <p style={{ color: "#555" }}>
-          Not recorded - this rule predates the approval-provenance field. Not inferred from verification history, updatedAt, or the
-          current lifecycle state, since those are different facts.
+        <p className="mt-1 text-sm text-slate-700">
+          <strong className="font-medium text-slate-500">Tier:</strong> {rule.tier ?? "—"}
         </p>
-      )}
+      </Card>
 
-      <h2>Verification History</h2>
-      {rule.verificationHistory.length === 0 && <p>None recorded.</p>}
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Citation</h2>
+      <Card>
+        <p className="text-sm text-slate-700">
+          <strong className="font-medium text-slate-500">SMC sections:</strong> {rule.citation.smcSections.join(", ") || "—"}
+        </p>
+        <p className="mt-1 text-sm text-slate-700">
+          <strong className="font-medium text-slate-500">Ordinance number:</strong> {rule.citation.ordinanceNumber ?? "—"}
+        </p>
+        <p className="mt-1 text-sm text-slate-700">
+          <strong className="font-medium text-slate-500">Effective date:</strong> {rule.citation.effectiveDate ?? "—"}
+          {rule.citation.effectiveDateBasis ? ` (${rule.citation.effectiveDateBasis})` : ""}
+        </p>
+      </Card>
+
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Approval Provenance</h2>
+      <Card>
+        {rule.approvalRecord ? (
+          <p className="text-sm text-slate-700">
+            Approved by <strong>{rule.approvalRecord.founderIdentity}</strong> at {rule.approvalRecord.approvedAt}
+          </p>
+        ) : (
+          <p className="text-sm text-slate-500">
+            Not recorded - this rule predates the approval-provenance field. Not inferred from verification history, updatedAt, or the
+            current lifecycle state, since those are different facts.
+          </p>
+        )}
+      </Card>
+
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Verification History</h2>
+      {rule.verificationHistory.length === 0 && <p className="text-sm text-slate-500">None recorded.</p>}
       {rule.verificationHistory.length > 0 && (
-        <ul>
+        <ul className="flex flex-col gap-3">
           {rule.verificationHistory.map((v, i) => (
-            <li key={i} style={{ marginBottom: 8 }}>
-              <strong>{v.tier}</strong> - founder <strong>{v.founderIdentity}</strong> at {v.founderVerifiedAt}
-              {v.escalatedProfessional && (
-                <div style={{ marginLeft: 16 }}>
-                  Tier-2 professional review: <strong>{v.escalatedProfessional.identity}</strong> ({v.escalatedProfessional.professionType}) at{" "}
-                  {v.escalatedProfessional.reviewedAt}
-                  <br />
-                  Opinion: {v.escalatedProfessional.opinion}
-                </div>
-              )}
+            <li key={i}>
+              <Card>
+                <p className="text-sm text-slate-700">
+                  <strong>{v.tier}</strong> - founder <strong>{v.founderIdentity}</strong> at {v.founderVerifiedAt}
+                </p>
+                {v.escalatedProfessional && (
+                  <div className="mt-2 border-l-2 border-slate-200 pl-3 text-sm text-slate-600">
+                    Tier-2 professional review: <strong>{v.escalatedProfessional.identity}</strong> ({v.escalatedProfessional.professionType}) at{" "}
+                    {v.escalatedProfessional.reviewedAt}
+                    <br />
+                    Opinion: {v.escalatedProfessional.opinion}
+                  </div>
+                )}
+              </Card>
             </li>
           ))}
         </ul>
       )}
 
-      <h2>Version Chain</h2>
-      {!rule.supersedesRuleId && !rule.supersededByRuleId && <p>No other versions - this is the only version of this rule.</p>}
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Version Chain</h2>
+      {!rule.supersedesRuleId && !rule.supersededByRuleId && <p className="text-sm text-slate-500">No other versions - this is the only version of this rule.</p>}
       {rule.supersedesRuleId && (
-        <p>
-          Supersedes (older version) <a href={`/admin/rules/${rule.supersedesRuleId}`}>{rule.supersedesRuleId}</a>
+        <p className="text-sm text-slate-700">
+          Supersedes (older version){" "}
+          <a href={`/admin/rules/${rule.supersedesRuleId}`} className="font-medium text-indigo-600 hover:text-indigo-500">
+            {rule.supersedesRuleId}
+          </a>
         </p>
       )}
       {rule.supersededByRuleId && (
-        <p>
-          Superseded by (newer version) <a href={`/admin/rules/${rule.supersededByRuleId}`}>{rule.supersededByRuleId}</a>
+        <p className="text-sm text-slate-700">
+          Superseded by (newer version){" "}
+          <a href={`/admin/rules/${rule.supersededByRuleId}`} className="font-medium text-indigo-600 hover:text-indigo-500">
+            {rule.supersededByRuleId}
+          </a>
         </p>
       )}
 
-      {!action && <p style={{ color: "#555" }}>No disable/re-enable action applies to a rule in state {rule.lifecycleState}.</p>}
+      {!action && <p className="mt-6 text-sm text-slate-500">No disable/re-enable action applies to a rule in state {rule.lifecycleState}.</p>}
       {action === "reenable" && (
-        <p style={{ color: "#a60", border: "1px solid #a60", padding: 8 }}>
+        <p className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
           Re-enabling reactivates this exact rule version unchanged. If the underlying problem requires changing any regulatory logic,
           applicability, threshold, or citation content, do NOT re-enable here - a corrected version must go through the full governance
           pipeline instead.
         </p>
       )}
       {action && (
-        <div style={{ maxWidth: 480 }}>
-          <label style={{ display: "block", marginBottom: 8 }}>
+        <Card className="mt-4 max-w-md">
+          <label className="block text-sm font-medium text-slate-700">
             Reason (required)
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           </label>
-          <button onClick={submit} disabled={submitting}>
+          <Button variant={action === "disable" ? "danger" : "primary"} className="mt-3" onClick={submit} disabled={submitting}>
             {submitting ? "Submitting..." : action === "disable" ? "Disable Rule" : "Re-Enable Rule"}
-          </button>
-          {error && <p style={{ color: "#a00" }}>{error}</p>}
-          {status && <p style={{ color: "#070" }}>{status}</p>}
-        </div>
+          </Button>
+          {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {status && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{status}</p>}
+        </Card>
       )}
-    </div>
+    </Container>
   );
 }

@@ -58,13 +58,24 @@ describe.skipIf(!hasDb)("Cron reconciliation check 5: stale IN_PROGRESS job recl
   }
 
   it("a recently-claimed IN_PROGRESS job is NOT reclaimed", async () => {
+    // Test-isolation correction (2026-08-27, founder-directed): reclaimStaleInProgressJobs is a
+    // genuinely GLOBAL, system-wide sweep by design (that's the whole point of a Cron
+    // reconciliation check) - it is not, and should not be, scoped to one test's own fixtures.
+    // Against a persistent staging database, other genuinely-stale IN_PROGRESS rows can exist
+    // independently of this test (e.g. residue from an earlier interrupted run elsewhere) and a
+    // reclaim call correctly sweeping THOSE up is real, desired production behavior, not a defect
+    // this test should fail on. The original `expect(count).toBe(0)`/`expect(calls).toHaveLength
+    // (0)` assertions conflated "nothing stale exists anywhere in the table" (environment-
+    // dependent, not this test's job to guarantee) with the real invariant under test - "MY
+    // recently-claimed job specifically is not reclaimed" - which is what the assertions below now
+    // check directly, scoped to jobId, regardless of what else may legitimately exist elsewhere in
+    // a shared persistent database.
     const jobId = await makeClaimedJob(); // claimedAt ~= now
     const { spy, calls } = fakeStartWorkflow();
 
-    const count = await reclaimStaleInProgressJobs(db, 20 * 60 * 1000, spy);
+    await reclaimStaleInProgressJobs(db, 20 * 60 * 1000, spy);
 
-    expect(count).toBe(0);
-    expect(calls).toHaveLength(0);
+    expect(calls).not.toContain(jobId);
     const [row] = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.id, jobId));
     expect(row?.state).toBe("IN_PROGRESS");
   });
@@ -92,18 +103,24 @@ describe.skipIf(!hasDb)("Cron reconciliation check 5: stale IN_PROGRESS job recl
   });
 
   it("[hard invariant] overlapping reconciliation attempts cannot both reclaim the same stale job", async () => {
+    // Test-isolation correction (2026-08-27): scoped to jobId specifically, not a raw sum of
+    // counts/calls, which an unrelated pre-existing stale row elsewhere in a shared persistent
+    // database could otherwise inflate past 1 without actually indicating a race-safety failure
+    // for THIS job.
     const jobId = await makeClaimedJob();
     await backdateClaimedAt(jobId, 30 * 60 * 1000);
     const a = fakeStartWorkflow();
     const b = fakeStartWorkflow();
 
-    const [countA, countB] = await Promise.all([reclaimStaleInProgressJobs(db, 20 * 60 * 1000, a.spy), reclaimStaleInProgressJobs(db, 20 * 60 * 1000, b.spy)]);
+    await Promise.all([reclaimStaleInProgressJobs(db, 20 * 60 * 1000, a.spy), reclaimStaleInProgressJobs(db, 20 * 60 * 1000, b.spy)]);
 
-    expect(countA + countB).toBe(1); // exactly one of the two overlapping calls won the race
-    expect(a.calls.length + b.calls.length).toBe(1); // only the winner started a replacement workflow
+    const totalCallsForThisJob = a.calls.filter((id) => id === jobId).length + b.calls.filter((id) => id === jobId).length;
+    expect(totalCallsForThisJob).toBe(1); // exactly one of the two overlapping calls won the race for THIS job
   });
 
   it("COMPLETE and FAILED jobs are never reclaimed, even with a very old claimedAt", async () => {
+    // Same test-isolation correction as above - scoped to the two specific jobs under test, not a
+    // global count that a legitimate, independent stale row elsewhere could inflate.
     const completeJobId = await makeClaimedJob();
     await markJobComplete(db, completeJobId, crypto.randomUUID());
     await backdateClaimedAt(completeJobId, 60 * 60 * 1000);
@@ -113,10 +130,10 @@ describe.skipIf(!hasDb)("Cron reconciliation check 5: stale IN_PROGRESS job recl
     await backdateClaimedAt(failedJobId, 60 * 60 * 1000);
 
     const { spy, calls } = fakeStartWorkflow();
-    const count = await reclaimStaleInProgressJobs(db, 20 * 60 * 1000, spy);
+    await reclaimStaleInProgressJobs(db, 20 * 60 * 1000, spy);
 
-    expect(count).toBe(0);
-    expect(calls).toHaveLength(0);
+    expect(calls).not.toContain(completeJobId);
+    expect(calls).not.toContain(failedJobId);
     const [completeRow] = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.id, completeJobId));
     const [failedRow] = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.id, failedJobId));
     expect(completeRow?.state).toBe("COMPLETE");

@@ -44,6 +44,27 @@ export const DistanceInputMode = {
 } as const;
 export type DistanceInputMode = (typeof DistanceInputMode)[keyof typeof DistanceInputMode];
 
+/** Building intelligence v1 (founder correction, 2026-08-29) - which building footprint (if any)
+ * the property owner confirmed is the primary dwelling, captured the same way LotLineRoleAssignment
+ * captures front/rear (an explicit user indication, never inferred from footprint size/count).
+ * SELECTED carries the chosen footprint's `outlineId` (Seattle Building Outlines 2023's own id -
+ * re-validated server-side against a fresh fetch before ever being trusted, never taken on faith
+ * from the client). UNKNOWN covers every case where no dwelling was established - zero footprints
+ * existed, the user could not tell which one it was, or the user declined - all resolve the same
+ * way downstream (dwelling separation becomes REQUIRES_VERIFICATION, never a blocked report). */
+export const PrimaryDwellingSelectionStatus = {
+  SELECTED: "SELECTED",
+  UNKNOWN: "UNKNOWN",
+} as const;
+export type PrimaryDwellingSelectionStatus = (typeof PrimaryDwellingSelectionStatus)[keyof typeof PrimaryDwellingSelectionStatus];
+
+export interface PrimaryDwellingSelection {
+  status: PrimaryDwellingSelectionStatus;
+  outlineId?: string;
+  method: "USER_CONFIRMED";
+  indicatedAt?: string;
+}
+
 export interface ShedProjectConfiguration {
   widthFt: number;
   depthFt: number;
@@ -52,6 +73,9 @@ export interface ShedProjectConfiguration {
   proposedPlacement?: ProposedPlacement;
   lotLineRoleAssignment?: LotLineRoleAssignment;
   distanceInputMode?: DistanceInputMode;
+  /** Shed-only, mirroring distanceToDwellingFt/DWELLING_SEPARATION's own shed-only scope
+   * (regulatory-rules-engine/types.ts - a garage has no equivalent field or rule). */
+  primaryDwellingSelection?: PrimaryDwellingSelection;
 }
 
 /** Unit 4 (domain-entities.md) - garage-specific intake fields beyond the shed shape.
@@ -201,6 +225,24 @@ const LotLineRoleAssignmentSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+/** Building intelligence v1 - mirrors LotLineRoleAssignmentSchema's discriminated-union shape
+ * exactly (SELECTED/UNKNOWN in place of ASSIGNED/INSUFFICIENT). Note there is no "client-computed
+ * distance" field here either - same discipline as ProposedPlacementSchema above; the browser
+ * submits only which footprint the user pointed to, never a distance it computed itself. */
+const PrimaryDwellingSelectionSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal(PrimaryDwellingSelectionStatus.SELECTED),
+    outlineId: z.string().min(1),
+    method: z.literal("USER_CONFIRMED"),
+    indicatedAt: z.string().optional(),
+  }),
+  z.object({
+    status: z.literal(PrimaryDwellingSelectionStatus.UNKNOWN),
+    method: z.literal("USER_CONFIRMED"),
+    indicatedAt: z.string().optional(),
+  }),
+]);
+
 /** PC-2's server-side validation boundary. Rejects malformed polygons, non-finite coordinates,
  * out-of-range geographic coordinates, structurally invalid lot-line assignments, and
  * out-of-range shed dimensions - regardless of what client-side validation already checked
@@ -214,6 +256,7 @@ export const ShedProjectConfigurationSchema = z.object({
   proposedPlacement: ProposedPlacementSchema.optional(),
   lotLineRoleAssignment: LotLineRoleAssignmentSchema.optional(),
   distanceInputMode: z.enum([DistanceInputMode.MAP_PLACEMENT, DistanceInputMode.MANUAL_FALLBACK]).optional(),
+  primaryDwellingSelection: PrimaryDwellingSelectionSchema.optional(),
 });
 
 export type ShedProjectConfigurationInput = z.infer<typeof ShedProjectConfigurationSchema>;

@@ -6,11 +6,20 @@
 
 import { useEffect, useState } from "react";
 import type { SourceHealthSnapshot } from "../../../src/data-source-registry/types.js";
+import { WideContainer } from "../../components/ui/Container.js";
+import { Button } from "../../components/ui/Button.js";
+import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
 
 interface AdminSourceView extends SourceHealthSnapshot {
   expectedRefreshCadence?: string;
   description?: string;
 }
+
+const HEALTH_TONE: Record<string, BadgeTone> = {
+  HEALTHY: "success",
+  UNHEALTHY: "danger",
+  UNKNOWN: "neutral",
+};
 
 export default function AdminDataSourcesPage() {
   const [sources, setSources] = useState<AdminSourceView[] | null>(null);
@@ -58,55 +67,65 @@ export default function AdminDataSourcesPage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 960 }}>
-      <p>
-        <a href="/admin">&larr; Admin home</a>
-      </p>
-      <h1>Data Sources</h1>
-      {!sources && <p>Loading...</p>}
+    <WideContainer>
+      <a href="/admin" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        &larr; Admin home
+      </a>
+      <h1 className="mt-3 text-xl font-semibold text-slate-900">Data Sources</h1>
+      {!sources && <p className="mt-4 text-sm text-slate-500">Loading...</p>}
       {sources && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full border-collapse text-sm">
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-                <th style={{ padding: 8 }}>Source</th>
-                <th style={{ padding: 8 }}>Expected Cadence</th>
-                <th style={{ padding: 8 }}>Observed (automated)</th>
-                <th style={{ padding: 8 }}>Override</th>
-                <th style={{ padding: 8 }}>Effective</th>
-                <th style={{ padding: 8 }}>Last Success</th>
-                <th style={{ padding: 8 }}>Last Failure</th>
-                <th style={{ padding: 8 }}>Action</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Source</th>
+                <th className="px-4 py-3">Expected Cadence</th>
+                <th className="px-4 py-3">Observed</th>
+                <th className="px-4 py-3">Override</th>
+                <th className="px-4 py-3">Effective</th>
+                <th className="px-4 py-3">Last Success</th>
+                <th className="px-4 py-3">Last Failure</th>
+                <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
               {sources.map((source) => (
-                <tr key={source.sourceId} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={{ padding: 8 }} title={source.description}>
+                <tr key={source.sourceId} className="border-b border-slate-100 last:border-0 align-top">
+                  <td className="px-4 py-3 font-medium text-slate-900" title={source.description}>
                     {source.sourceId}
                   </td>
-                  <td style={{ padding: 8 }}>{source.expectedRefreshCadence ?? "—"}</td>
-                  <td style={{ padding: 8 }}>{source.observedHealthState}</td>
-                  <td style={{ padding: 8 }}>{source.manualOverrideState ?? "none"}</td>
-                  <td style={{ padding: 8, fontWeight: "bold" }}>{source.effectiveHealthState}</td>
-                  <td style={{ padding: 8 }}>{source.lastSuccessfulRetrieval ?? "—"}</td>
-                  <td style={{ padding: 8 }}>
+                  <td className="px-4 py-3 text-slate-700">{source.expectedRefreshCadence ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone={HEALTH_TONE[source.observedHealthState] ?? "neutral"}>{source.observedHealthState}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{source.manualOverrideState ?? "none"}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone={HEALTH_TONE[source.effectiveHealthState] ?? "neutral"}>{source.effectiveHealthState}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">{source.lastSuccessfulRetrieval ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">
                     {source.lastFailureAt ?? "—"}
                     {source.lastFailureReason ? ` (${source.lastFailureReason})` : ""}
                   </td>
-                  <td style={{ padding: 8, minWidth: 260 }}>
+                  <td className="min-w-[260px] px-4 py-3">
                     <input
                       type="text"
                       placeholder="reason (required)"
                       value={reasons[source.sourceId] ?? ""}
                       onChange={(e) => setReasons((r) => ({ ...r, [source.sourceId]: e.target.value }))}
-                      style={{ width: "100%", padding: 4, marginBottom: 4 }}
+                      className="mb-2 block w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button onClick={() => markUnhealthy(source.sourceId)}>Mark Unhealthy</button>
-                      {source.manualOverrideState && <button onClick={() => clearOverride(source.sourceId)}>Clear Override</button>}
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="danger" onClick={() => markUnhealthy(source.sourceId)}>
+                        Mark Unhealthy
+                      </Button>
+                      {source.manualOverrideState && (
+                        <Button variant="secondary" onClick={() => clearOverride(source.sourceId)}>
+                          Clear Override
+                        </Button>
+                      )}
                     </div>
-                    {status[source.sourceId] && <p style={{ fontSize: 12, color: "#555" }}>{status[source.sourceId]}</p>}
+                    {status[source.sourceId] && <p className="mt-1 text-xs text-slate-500">{status[source.sourceId]}</p>}
                   </td>
                 </tr>
               ))}
@@ -114,6 +133,6 @@ export default function AdminDataSourcesPage() {
           </table>
         </div>
       )}
-    </div>
+    </WideContainer>
   );
 }

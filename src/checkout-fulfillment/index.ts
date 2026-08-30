@@ -7,7 +7,7 @@
 import { eq, sql } from "drizzle-orm";
 import { start } from "workflow/api";
 import type { Db } from "../db/client.js";
-import { screeningRequests, reportGenerationJobs, type ReportGenerationJobRow } from "../db/schema.js";
+import { screeningRequests, reportGenerationJobs, type ReportGenerationJobRow, type EvidenceReportArtifactRow } from "../db/schema.js";
 import type { ExistingPropertyScreeningRequestSnapshot, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
 import { ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestRow } from "../screening-request/hydrate.js";
@@ -26,7 +26,8 @@ import { createCheckoutSession, getOrderByCheckoutSessionId, getOrderById, type 
 import { OrderState, GuestOrderStatus, RefundReason } from "../order-payment/types.js";
 import type { StripeClient } from "../order-payment/stripe-client.js";
 import type { ResendClient } from "../email-delivery/resend-client.js";
-import { deliverGuestReportAccess } from "../report-access/repository.js";
+import { deliverGuestReportAccess, getActiveCredentialDeliveryStatus, type DeliveryStatus } from "../report-access/repository.js";
+import { getReportById } from "../evidence-report-artifact/index.js";
 import { getReportPrice } from "./types.js";
 // No ".js" suffix (see reconciliation.ts's comment on the same import) - required for the
 // Workflow SDK's own build-time discovery to correctly resolve this file.
@@ -124,6 +125,47 @@ export async function getGuestStatus(db: Db, stripeCheckoutSessionId: string): P
       return job?.state === ReportGenerationJobState.COMPLETE ? GuestOrderStatus.REPORT_READY : GuestOrderStatus.PAYMENT_CONFIRMED;
     }
   }
+}
+
+export interface GuestReportView {
+  artifact: EvidenceReportArtifactRow;
+  /** Undefined until deliverGuestReportAccess has run at least once for this report (a brief
+   * window right after generation completes) - the frontend should treat that the same as
+   * EMAIL_PENDING (delivery is in progress, not failed), never as a failure. */
+  emailDeliveryStatus?: DeliveryStatus;
+}
+
+/**
+ * Product-correctness correction (2026-08-28, real end-to-end browser test): a guest customer's
+ * post-checkout status page previously told them their report was ready and to "check your email"
+ * with no way to see it in the browser at all - email delivery was a hard dependency for a
+ * successful purchase to actually be usable. This resolves the SAME already-generated
+ * EvidenceReportArtifact GET /api/reports serves (via the identical getReportById - never a
+ * second report-rendering/generation path), authorized by the SAME HttpOnly Stripe Checkout
+ * Session cookie already gating GET /api/checkout/status (Pattern 4) - not the emailed report-
+ * access token, which this guest's browser has no way to have yet at this point in the flow, and
+ * not a new/weaker credential: the checkout-session cookie is exactly as unguessable and already
+ * proves this is the purchasing browser, immediately post-purchase. Reuses getGuestStatus as the
+ * sole authority on "is this ready" rather than re-deriving that decision here.
+ */
+export async function getGuestReport(db: Db, stripeCheckoutSessionId: string): Promise<GuestReportView | undefined> {
+  const status = await getGuestStatus(db, stripeCheckoutSessionId);
+  if (status !== GuestOrderStatus.REPORT_READY) return undefined;
+
+  const order = await getOrderByCheckoutSessionId(db, stripeCheckoutSessionId);
+  if (!order) return undefined; // Defensive only - getGuestStatus already confirmed an order exists.
+
+  const [job] = await db
+    .select({ evidenceReportArtifactId: reportGenerationJobs.evidenceReportArtifactId })
+    .from(reportGenerationJobs)
+    .where(eq(reportGenerationJobs.screeningRequestId, order.screeningRequestId));
+  if (!job?.evidenceReportArtifactId) return undefined;
+
+  const artifact = await getReportById(db, job.evidenceReportArtifactId);
+  if (!artifact) return undefined;
+
+  const emailDeliveryStatus = await getActiveCredentialDeliveryStatus(db, artifact.id);
+  return { artifact, emailDeliveryStatus };
 }
 
 /**

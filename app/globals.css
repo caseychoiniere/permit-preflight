@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Design-system baseline (2026-08-28, Tailwind adoption). Kept intentionally small: everything
+ * else uses Tailwind's own default palette/scale directly in components, so there is exactly one
+ * place to look for anything that deviates from Tailwind's defaults.
+ *
+ * Color usage convention for the whole app, followed by every page from here on:
+ *   - slate     -> neutral text/borders/surfaces
+ *   - indigo    -> primary brand/action color (buttons, links, focus rings, selected state)
+ *   - emerald   -> success / PASS / positive status
+ *   - red       -> danger / FAIL / destructive actions
+ *   - amber     -> warning / REQUIRES VERIFICATION / needs-attention status
+ *   - sky       -> informational / neutral-pending status
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Matches the previously fixed dark-mode/invisible-text bug: this app has no dark theme, so the
+ * page must render identically regardless of the viewer's OS/browser theme rather than half-apply
+ * one. body:bg-white text-slate-900 in layout.tsx already forces this in practice; color-scheme
+ * additionally keeps native form-control chrome (date pickers, scrollbars, etc.) light. */
+:root {
+  color-scheme: light;
+}

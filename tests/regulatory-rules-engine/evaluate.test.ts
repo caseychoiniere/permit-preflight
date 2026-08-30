@@ -98,6 +98,54 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
     expect(frontFinding).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
   });
 
+  it(
+    "[hard invariant, regression test 2026-08-30] Building Intelligence returning zero/multiple/unconfirmed dwelling footprints (distanceToDwellingFt " +
+      "undefined) affects ONLY the dwelling-separation finding - rear/height/side/front all still produce real KNOWN findings from the SAME ACTIVE " +
+      "rule set the real staging shed rules use (rear setback, height, dwelling separation, side/front setback together, exactly as they're actually " +
+      "loaded in production/staging)",
+    () => {
+      const outcome = evaluateProject({
+        propertyContext: propertyContext(),
+        project: {
+          projectType: "shed",
+          widthFt: 8,
+          depthFt: 10,
+          heightFt: 15, // > 12ft max - deliberately FAILs, proving this isn't a "nothing evaluated" false positive
+          alleyAdjacent: false,
+          distanceToRearLotLineFt: 6,
+          distanceToSideLotLineFt: 2,
+          distanceToFrontLotLineFt: 20,
+          // distanceToDwellingFt intentionally omitted - simulates Building Intelligence returning
+          // zero footprints, multiple footprints with none selected, or a selection that didn't
+          // match fresh source data. Never fabricated or defaulted.
+        },
+        candidateActiveRules: [rearSetbackRule, heightRule, dwellingSeparationRule, sideFrontSetbackRule],
+        ecaFindings: [],
+        candidateActiveInferencePolicies: [],
+      });
+
+      expect(outcome.status).toBe("COMPLETE");
+      expect(outcome.findings.length).toBeGreaterThanOrEqual(4); // rear, height, dwelling, side, front (side/front produce 2 findings)
+
+      const rearFinding = outcome.findings.find((f) => f.appliedRule?.id === rearSetbackRule.id);
+      const heightFinding = outcome.findings.find((f) => f.appliedRule?.id === heightRule.id);
+      const sideFinding = outcome.findings.find((f) => f.subject.endsWith("(side)"));
+      const frontFinding = outcome.findings.find((f) => f.subject.endsWith("(front)"));
+      const dwellingFinding = outcome.findings.find((f) => f.appliedRule?.id === dwellingSeparationRule.id);
+
+      // The 4 unrelated findings are all real, evaluated KNOWN results - never suppressed, never
+      // REQUIRES_VERIFICATION, just because Building Intelligence didn't establish a dwelling.
+      expect(rearFinding).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+      expect(heightFinding).toMatchObject({ classification: "KNOWN", complianceOutcome: "FAIL" });
+      expect(sideFinding).toMatchObject({ classification: "KNOWN", complianceOutcome: "FAIL" });
+      expect(frontFinding).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+
+      // Only dwelling separation is affected, and only in the expected, fail-closed way.
+      expect(dwellingFinding?.classification).toBe("REQUIRES_VERIFICATION");
+      expect(dwellingFinding?.complianceOutcome).toBeUndefined();
+    }
+  );
+
   it("[hard invariant] INFERRED requires a matching approved InferencePolicy - falls to REQUIRES_VERIFICATION without one", () => {
     const withoutPolicy = evaluateProject({
       propertyContext: propertyContext(),

@@ -12,13 +12,16 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { FindingClassification } from "../../../../src/regulatory-rules-engine/types.js";
-import type { ComplianceOutcome, FindingClassification as FindingClassificationType } from "../../../../src/regulatory-rules-engine/types.js";
+import { FindingClassification, ComplianceOutcome } from "../../../../src/regulatory-rules-engine/types.js";
+import type { ComplianceOutcome as ComplianceOutcomeType, FindingClassification as FindingClassificationType } from "../../../../src/regulatory-rules-engine/types.js";
+import { Container } from "../../../components/ui/Container.js";
+import { Card } from "../../../components/ui/Card.js";
+import { Badge } from "../../../components/ui/Badge.js";
 
 interface Finding {
   subject: string;
   classification: FindingClassificationType;
-  complianceOutcome?: ComplianceOutcome;
+  complianceOutcome?: ComplianceOutcomeType;
   explanationBasis: string;
   supportingEvidence: string[];
 }
@@ -51,45 +54,68 @@ export default function AccountReportPage() {
     };
   }, [params.orderId]);
 
-  if (report === "LOADING") return <p>Loading...</p>;
-  if (report === "NOT_FOUND") return <p>Report not found, or this account doesn&apos;t have access to it.</p>;
+  if (report === "LOADING")
+    return (
+      <Container>
+        <p className="text-sm text-slate-500">Loading...</p>
+      </Container>
+    );
+  if (report === "NOT_FOUND")
+    return (
+      <Container>
+        <Card>
+          <p className="text-sm text-slate-600">Report not found, or this account doesn&apos;t have access to it.</p>
+        </Card>
+      </Container>
+    );
 
   const knownAndInferred = report.findings.filter((f) => f.classification !== FindingClassification.REQUIRES_VERIFICATION);
   const requiresVerification = report.findings.filter((f) => f.classification === FindingClassification.REQUIRES_VERIFICATION);
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
-      <a href="/account">&larr; Back to your account</a>
-      <h1>Permit Preflight - Screening Report</h1>
-      <p>Generated: {new Date(report.generatedAt).toLocaleString()}</p>
+    <Container>
+      <a href="/account" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        &larr; Back to your account
+      </a>
+      <h1 className="mt-3 text-xl font-semibold text-slate-900">Screening Report</h1>
+      <p className="text-sm text-slate-500">Generated: {new Date(report.generatedAt).toLocaleString()}</p>
 
-      <h2>Findings</h2>
-      {knownAndInferred.map((f, i) => (
-        <div key={i} style={{ padding: 8, marginBottom: 8, border: "1px solid #ddd" }}>
-          <strong>{f.subject}</strong> - {f.classification}
-          {f.complianceOutcome ? ` (${f.complianceOutcome})` : ""}
-          <p>{f.explanationBasis}</p>
-        </div>
-      ))}
+      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Findings</h2>
+      <div className="mb-8 flex flex-col gap-3">
+        {knownAndInferred.map((f, i) => (
+          <Card key={i}>
+            <div className="flex flex-wrap items-center gap-2">
+              <strong className="text-sm text-slate-900">{f.subject}</strong>
+              <Badge tone="neutral">{f.classification}</Badge>
+              {f.complianceOutcome && (
+                <Badge tone={f.complianceOutcome === ComplianceOutcome.PASS ? "success" : "danger"}>{f.complianceOutcome}</Badge>
+              )}
+            </div>
+            <p className="mt-2 text-sm text-slate-600">{f.explanationBasis}</p>
+          </Card>
+        ))}
+      </div>
 
       {requiresVerification.length > 0 && (
         <>
-          <h2>Requires verification</h2>
-          {requiresVerification.map((f, i) => (
-            <div key={i} style={{ padding: 8, marginBottom: 8, border: "1px solid #ddd" }}>
-              <strong>{f.subject}</strong>
-              <p>{f.explanationBasis}</p>
-            </div>
-          ))}
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Requires verification</h2>
+          <div className="mb-8 flex flex-col gap-3">
+            {requiresVerification.map((f, i) => (
+              <div key={i} className="rounded-xl border-l-4 border-amber-500 bg-amber-50 p-4">
+                <strong className="text-sm text-slate-900">{f.subject}</strong>
+                <p className="mt-2 text-sm text-amber-900">{f.explanationBasis}</p>
+              </div>
+            ))}
+          </div>
         </>
       )}
 
       {report.explanation && (
         <>
-          <h2>Explanation</h2>
-          <p>{report.explanation.text}</p>
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Explanation</h2>
+          <p className="text-sm text-slate-600">{report.explanation.text}</p>
         </>
       )}
-    </main>
+    </Container>
   );
 }

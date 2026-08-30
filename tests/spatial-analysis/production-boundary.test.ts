@@ -36,7 +36,7 @@ function listTsFilesRecursive(dir: string): string[] {
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
       files.push(...listTsFilesRecursive(fullPath));
-    } else if (entry.endsWith(".ts")) {
+    } else if (entry.endsWith(".ts") || entry.endsWith(".tsx")) {
       files.push(fullPath);
     }
   }
@@ -110,7 +110,19 @@ describe("Spatial Analysis / PostGIS production boundary", () => {
 });
 
 describe("CRS boundary (Code Generation correction, 2026-08-23)", () => {
-  it("[hard invariant] the removed local flat-earth coordinate approximation is not used by any production path (src/ or app/)", () => {
+  /** UI-ONLY files explicitly approved to use this approximation, each with its own disclosed,
+   * narrow scope (nudge amounts, footprint/edge PREVIEW rendering, and - as of the 2026-08-30
+   * Placement-step UX pass - the deterministic rear-lot-line SUGGESTION heuristic) - never for a
+   * value this codebase actually submits to the server or uses in a regulatory computation. This
+   * list only grew by one entry (parcel-placement-helpers.ts, the pure logic extracted out of
+   * ParcelPlacementMap.tsx/ReviewPlacementMap.tsx for unit-testability) when this check was
+   * extended below to also scan .tsx files - a real, previously-unnoticed gap (listTsFilesRecursive
+   * only matched ".ts", so ParcelPlacementMap.tsx/ReviewPlacementMap.tsx's own already-approved use
+   * of this exact pattern was never actually being verified at all). Any new .tsx/.ts file using
+   * this pattern must be added here deliberately - it is never silently allowed. */
+  const ALLOWED_UI_ONLY_FILES = ["app/components/ParcelPlacementMap.tsx", "app/components/ReviewPlacementMap.tsx", "app/components/parcel-placement-helpers.ts"];
+
+  it("[hard invariant] the removed local flat-earth coordinate approximation is not used by any production path (src/ or app/) outside the disclosed UI-only exceptions", () => {
     const appRoot = fileURLToPath(new URL("../../app", import.meta.url));
     const roots = [SRC_ROOT, appRoot];
     // Constants/patterns unique to the removed approximation (meters-per-degree scaling, the
@@ -122,16 +134,25 @@ describe("CRS boundary (Code Generation correction, 2026-08-23)", () => {
     for (const root of roots) {
       for (const file of listTsFilesRecursive(root)) {
         if (file.includes(`${dirname(root)}/tests`)) continue;
+        const relativePath = relative(dirname(SRC_ROOT), file);
+        if (ALLOWED_UI_ONLY_FILES.includes(relativePath)) continue;
         const contents = readFileSync(file, "utf-8");
         for (const pattern of forbiddenPatterns) {
           if (pattern.test(contents)) {
-            offenders.push(relative(dirname(SRC_ROOT), file));
+            offenders.push(relativePath);
             break;
           }
         }
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("[hard invariant] every ALLOWED_UI_ONLY_FILES entry still exists and still actually contains the pattern - the allowlist itself can never silently accumulate stale/unnecessary entries", () => {
+    for (const relativePath of ALLOWED_UI_ONLY_FILES) {
+      const contents = readFileSync(join(dirname(SRC_ROOT), relativePath), "utf-8");
+      expect([/111_?320/, /110_?540/, /\/\s*0\.3048/].some((p) => p.test(contents))).toBe(true);
+    }
   });
 
   it("PostGIS's ST_Transform is the only reprojection mechanism referenced anywhere in the spatial-analysis component", () => {

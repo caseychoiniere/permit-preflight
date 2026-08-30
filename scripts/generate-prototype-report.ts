@@ -24,7 +24,7 @@ import { getDb } from "../src/db/client.js";
 import { authorizeReportGeneration } from "../src/screening-request/authorization.js";
 import { claimQueuedJob } from "../src/report-generation-job/repository.js";
 import { runReportGenerationPipeline } from "../src/report-generation-orchestrator/pipeline.js";
-import { createAnthropicCompletionClient } from "../src/rule-research-assistant/anthropic-client.js";
+import { generateReportExplanation } from "../src/report-explanation/anthropic-wiring.js";
 import { logger } from "../src/shared/logger.js";
 
 async function main(): Promise<void> {
@@ -58,14 +58,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  let reportExplanationClient;
-  try {
-    reportExplanationClient = createAnthropicCompletionClient();
-  } catch {
-    reportExplanationClient = undefined; // ANTHROPIC_API_KEY not set - degrades gracefully (BR-U2-8).
-  }
-
-  await runReportGenerationPipeline(db, claimed, { reportExplanationClient });
+  // 2026-08-28: generateReportExplanation owns constructing the real Anthropic client (or
+  // degrading gracefully if ANTHROPIC_API_KEY isn't set) as one self-contained operation - see
+  // src/report-explanation/anthropic-wiring.ts.
+  await runReportGenerationPipeline(db, claimed, { generateExplanation: generateReportExplanation });
   console.log(`ReportGenerationJob ${result.reportGenerationJobId} finished. Check its state in the database for COMPLETE/FAILED.`);
 }
 

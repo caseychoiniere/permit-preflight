@@ -4,8 +4,20 @@
  * follows. Uses a FAKE StripeClient/ResendClient throughout (tests/fixtures/) - only DATABASE_URL
  * is required, never STRIPE_SECRET_KEY, since these tests verify the database-level correctness
  * this unit is built around, not Stripe integration itself (see stripe-live.integration.test.ts
- * for that). NOT executed in this Code Generation session - no DATABASE_URL provisioned in this
- * sandbox.
+ * for that).
+ *
+ * Test-isolation correction (2026-08-27, founder-directed): this suite runs repeatedly against a
+ * PERSISTENT real Neon staging database. Every hardcoded literal Stripe event ID below (e.g.
+ * "evt_orderA") was identical on every run, colliding with the processed-events ledger row a PRIOR
+ * run already inserted for that exact id - production webhook deduplication then correctly
+ * (per BR-U2B-4) treated the event as already-processed, leaving the order PENDING with no job.
+ * That is fixture contamination, not a production defect - the dedup behavior is exactly what
+ * BR-U2B-4 requires. Every event ID is now suffixed with RUN_ID, unique per process invocation;
+ * within a single test that intentionally redelivers the SAME event twice (the ledger-dedup test),
+ * the same generated id is still reused for both calls, since the invariant under test is same-
+ * event-twice-within-one-run, not cross-run uniqueness. screeningRequests/orders were already
+ * created fresh per test (makeScreeningRequest, real createCheckoutSession calls) and already
+ * cleaned up in FK-safe order - unchanged.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -25,6 +37,8 @@ import { createFakeStripeClient } from "../fixtures/fake-stripe-client.js";
 import { makeCheckoutSessionCompletedEvent, makeCheckoutSessionExpiredEvent } from "../fixtures/stripe.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
+/** Unique per process invocation - see the test-isolation correction note above. */
+const RUN_ID = crypto.randomUUID().slice(0, 8);
 
 describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () => {
   let db: Db;
@@ -136,7 +150,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       const [order] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!order) throw new Error("setup failed");
 
-      const event = makeCheckoutSessionCompletedEvent({ orderId: order.id, eventId: "evt_dedup_test" });
+      const event = makeCheckoutSessionCompletedEvent({ orderId: order.id, eventId: `evt_dedup_test_${RUN_ID}` });
       await handleVerifiedWebhook(event);
       const secondResult = await handleVerifiedWebhook(event);
 
@@ -166,7 +180,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       await createCheckoutSession(db, stripeClient, { screeningRequestId, priceCents: 999, currency: "usd", successUrl: "https://x/success", cancelUrl: "https://x/cancel" });
       const [orderA] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!orderA) throw new Error("setup failed");
-      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderA.id, eventId: "evt_orderA" }));
+      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderA.id, eventId: `evt_orderA_${RUN_ID}` }));
       const paidA = await getOrderById(db, orderA.id);
       expect(paidA?.state).toBe(OrderState.PAID);
 
@@ -179,7 +193,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
         .returning();
       if (!orderB) throw new Error("setup failed");
 
-      const result = await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderB.id, eventId: "evt_orderB_duplicate", paymentIntentId: "pi_test_orderB" }));
+      const result = await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderB.id, eventId: `evt_orderB_duplicate_${RUN_ID}`, paymentIntentId: `pi_test_orderB_${RUN_ID}` }));
 
       expect(result.duplicateAnomaly).toBe(true);
       expect(result.startWorkflow).toEqual({ kind: "REFUND", orderId: orderB.id, reason: RefundReason.DUPLICATE_PAYMENT });
@@ -187,7 +201,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       const reloadedB = await getOrderById(db, orderB.id);
       expect(reloadedB?.state).toBe(OrderState.REFUND_PENDING);
       expect(reloadedB?.paidAt).toBeTruthy(); // set for REAL - Stripe genuinely confirmed this payment.
-      expect(reloadedB?.stripePaymentIntentId).toBe("pi_test_orderB");
+      expect(reloadedB?.stripePaymentIntentId).toBe(`pi_test_orderB_${RUN_ID}`);
       expect(reloadedB?.refundReason).toBe(RefundReason.DUPLICATE_PAYMENT);
 
       const jobs = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.screeningRequestId, screeningRequestId));
@@ -206,7 +220,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       await createCheckoutSession(db, stripeClient, { screeningRequestId, priceCents: 999, currency: "usd", successUrl: "https://x/success", cancelUrl: "https://x/cancel" });
       const [orderA] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!orderA) throw new Error("setup failed");
-      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderA.id, eventId: "evt_orderA_2" }));
+      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderA.id, eventId: `evt_orderA_2_${RUN_ID}` }));
 
       // Order A (the canonical order) is later refunded for an ordinary reason (not a duplicate).
       await processRefund(db, stripeClient, orderA.id, RefundReason.GENERATION_FAILURE);
@@ -222,7 +236,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
         .returning();
       if (!orderC) throw new Error("setup failed");
 
-      const result = await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderC.id, eventId: "evt_orderC_duplicate", paymentIntentId: "pi_test_orderC" }));
+      const result = await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderC.id, eventId: `evt_orderC_duplicate_${RUN_ID}`, paymentIntentId: `pi_test_orderC_${RUN_ID}` }));
       expect(result.duplicateAnomaly).toBe(true);
 
       const reloadedC = await getOrderById(db, orderC.id);

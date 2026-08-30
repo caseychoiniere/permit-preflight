@@ -41,10 +41,27 @@ function rowToOrder(row: OrderRow): Order {
   };
 }
 
-/** Postgres unique-violation SQLSTATE - used to detect a lost race against BR-U2B-1's partial
- * unique indexes, never surfaced to the customer as a generic error. */
+/**
+ * Postgres unique-violation SQLSTATE - used to detect a lost race against BR-U2B-1's partial
+ * unique indexes, never surfaced to the customer as a generic error.
+ *
+ * Corrected 2026-08-27 (real production defect, found via live Neon integration testing - not a
+ * test-fixture issue): the neon-serverless driver's `tx.transaction()` (used for the SAVEPOINT
+ * this function's own caller relies on) wraps the real Postgres error in an outer `Failed query:
+ * ...` Error, with the actual driver error (carrying `.code`) on `.cause`, not on the outer object
+ * itself. The original shallow `"code" in err` check only ever inspected the outer wrapper, so it
+ * NEVER actually detected a real unique violation against a live database - the duplicate-payment-
+ * anomaly SAVEPOINT catch (handlePaymentConfirmed, below) always rethrew instead of routing to the
+ * REFUND_PENDING/DUPLICATE_PAYMENT branch, meaning that fail-safe had never actually functioned
+ * against Postgres before this was caught. Now walks the full `.cause` chain.
+ */
 function isUniqueViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && "code" in err && (err as { code?: unknown }).code === "23505";
+  let current: unknown = err;
+  while (typeof current === "object" && current !== null) {
+    if ("code" in current && (current as { code?: unknown }).code === "23505") return true;
+    current = "cause" in current ? (current as { cause?: unknown }).cause : undefined;
+  }
+  return false;
 }
 
 export async function getOrderById(db: Db, orderId: string): Promise<Order | undefined> {

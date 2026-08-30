@@ -142,6 +142,22 @@ export async function listStaleGuestDeliveries(db: Db, staleThresholdMs: number 
     .map((r) => ({ reportArtifactId: r.reportArtifactId, screeningRequestId: r.screeningRequestId }));
 }
 
+/** The delivery status of the currently-active credential for a report, if one exists yet -
+ * Checkout & Fulfillment's post-purchase report page (2026-08-28 correction) uses this to show
+ * "we've also emailed you a link" (or surface a failed send) alongside a report it already has
+ * independent, session-cookie-based access to - this never gates or grants access on its own, and
+ * never returns the credential's token/hash, only its delivery bookkeeping. */
+export async function getActiveCredentialDeliveryStatus(db: Db, reportArtifactId: string): Promise<DeliveryStatus | undefined> {
+  const [row] = await db
+    .select({ deliveryStatus: reportAccessCredentials.deliveryStatus })
+    .from(reportAccessCredentials)
+    .where(and(eq(reportAccessCredentials.reportArtifactId, reportArtifactId), eq(reportAccessCredentials.active, true)));
+  // The column is nullable (no delivery attempted yet, e.g. createEvidenceReportArtifact's own
+  // initial credential before deliverGuestReportAccess has run) - normalized to undefined here
+  // rather than an unsafe cast, so this function's own return type stays accurate.
+  return row?.deliveryStatus ?? undefined;
+}
+
 export interface AccessCredentialSummary {
   active: boolean;
   createdAt: string;

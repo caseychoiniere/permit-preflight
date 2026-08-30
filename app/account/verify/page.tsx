@@ -10,6 +10,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Container } from "../../components/ui/Container.js";
+import { Card } from "../../components/ui/Card.js";
 
 const TOKEN_HASH_PREFIX = "#token=";
 
@@ -48,11 +50,20 @@ export default function AccountVerifyPage() {
     };
   }, [router]);
 
-  if (status === "LOADING") return <p>Signing you in...</p>;
+  if (status === "LOADING")
+    return (
+      <Container className="max-w-md">
+        <p className="text-sm text-slate-500">Signing you in...</p>
+      </Container>
+    );
   return (
-    <main style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <p>This link is invalid or has expired.</p>
-      <a href="/account/login">Request a new sign-in link</a>
-    </main>
+    <Container className="max-w-md">
+      <Card>
+        <p className="text-sm text-slate-600">This link is invalid or has expired.</p>
+        <a href="/account/login" className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
+          Request a new sign-in link
+        </a>
+      </Card>
+    </Container>
   );
 }

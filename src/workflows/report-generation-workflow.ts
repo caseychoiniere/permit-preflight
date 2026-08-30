@@ -21,7 +21,7 @@ import { claimQueuedJob } from "../report-generation-job/repository.js";
 import { runReportGenerationPipeline } from "../report-generation-orchestrator/pipeline.js";
 import { handleGenerationOutcome } from "../checkout-fulfillment/index.js";
 import { createResendClient } from "../email-delivery/resend-client.js";
-import { createAnthropicCompletionClient } from "../rule-research-assistant/anthropic-client.js";
+import { generateReportExplanation } from "../report-explanation/anthropic-wiring.js";
 
 export async function reportGenerationWorkflow(jobId: string) {
   "use workflow";
@@ -63,16 +63,17 @@ async function runPipelineStep(jobId: string): Promise<void> {
   const [job] = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.id, jobId));
   if (!job) return;
 
-  let reportExplanationClient;
-  try {
-    reportExplanationClient = createAnthropicCompletionClient();
-  } catch {
-    // ANTHROPIC_API_KEY not set - Report Explanation degrades gracefully (BR-U2-8); the pipeline
-    // still runs without it.
-    reportExplanationClient = undefined;
-  }
-
-  await runReportGenerationPipeline(db, job, { reportExplanationClient });
+  // Product-correctness correction (2026-08-28): this used to construct the Anthropic client
+  // directly here and pass the resulting client OBJECT into runReportGenerationPipeline. Neither
+  // that client nor ANTHROPIC_API_KEY ever actually crossed a Vercel Workflow orchestration
+  // boundary (this whole function already runs inside this "use step" function's own execution,
+  // which has full Node.js access) - but generateExplanation now owns the full "read the key,
+  // construct the client, call explainFindings" operation as one self-contained unit (see
+  // report-explanation/anthropic-wiring.ts), matching the general guidance to keep
+  // credential-handling entirely inside a step's own execution rather than split across this
+  // orchestration file and the pipeline it calls. Only a plain callback reference crosses into
+  // runReportGenerationPipeline below - never a key or client value.
+  await runReportGenerationPipeline(db, job, { generateExplanation: generateReportExplanation });
 }
 
 async function reloadJobStep(jobId: string): Promise<ReportGenerationJobRow | undefined> {

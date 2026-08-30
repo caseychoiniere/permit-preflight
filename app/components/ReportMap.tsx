@@ -31,6 +31,21 @@ interface Props {
   evidence: EvidenceEntry[];
 }
 
+/** Regression fix (2026-08-30) - the immutable, already-evaluated display geometry persisted by
+ * report-generation-orchestrator/pipeline.ts (existing-structures-wgs84-display). This component
+ * never fetches Building Outlines itself - it only ever draws what's already in the artifact, same
+ * discipline as the boundary/footprint above. */
+interface ExistingStructureWgs84Display {
+  outlineId: string;
+  footprintWgs84: GeographicPoint[];
+  classification: string;
+}
+
+// Same building/selected-dwelling colors as ParcelPlacementMap.tsx and ReviewPlacementMap.tsx - a
+// consistency requirement (the same selected dwelling must look the same across every stage).
+const BUILDING_COLOR = "#64748b";
+const BUILDING_SELECTED_COLOR = "#7c3aed";
+
 function ringToCoords(points: GeographicPoint[]): [number, number][] {
   const coords = points.map((p): [number, number] => [p.lng, p.lat]);
   return [...coords, coords[0]!];
@@ -41,6 +56,7 @@ export function ReportMap({ evidence }: Props) {
 
   const boundary = evidence.find((e) => e.factType === "parcel-boundary-wgs84-display")?.value as GeographicPoint[] | undefined;
   const footprint = evidence.find((e) => e.factType === "proposed-footprint-wgs84-display")?.value as GeographicPoint[] | undefined;
+  const existingStructures = (evidence.find((e) => e.factType === "existing-structures-wgs84-display")?.value as ExistingStructureWgs84Display[] | undefined) ?? [];
 
   useEffect(() => {
     if (!mapContainerRef.current || !boundary || boundary.length === 0) return;
@@ -57,10 +73,27 @@ export function ReportMap({ evidence }: Props) {
       interactive: true, // pan/zoom only - no editing controls, per the "deliberately minimal" scope
     });
 
-    map.on("load", () => {
+    // "style.load" rather than "load" (2026-08-28 correction, same root cause found live in
+    // ParcelPlacementMap.tsx): "load" additionally waits on glyph/sprite resources for the base
+    // style's own symbol layers and can hang indefinitely even once the style/tiles are otherwise
+    // ready; none of this component's own setup needs glyphs, so "style.load" is the reliable
+    // trigger.
+    map.on("style.load", () => {
       map.addSource("parcel-boundary", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ringToCoords(boundary)] } } });
       map.addLayer({ id: "parcel-boundary-fill", type: "fill", source: "parcel-boundary", paint: { "fill-color": "#2563eb", "fill-opacity": 0.08 } });
       map.addLayer({ id: "parcel-boundary-line", type: "line", source: "parcel-boundary", paint: { "line-color": "#2563eb", "line-width": 2 } });
+
+      if (existingStructures.length > 0) {
+        const buildingFeatures: GeoJSON.Feature[] = existingStructures.map((s) => ({
+          type: "Feature",
+          properties: { classification: s.classification },
+          geometry: { type: "Polygon", coordinates: [ringToCoords(s.footprintWgs84)] },
+        }));
+        map.addSource("existing-structures", { type: "geojson", data: { type: "FeatureCollection", features: buildingFeatures } });
+        const colorExpr: maplibregl.ExpressionSpecification = ["case", ["==", ["get", "classification"], "PRIMARY_DWELLING"], BUILDING_SELECTED_COLOR, BUILDING_COLOR];
+        map.addLayer({ id: "existing-structures-fill", type: "fill", source: "existing-structures", paint: { "fill-color": colorExpr, "fill-opacity": 0.35 } });
+        map.addLayer({ id: "existing-structures-line", type: "line", source: "existing-structures", paint: { "line-color": colorExpr, "line-width": 2 } });
+      }
 
       if (footprint && footprint.length > 0) {
         map.addSource("proposed-footprint", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ringToCoords(footprint)] } } });
@@ -70,16 +103,18 @@ export function ReportMap({ evidence }: Props) {
     });
 
     return () => map.remove();
-  }, [boundary, footprint]);
+  }, [boundary, footprint, existingStructures]);
 
   if (!boundary) {
-    return <p><em>Map view unavailable for this report (no parcel geometry was recorded).</em></p>;
+    return (
+      <p className="p-5 text-sm italic text-slate-500">Map view unavailable for this report (no parcel geometry was recorded).</p>
+    );
   }
 
   return (
     <div>
-      <div ref={mapContainerRef} style={{ width: "100%", height: 320 }} role="img" aria-label="Map showing the parcel boundary and proposed shed footprint" />
-      <p><small>Map view is a visual summary only - see the findings list above for the complete, accessible record of every finding.</small></p>
+      <div ref={mapContainerRef} className="h-80 w-full" role="img" aria-label="Map showing the parcel boundary and proposed shed footprint" />
+      <p className="px-5 py-3 text-xs text-slate-500">Map view is a visual summary only - see the findings list above for the complete, accessible record of every finding.</p>
     </div>
   );
 }

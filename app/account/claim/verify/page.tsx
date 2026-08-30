@@ -12,6 +12,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Container } from "../../../components/ui/Container.js";
+import { Card } from "../../../components/ui/Card.js";
 
 const TOKEN_HASH_PREFIX = "#token=";
 
@@ -50,11 +52,20 @@ export default function AccountClaimVerifyPage() {
     };
   }, [router]);
 
-  if (status === "LOADING") return <p>Confirming your purchase...</p>;
+  if (status === "LOADING")
+    return (
+      <Container className="max-w-md">
+        <p className="text-sm text-slate-500">Confirming your purchase...</p>
+      </Container>
+    );
   return (
-    <main style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <p>Open this verification link in the browser/account where you started the claim, or sign in and request a new verification email.</p>
-      <a href="/account/login">Sign in</a>
-    </main>
+    <Container className="max-w-md">
+      <Card>
+        <p className="text-sm text-slate-600">Open this verification link in the browser/account where you started the claim, or sign in and request a new verification email.</p>
+        <a href="/account/login" className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
+          Sign in
+        </a>
+      </Card>
+    </Container>
   );
 }

@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { computeParcelAreaSqFt, computeSetbackDistances, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
+import { computeDistanceToDwelling, computeParcelAreaSqFt, computeSetbackDistances, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
 import { deriveLotLineRoleAssignment } from "../../src/spatial-analysis/lot-line-roles.js";
 import { AUTHORITATIVE_PARCEL_SRID } from "../../src/property-intelligence/king-county-parcel-geometry.js";
 import type { Db } from "../../src/db/client.js";
@@ -55,6 +55,16 @@ describe("PostGIS adapter - fail-closed SRID guard (deterministic, no DB)", () =
   it("[hard invariant] computeParcelAreaSqFt (Unit 4) rejects a boundary polygon tagged with the wrong srid", async () => {
     const wrongSrid: Polygon = { ...authoritativeBoundary, srid: 4326 };
     await expect(computeParcelAreaSqFt(neverUsedDb, wrongSrid)).rejects.toThrow(/srid/i);
+  });
+
+  it("[hard invariant] computeDistanceToDwelling (building intelligence v1) rejects a shed footprint with no srid at all", async () => {
+    const untagged: Polygon = { units: "FEET", points: authoritativeBoundary.points };
+    await expect(computeDistanceToDwelling(neverUsedDb, untagged, authoritativeBoundary)).rejects.toThrow(/srid/i);
+  });
+
+  it("[hard invariant] computeDistanceToDwelling (building intelligence v1) rejects a dwelling footprint tagged with the wrong srid", async () => {
+    const wrongSrid: Polygon = { ...authoritativeBoundary, srid: 4326 };
+    await expect(computeDistanceToDwelling(neverUsedDb, authoritativeBoundary, wrongSrid)).rejects.toThrow(/srid/i);
   });
 
   it("INSUFFICIENT lot-line assignment short-circuits before any SRID-dependent computation, returning an empty result", async () => {

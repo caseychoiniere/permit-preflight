@@ -34,4 +34,9 @@ export const KNOWN_SOURCE_DEFINITIONS: Record<string, KnownSourceDefinition> = {
     expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
     description: "King County parcel-polygon boundary layer (property-intelligence) - queried live, per report-generation request.",
   },
+  "seattle-building-outlines": {
+    sourceId: "seattle-building-outlines",
+    expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
+    description: "City of Seattle Building Outlines 2023 (property-intelligence, building intelligence v1) - queried live, per shed report-generation request.",
+  },
 };

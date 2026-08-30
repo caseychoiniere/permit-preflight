@@ -17,10 +17,20 @@
 
 import type Stripe from "stripe";
 
+/**
+ * Test-isolation correction (2026-08-27, founder-directed): a plain in-process counter reset to 0
+ * on every fresh `vitest run` invocation - against a THROWAWAY database that was harmless (each
+ * run started from empty), but against a PERSISTENT real Neon staging database it produced the
+ * exact same event ID (`evt_test_1`, `evt_test_2`, ...) on every run, colliding with rows the
+ * processed-events ledger already inserted on a PRIOR run. Production webhook deduplication then
+ * correctly treated the "new" event as already-processed - not a production bug, a fixture-
+ * uniqueness bug. Every auto-generated event id is now globally unique (crypto.randomUUID()),
+ * with the counter kept only for human-readable ordering in test output, never for uniqueness.
+ */
 let eventCounter = 0;
 function nextEventId(): string {
   eventCounter += 1;
-  return `evt_test_${eventCounter}`;
+  return `evt_test_${eventCounter}_${crypto.randomUUID()}`;
 }
 
 export function makeCheckoutSession(overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.Checkout.Session {

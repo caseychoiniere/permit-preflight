@@ -138,6 +138,22 @@ repository as part of the project's AIDLC audit trail (see `CLAUDE.md`'s Prompts
 Requirements, which this extends the same discipline to). It never contains secrets or full
 source files - only summaries/metadata and the artifact *paths* that were reviewed.
 
+**The automated test suite can never write here** - `vitest.config.ts` points every test at an
+isolated fixture repo before any test file's imports run, and `test/production-log-isolation.test.ts`
+continuously verifies that `appendDecision()`'s real default path resolves only to the fixture
+repo, never to this file (see "Tests" below).
+
+**A live, manually-invoked call is different** - if you connect Claude Code to this server via
+the real `.mcp.json` (e.g. to verify connectivity, as a one-off check outside the automated
+suite), it calls the real production server and therefore appends to this real log by design -
+that's what makes the log authoritative for real gates. If you want to run a live connectivity
+check WITHOUT adding an entry to the real audit history, point the server at a scratch directory
+for that one run instead: `AIDLC_REVIEWER_REPO_ROOT=/tmp/aidlc-reviewer-smoke-check npx tsx
+src/index.ts` (create that directory first, with its own `.ai/reviewer/{decision-policy.md,
+system-prompt.md}` copied in). Two prior smoke-test entries reached this real log exactly this
+way and had to be removed by hand (2026-09-14) - prefer the scratch-directory approach for any
+future live check that isn't itself a real AIDLC gate.
+
 ## Security model
 
 - **Filesystem**: every artifact/changed-file path Claude supplies is resolved through
@@ -189,7 +205,9 @@ a dedicated prompt-injection suite (real attempted-injection fixtures proving ar
 can never forge policy/instruction structure or a fake decision), and the full `review_gate`
 handler end to end, including the required smoke scenario (a valid `APPROVE` passes through;
 `authority: RESERVED_FOUNDER` paired with `decision: APPROVE` is rejected rather than silently
-accepted).
+accepted); and `production-log-isolation.test.ts`, which independently re-derives the real
+project root and proves `appendDecision()`'s real default path can never write to the real
+`.ai/reviewer/decisions.jsonl` from a test run.
 
 ```bash
 npm run typecheck

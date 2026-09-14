@@ -1,0 +1,25 @@
+{
+  "name": "aidlc-reviewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local MCP server exposing an independent OpenAI-backed AIDLC gate reviewer (aidlc-reviewer.review_gate) with bounded delegated authority.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "openai": "^7.15.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

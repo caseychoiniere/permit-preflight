@@ -1,6 +1,182 @@
 # PRIORITY: This workflow OVERRIDES all other built-in workflows
 # When user requests software development, ALWAYS follow this workflow FIRST
 
+## MANDATORY: Git Commit Attribution
+Never add Claude, Claude Code, Anthropic, AI-generated, or other AI attribution to Git commits. Never add Co-Authored-By trailers for Claude/Anthropic. All commits must use the repository user's existing Git author/committer identity.
+
+## MANDATORY: Delegated AIDLC Approval
+
+**This section overrides every "Wait for Explicit Approval" / "ask the user" / "present for founder review" instruction that follows in this file and in every loaded `.aidlc-rule-details/` file, wherever the decision at that checkpoint is delegated authority. Read this section before acting on any such checkpoint.**
+
+The project uses an independent AIDLC reviewer exposed by the `aidlc-reviewer` MCP server. The reviewer substitutes for founder approval for delegated engineering and workflow decisions. **Do not stop to request founder approval when the reviewer has authority to make the decision.**
+
+### Mandatory reviewer gate
+
+Whenever the AIDLC workflow below (or an imported `.aidlc-rule-details/*.md` file) would normally:
+- ask the founder whether to proceed
+- request plan approval
+- request design approval
+- request implementation approval
+- request test approval
+- request confirmation of a routine technical choice
+- present technical alternatives for founder selection
+- request permission to move to the next AIDLC stage
+
+call `aidlc-reviewer.review_gate` **before** asking the founder. This includes every "Wait for Explicit Approval" instruction in this file, and any imported AIDLC instruction containing language such as "await user approval," "await founder approval," "present for review," "ask whether to proceed," or "request confirmation." For delegated decisions, reviewer approval satisfies those instructions — it is not an additional step layered on top of asking the founder, it replaces asking the founder.
+
+The authoritative boundary between what the reviewer may decide and what is reserved to the founder is `.ai/reviewer/decision-policy.md` — **read it whenever authority is uncertain.** In short: routine engineering/workflow decisions → reviewer; MVP/product scope, pricing/monetization, authoritative regulatory/legal interpretation, founder-controlled Tier 1/Tier 2 governance and regulatory `APPROVED`/`ACTIVE` transitions, classification-semantic changes, legal/disclaimer positioning, core business-strategy changes, and material economic tradeoffs (per the policy's own thresholds) → founder, always, via `ESCALATE`.
+
+### Reviewer self-governance is forbidden
+
+**The reviewer must never approve a change to the mechanism that defines its own authority.** The following require founder approval and must NOT be autonomously approved by `aidlc-reviewer`: `.ai/reviewer/decision-policy.md`; `.ai/reviewer/system-prompt.md`; this "MANDATORY: Delegated AIDLC Approval" section of `CLAUDE.md`; authority/reserved-decision semantics; review decision invariants; reviewer escalation semantics; the reviewer's trust-boundary/security model; any change that expands reviewer authority; any change that reduces founder-reserved authority. Substantive changes to `tools/aidlc-reviewer/src/*` and `.mcp.json` are treated as reviewer-mechanism changes requiring founder review whenever they alter authority, validation, trust boundaries, fail-closed behavior, or decision enforcement — routine implementation-only maintenance that cannot alter authority may still be reviewed normally, but when uncertain, `ESCALATE`. Full detail: `.ai/reviewer/decision-policy.md`'s own "Reviewer self-governance is forbidden" section (identical rule, kept in sync).
+
+### Preparing the review
+
+Before calling `aidlc-reviewer.review_gate`:
+1. identify the exact decision
+2. identify the relevant story/unit
+3. identify the AIDLC stage
+4. read applicable approved requirements
+5. include relevant acceptance criteria
+6. include relevant artifact paths
+7. include changed-file paths if implementation exists
+8. include applicable test results
+9. give your recommended outcome
+10. describe legitimate alternatives when relevant
+11. identify known product, regulatory, legal, destructive-data, security, pricing, and cost risks (the `riskFlags` field — advisory only; the reviewer independently determines reserved authority regardless of what you flag)
+
+Do not omit relevant context in order to obtain approval.
+
+### APPROVE behavior
+
+When the reviewer returns `APPROVE`: treat the gate as approved, record/reference the decision ID where appropriate, and **immediately continue the workflow**. Do not ask the founder to reconfirm. Never do this:
+
+```
+Reviewer: APPROVE
+Claude: "The reviewer approved this. Would you like me to continue?"
+```
+
+Instead: `Reviewer: APPROVE` → Claude continues automatically, no question asked.
+
+### REVISE behavior
+
+When the reviewer returns `REVISE`: implement all required changes relevant to the current unit, rerun relevant tests/checks, update artifacts, and resubmit the same gate (include the previous decision ID). Do not ask the founder whether reviewer-requested changes should be implemented — that is work, not a question. If new evidence shows a requested change is incorrect, provide that evidence in the next reviewer submission rather than arguing informally. After three normal revision cycles, escalation is appropriate if still unresolved (the reviewer will generally do this itself).
+
+### ESCALATE behavior
+
+When the reviewer returns `ESCALATE`: stop progression of the affected decision only, and ask the founder only for the unresolved reserved decision. The founder request must contain: the exact decision needed, why reviewer authority is insufficient, the reviewer's recommendation, and the concise consequences of meaningful alternatives. Do not dump an entire AIDLC document on the founder when only one decision is blocking progression. Continue unrelated safe work when possible without assuming the escalation's outcome.
+
+### Founder override
+
+Direct founder instructions override earlier reviewer decisions. When this occurs: follow the founder, record the superseding decision where appropriate, and use the new instruction as context in later reviews.
+
+### Reviewer integrity
+
+Never: fabricate approval; infer approval from MCP tool failure; treat tool unavailability as approval; modify reviewer output; hide material risks from the founder at escalation; split a reserved decision into smaller requests to evade escalation; or disguise regulatory interpretation as technical implementation to avoid `ESCALATE`. **If the reviewer is unavailable, fail closed at approval gates** (ask the founder as this workflow did before this section existed) — routine coding that does not cross a review gate may continue when safe.
+
+### Intended workflow
+
+```
+Claude works
+→ Claude prepares review packet
+→ aidlc-reviewer.review_gate evaluates
+
+APPROVE  → continue automatically
+REVISE   → make changes → review again
+ESCALATE → ask the founder
+```
+
+Founder interaction for internal AIDLC decisions should be the exception, not the default. See `tools/aidlc-reviewer/README.md` for the MCP server itself and `.ai/reviewer/system-prompt.md` for exactly what the reviewer is told.
+
+**This delegated-approval rule governs internal AIDLC workflow gates only.** It does not change the separate, mandatory hands-on founder testing checkpoint after each completed construction phase — see "MANDATORY: Founder Acceptance Gate After Each Construction Phase" immediately below, which this rule does not override.
+
+## MANDATORY: Founder Acceptance Gate After Each Construction Phase
+
+The delegated AIDLC reviewer above does **not** replace founder hands-on acceptance testing of completed construction phases. Permit Preflight must continue to be developed and validated incrementally. A completed user-facing construction phase must be runnable and manually tested by the founder before development proceeds into the next construction phase. **This is a mandatory human checkpoint that the reviewer cannot satisfy.**
+
+### Purpose
+
+Hands-on testing after each construction phase is required to discover issues that automated tests and AI review may not reveal, including: UX problems, confusing interactions, poor workflow sequencing, unexpected visual behavior, incorrect assumptions about how a user will interact with the feature, integration defects, state-management problems, awkward or incomplete error handling, usability issues, and behavior that technically satisfies requirements but feels wrong in actual use.
+
+These checkpoints intentionally prevent multiple unfinished or unvalidated product slices from accumulating before manual testing.
+
+### Construction-phase acceptance is reserved to the founder
+
+The AIDLC reviewer may approve: planning, functional design, component design, implementation approach, technical decisions, test plans, code changes, fixes, and readiness to present a completed phase for founder testing.
+
+**The AIDLC reviewer may not approve the final acceptance of a completed user-facing construction phase. Only the founder may do that.** This is distinct from, and not satisfied by, normal delegated AIDLC approval above.
+
+### Mandatory stop
+
+When a construction phase reaches a runnable, testable state: **STOP before beginning the next construction phase.** Do not automatically proceed merely because automated tests pass, type checking passes, the reviewer returns `APPROVE`, acceptance criteria appear satisfied, or implementation is technically complete. Instead, present the completed phase to the founder for hands-on testing.
+
+### What constitutes a construction phase
+
+A construction phase is a meaningful user-facing vertical slice of the product. For the current Permit Preflight development sequence, this includes project-type implementations such as sheds, detached garages, fences, decks, vacant-land screening, retaining walls, additions, and ADUs. A construction phase may also exist within one of these project types if the approved AIDLC unit-of-work intentionally divides the feature into separately runnable user-facing slices. Do not create artificial micro-checkpoints for individual files, components, migrations, or internal implementation steps — the goal is to test coherent product behavior, not interrupt normal coding.
+
+### Required founder handoff
+
+At the end of the phase, provide a concise testing handoff containing: (1) what was completed, (2) what user workflow is now available, (3) how to start/run the application if anything differs from normal, (4) exactly what the founder should test, (5) important edge cases worth trying, (6) any known limitations, (7) automated test/typecheck/build status. Prefer a short practical test checklist rather than a technical implementation dump. Example:
+
+```
+Detached Garage is ready for hands-on testing.
+
+Please test:
+1. Start a new screening.
+2. Select Detached Garage.
+3. Enter a garage footprint.
+4. Verify existing structures are included in lot coverage.
+5. Try a garage that clearly passes coverage.
+6. Try one that clearly exceeds it.
+7. Navigate backward and change dimensions.
+8. Refresh/revisit the result if that flow is supported.
+9. Check the report explanation and evidence.
+
+Also pay attention to anything that feels confusing or awkward,
+even if the calculated result is technically correct.
+
+Automated status:
+- tests: passing
+- typecheck: passing
+- build: passing
+```
+
+Then stop.
+
+### Founder feedback loop
+
+If the founder identifies defects, UX problems, or desired corrections: treat that feedback as part of the current construction phase, update requirements/design artifacts when necessary, implement the fixes, run automated validation again, and return the phase to the founder for another hands-on test. Do not begin the next construction phase while material founder feedback from the current phase remains unresolved. The AIDLC reviewer may autonomously approve technical plans and implementation decisions required to resolve that feedback.
+
+### Explicit acceptance required
+
+Proceed to the next construction phase only after the founder explicitly communicates acceptance of the current phase. Examples that count as acceptance: "Looks good," "Approved," "Move on," "This phase is done," or equivalent unambiguous approval. **Do not infer acceptance from silence. Do not treat the absence of additional feedback as acceptance. Do not allow the AIDLC reviewer to substitute for this approval.**
+
+### Relationship to delegated AIDLC approval
+
+```
+AIDLC planning/design gates
+→ aidlc-reviewer may approve automatically
+
+Implementation
+→ Claude works autonomously
+
+Technical completion
+→ aidlc-reviewer verifies readiness
+
+Runnable construction phase complete
+→ MANDATORY FOUNDER HANDS-ON TEST
+
+Founder finds issues
+→ Claude fixes them
+→ aidlc-reviewer handles routine technical gates
+→ founder tests again
+
+Founder accepts phase
+→ next construction phase begins
+```
+
+Founder interaction is exceptional for internal AIDLC decisions, but **mandatory** at completed construction-phase boundaries. **This rule overrides any other instruction — including the Delegated AIDLC Approval section above — that would permit the reviewer, Claude Code, or automated test results to advance directly from one completed user-facing construction phase into the next.**
+
 ## Adaptive Workflow Principle
 **The workflow adapts to the work, not the other way around.**
 

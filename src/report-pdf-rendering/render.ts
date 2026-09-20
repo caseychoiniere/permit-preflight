@@ -6,14 +6,24 @@
  *
  * Chromium binary source changed 2026-08-24 (Unit 2B platform pivot to Vercel): Vercel's
  * read-only function filesystem can't support Playwright's runtime browser download, so this no
- * longer uses `playwright`'s bundled Chromium (`playwright` itself is unchanged and still used
- * for the unrelated local/CI browser smoke-test suite). Same function signature, same
- * immutable-artifact-only contract - a rendering-library swap inside this one function, not a
+ * longer uses `playwright`'s bundled Chromium for PRODUCTION rendering. Same function signature,
+ * same immutable-artifact-only contract - a rendering-library swap inside this one function, not a
  * redesign of Pattern 6. `@sparticuz/chromium` ships Linux-only binaries (built for Lambda/Vercel's
- * function runtime) - it does not run on macOS/Windows, so local/non-Linux verification of this
- * function is not possible in this sandbox (tests/report-pdf-rendering/render.integration.test.ts
- * skips on non-Linux). Tracked as external-verification-tracker.md item 10 until proven against a
- * real Vercel deployment.
+ * function runtime) - it does not run on macOS/Windows (`spawn ENOEXEC` - confirmed via live
+ * browser verification, 2026-09-17/18). Tracked as external-verification-tracker.md item 10 until
+ * proven against a real Vercel deployment.
+ *
+ * Maintenance correction (2026-09-18, founder-directed bug fix) - `renderPdfBytes` now branches on
+ * `process.platform`: Linux (Vercel's actual production runtime, and CI's ubuntu-latest) takes the
+ * EXACT same `@sparticuz/chromium` + `puppeteer-core` path as before, byte-for-byte unchanged. Any
+ * other platform (a developer's local macOS/Windows machine) falls back to `playwright`'s own
+ * locally-executable Chromium - already an existing production dependency, used elsewhere for the
+ * browser smoke-test suite - solely so this function can actually be exercised end-to-end outside
+ * of a real Linux deployment, without masking or changing what ships to production. This is a
+ * local-verification convenience only, not a claim that the fallback's PDF output is byte-identical
+ * to `@sparticuz/chromium`'s (both are Chromium and should render the same static HTML template
+ * equivalently, but production correctness still rests on the Linux path, matching the file's own
+ * existing external-verification-tracker item).
  */
 
 import type { EvidenceReportArtifactRow } from "../db/schema.js";
@@ -62,13 +72,30 @@ function escapeHtml(value: string): string {
  * concurrency conservatively" requirement) - this function itself launches and closes exactly one
  * browser per call. */
 export async function renderPdfBytes(html: string): Promise<Buffer> {
-  const [{ default: chromium }, { default: puppeteer }] = await Promise.all([import("@sparticuz/chromium"), import("puppeteer-core")]);
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
-  });
+  // Same platform gate as tests/report-pdf-rendering/render.integration.test.ts's own
+  // `describe.skipIf(process.platform !== "linux")` - Vercel's function runtime, and CI's
+  // ubuntu-latest, are always "linux"; this branch is production's actual code path, unchanged.
+  if (process.platform === "linux") {
+    const [{ default: chromium }, { default: puppeteer }] = await Promise.all([import("@sparticuz/chromium"), import("puppeteer-core")]);
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "load" });
+      const pdf = await page.pdf({ format: "letter" });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  // Local-verification-only fallback (see this module's own docstring) - never reached on Vercel.
+  const { chromium: playwrightChromium } = await import("playwright");
+  const browser = await playwrightChromium.launch();
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "load" });

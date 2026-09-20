@@ -9,17 +9,18 @@ import { eq, and } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { screeningRequests, regulatoryRules, inferencePolicies, type ReportGenerationJobRow } from "../db/schema.js";
 import type { GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
-import { ProjectType, WorkflowType } from "../screening-request/types.js";
+import { LotLineRoleStatus, MultipleFrontageAnswer, ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestSnapshot } from "../screening-request/hydrate.js";
 import { assemblePropertyContext, type FactRetriever } from "../property-intelligence/assemble.js";
 import { createKingCountyParcelGeometryRetriever } from "../property-intelligence/king-county-parcel-geometry.js";
 import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence/seattle-building-outlines.js";
+import { createSeattleEcaRetriever } from "../property-intelligence/seattle-eca.js";
 import { classifyExistingStructures, findPrimaryDwelling, type ExistingStructure, type RawBuildingFootprint } from "../property-intelligence/existing-structures.js";
 import { AvailabilityState, getFact } from "../property-intelligence/types.js";
 import type { PropertyFact } from "../property-intelligence/types.js";
 import { recordIngestionResult } from "../data-source-registry/index.js";
 import type { EvidenceQuality } from "../property-intelligence/types.js";
-import type { GeographicPoint, Polygon } from "../spatial-analysis/types.js";
+import type { CriticalAreaFinding, GeographicPoint, Polygon } from "../spatial-analysis/types.js";
 import {
   computeBuildableEnvelope,
   computeDistanceToDwelling,
@@ -29,7 +30,7 @@ import {
   computeSetbackDistances,
   transformPolygonToWgs84,
 } from "../spatial-analysis/postgis-adapter.js";
-import { evaluateProject } from "../regulatory-rules-engine/evaluate.js";
+import { evaluateProject, isCriticalAreaFinding } from "../regulatory-rules-engine/evaluate.js";
 import { evaluateVacantLand, findActiveScenarioRule, SCENARIO_DEFINITIONS, toAppliedRuleRef } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import type { VacantLandSetbackRuleSpec } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import { EvaluationStatus } from "../regulatory-rules-engine/types.js";
@@ -55,6 +56,153 @@ export interface PipelineDependencies {
    * already-serializable ExplanationResult. Injectable in tests with a fake implementation, same
    * as the AiCompletionClient it replaced. */
   generateExplanation?: (findings: Finding[]) => Promise<ExplanationResult>;
+}
+
+/**
+ * Maintenance correction (2026-09-15) - the exact boundary between a full EvaluationOutcome's
+ * findings and what Report Explanation's free-text synthesis is given. The individual per-hazard
+ * "Critical area: X" findings are excluded entirely - they already have a correct, dedicated,
+ * structurally-precise presentation (ReportView's "Mapped Environmental / Site Constraints"
+ * section, which reads the raw environmental-constraints evidence fact directly and preserves the
+ * KNOWN/REQUIRES_VERIFICATION distinction), and handing all of them to free-text synthesis is what
+ * previously invited the LLM to blend differently-classified findings into one undifferentiated
+ * claim not present in any individual finding's own basis. Exported (rather than inlined at the
+ * call site) so this exact boundary is directly, deterministically testable.
+ *
+ * Deliberately narrow: this touches only the flat `Finding[]` handed to explanation. It never
+ * reads or modifies `EvaluationOutcome.evidence`, `.permitRequirement`, or `.shedLotCoverage` -
+ * those are separate fields on the outcome this function never receives, so the full, unabridged
+ * `outcome.findings` (including every ECA finding) persisted into the immutable artifact, and any
+ * derived permit/lot-coverage aggregate, are structurally unaffected by this filter regardless of
+ * what it does.
+ */
+export function selectFindingsForExplanation(findings: Finding[]): Finding[] {
+  return findings.filter((f) => !isCriticalAreaFinding(f.subject));
+}
+
+/** Maintenance correction (2026-09-15, RC-4/RC-7) - the exact, exhaustive set of reasons
+ * distanceToDwellingFt can be unavailable, extracted as a pure function so each branch is
+ * directly testable without a database. Exactly one case applies per evaluation - never guessed,
+ * never conflated with setbackEvidenceGapReason (a completely independent cause, since dwelling
+ * separation no longer depends on lot-line roles at all). Returns undefined only for the
+ * PRIMARY_DWELLING_FOUND case, where distanceToDwellingFt was actually computed and no
+ * REQUIRES_VERIFICATION finding results at all. */
+export type DwellingSeparationEvidenceGapCase =
+  | { case: "PRIMARY_DWELLING_FOUND" }
+  | { case: "SELECTION_NOT_MATCHED" }
+  | { case: "NO_SELECTION_MADE" }
+  | { case: "BUILDING_OUTLINES_UNAVAILABLE" }
+  | { case: "NO_FOOTPRINT" };
+
+/** Maintenance correction (2026-09-15, RC-7) - derives WHICH case applies from the real, raw
+ * pipeline preconditions, as its own pure function directly testable against every realistic
+ * combination - not merely a lookup from an already-chosen case (the prior, incomplete
+ * extraction). Mirrors the exact real branching pipeline.ts's shed-only building-intelligence
+ * block already performs. */
+export interface DwellingSeparationEvidenceGapContext {
+  /** buildingFootprintsFact was AVAILABLE with a real value AND footprintProjected exists - the
+   * precondition Building Intelligence v1's classification step itself requires. */
+  buildingFootprintsAvailable: boolean;
+  /** The shed's own proposed footprint was actually constructed (independent of lot-line roles -
+   * see computeSetbackDistances). */
+  footprintProjected: boolean;
+  /** A primary dwelling was matched among this generation's freshly-classified structures. */
+  primaryDwellingFound: boolean;
+  /** The customer's stored selection status, from configuration - "SELECTED" or absent/other. */
+  primaryDwellingSelectionStatus: "SELECTED" | undefined;
+}
+
+export function selectDwellingSeparationEvidenceGapCase(ctx: DwellingSeparationEvidenceGapContext): DwellingSeparationEvidenceGapCase["case"] {
+  if (ctx.primaryDwellingFound) return "PRIMARY_DWELLING_FOUND";
+  if (ctx.buildingFootprintsAvailable) {
+    return ctx.primaryDwellingSelectionStatus === "SELECTED" ? "SELECTION_NOT_MATCHED" : "NO_SELECTION_MADE";
+  }
+  if (ctx.footprintProjected) return "BUILDING_OUTLINES_UNAVAILABLE";
+  return "NO_FOOTPRINT";
+}
+
+export function deriveDwellingSeparationEvidenceGapReason(ctx: DwellingSeparationEvidenceGapCase): string | undefined {
+  switch (ctx.case) {
+    case "PRIMARY_DWELLING_FOUND":
+      return undefined;
+    case "SELECTION_NOT_MATCHED":
+      // The user selected a specific building during configuration, but it's not among the
+      // footprints this fresh, generation-time re-fetch returned (removed/redrawn upstream, or a
+      // genuinely stale selection) - never guessed at or silently re-mapped to a different
+      // footprint (classifyExistingStructures' own hard invariant). Also reused verbatim as
+      // dwellingSelectionNotMatchedExplanation's own evidence-fact text - one source of truth.
+      return (
+        "The building you previously selected as the primary dwelling could not be matched against the current Seattle Building Outlines data, " +
+        "so dwelling separation could not be evaluated for this report. Other applicable findings below are unaffected."
+      );
+    case "NO_SELECTION_MADE":
+      return "No primary dwelling was selected during configuration, so the separation distance could not be computed.";
+    case "BUILDING_OUTLINES_UNAVAILABLE":
+      return "Building footprint data for this property was not available, so a primary dwelling could not be identified.";
+    case "NO_FOOTPRINT":
+      return "The shed's proposed placement was not established, so dwelling separation could not be evaluated.";
+  }
+}
+
+/** Maintenance correction (2026-09-17, founder correction after reviewer escalation
+ * ccf1dee8-392a-416a-82d4-82222a837446 - reviewer-caught gap: the front/rear/side role-gap-reason
+ * derivation lived inline in `runReportGenerationPipeline`, untestable without a real DB. Extracted
+ * as a pure function, matching this module's own established `selectDwellingSeparationEvidenceGapCase`/
+ * `deriveDwellingSeparationEvidenceGapReason` pattern exactly, so the actual derivation logic
+ * `evaluateSideFrontSetback`/`evaluateRearSetback` depend on is independently unit-testable. */
+export interface StreetFrontageRoleGapContext {
+  multipleFrontageAnswer: MultipleFrontageAnswer | undefined;
+  rearAlsoFacesStreet: boolean | undefined;
+  /** True whenever `SetbackDistances.unresolvedStreetFrontageDistancesFt` is non-empty - i.e. at
+   * least one SPECIFIC confirmed-street edge (side or rear) exists whose role cannot be resolved
+   * from parcel-boundary geometry alone. */
+  hasUnresolvedStreetFrontage: boolean;
+}
+
+export interface StreetFrontageRoleGapReasons {
+  frontRoleEvidenceGapReason?: string;
+  rearRoleEvidenceGapReason?: string;
+  sideRoleEvidenceGapReason?: string;
+}
+
+export function deriveStreetFrontageRoleGapReasons(ctx: StreetFrontageRoleGapContext): StreetFrontageRoleGapReasons {
+  const answeredNotSure = ctx.multipleFrontageAnswer === MultipleFrontageAnswer.NOT_SURE;
+  const reasons: StreetFrontageRoleGapReasons = {};
+
+  // Front: uncertain whenever a SPECIFIC confirmed-street edge exists (its role genuinely can't be
+  // resolved from parcel geometry alone), OR the customer answered NOT_SURE (an as-yet-unconfirmed
+  // additional street can't be ruled out either).
+  if (ctx.hasUnresolvedStreetFrontage) {
+    reasons.frontRoleEvidenceGapReason =
+      "current Seattle code cannot confirm from this property's boundary geometry alone whether the actual streets involved make this a mandatory through-lot front line (SMC 23.44.090.B) or leave the front-line determination to the City's Director of Construction & Inspections (SMC 23.84A.024) - see the additional street frontage finding.";
+  } else if (answeredNotSure) {
+    reasons.frontRoleEvidenceGapReason =
+      "you indicated you're not sure whether this property has street frontage on more than one side - until that's confirmed, whether your indicated front line is definitively the code-defined front line cannot be established.";
+  }
+
+  // Rear: uncertain whenever the customer specifically confirmed it also faces a street
+  // (rearAlsoFacesStreet - this is itself one of the edges reflected in
+  // hasUnresolvedStreetFrontage/frontRoleEvidenceGapReason above, so both are always set together
+  // for this case), or when NOT_SURE (rear could secretly be a second street too - not ruled out).
+  if (ctx.rearAlsoFacesStreet) {
+    reasons.rearRoleEvidenceGapReason =
+      "your rear property line was confirmed to also face a street, and current Seattle code cannot confirm from parcel geometry alone whether that makes it a through-lot front line (SMC 23.44.090.B) or a Director-determined front line (SMC 23.84A.024), or leaves it as an ordinary rear line - see the additional street frontage finding.";
+  } else if (answeredNotSure) {
+    reasons.rearRoleEvidenceGapReason =
+      "you indicated you're not sure whether this property has street frontage on more than one side, which could include your rear line - until that's confirmed, the ordinary rear-setback standard cannot be confidently applied.";
+  }
+
+  // Side: NOT_SURE must not behave like NO. A specific YES-confirmed street edge is already
+  // excluded from distanceToSideLotLineFt's minimum by computeSetbackDistances itself
+  // (postgis-adapter.ts), so every OTHER side edge stays confidently ordinary under YES (the
+  // customer affirmatively did not mark it) - no gap reason needed there. Under NOT_SURE, nothing
+  // was confirmed either way, so NONE of the side edges can be confidently called ordinary.
+  if (answeredNotSure) {
+    reasons.sideRoleEvidenceGapReason =
+      "you indicated you're not sure whether this property has street frontage on more than one side - until that's confirmed, none of your side property lines can be confidently treated as ordinary (non-street-facing) side lines.";
+  }
+
+  return reasons;
 }
 
 /** Runs the full pipeline for one claimed (IN_PROGRESS) job. Never throws for an ordinary
@@ -100,6 +248,12 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     const retrievers: FactRetriever[] = [createKingCountyParcelGeometryRetriever()];
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
       retrievers.push(createSeattleBuildingOutlinesRetriever());
+      // Unit 6B - ECA screening (capability A) is shed-scoped for this unit's approved scope
+      // (shed permit-requirement + lot-coverage), matching the same conditional the shed-only
+      // Building Outlines retriever above already uses. Reusing this for garage/vacant-land is
+      // real future value (research-findings.md notes every project type needs it) but is not
+      // part of this unit's approved scope and is not added speculatively here.
+      retrievers.push(createSeattleEcaRetriever());
     }
     const propertyContext = await withStageTiming("PROPERTY_INTELLIGENCE", job.id, () =>
       assemblePropertyContext(confirmedParcel, { retrievers })
@@ -107,13 +261,24 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
 
     const geometryFact = getFact<Polygon>(propertyContext, "parcel-geometry-available");
     const buildingFootprintsFact = getFact<RawBuildingFootprint[]>(propertyContext, "building-footprints-available");
+    // Unit 6B - undefined for garage/vacant-land (retriever not attempted) and for a shed whose
+    // fetch failed (SOURCE_ERROR) - both correctly resolve to zero ecaFindings below, never a
+    // fabricated clean result. A genuine fetch success always carries one entry per queried
+    // hazard category (never an empty array for a real shed evaluation).
+    const environmentalConstraintsFact = getFact<CriticalAreaFinding[]>(propertyContext, "environmental-constraints");
 
     // Unit 3, 2026-08-25: wires the existing recordIngestionResult contract into this already-
     // implemented authoritative retrieval path (property-intelligence/assemble.ts itself is NOT
     // modified - it stays pure/DB-free). Best-effort: a health-recording failure must never fail
     // report generation itself, and never turns a failed retrieval into a recorded success.
     try {
-      if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE) {
+      // Maintenance correction (2026-09-15): UNAVAILABLE (a legitimate "no boundary for this
+      // specific parcel" result - property-intelligence/types.ts's SourceRecordNotFoundError) is
+      // treated as a healthy source interaction here, same as AVAILABLE - the source responded
+      // correctly, it just has nothing for this one PIN. Only SOURCE_ERROR (a genuine transport/
+      // validation/CRS failure) marks the source unhealthy. Never conflate one parcel's own
+      // legitimate absence of data with the global source's health.
+      if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE || geometryFact?.availabilityState === AvailabilityState.UNAVAILABLE) {
         await recordIngestionResult(db, "king-county-parcel-polygon", { success: true });
       } else {
         await recordIngestionResult(db, "king-county-parcel-polygon", {
@@ -140,6 +305,24 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         }
       } catch (err) {
         logger.warn("DATA_SOURCE_HEALTH_RECORDING_FAILED", { sourceId: "seattle-building-outlines", error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    // Unit 6B - same best-effort health recording, only when the retriever was actually included
+    // (shed only). A genuine fetch success always carries findings for every queried hazard
+    // category (never empty) - only SOURCE_ERROR counts as unhealthy.
+    if (environmentalConstraintsFact) {
+      try {
+        if (environmentalConstraintsFact.availabilityState === AvailabilityState.AVAILABLE) {
+          await recordIngestionResult(db, "seattle-eca", { success: true });
+        } else {
+          await recordIngestionResult(db, "seattle-eca", {
+            success: false,
+            reason: "Seattle ECA retrieval failed during report generation.",
+          });
+        }
+      } catch (err) {
+        logger.warn("DATA_SOURCE_HEALTH_RECORDING_FAILED", { sourceId: "seattle-eca", error: err instanceof Error ? err.message : String(err) });
       }
     }
 
@@ -190,6 +373,33 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // outlineId (BR: never guess a replacement - see classifyExistingStructures). Left undefined
     // for the ordinary "no selection was ever made" case, which needs no special explanation.
     let dwellingSelectionNotMatchedExplanation: string | undefined;
+    // Maintenance correction (2026-09-15, RC-4) - the real, distinct reason distanceToDwellingFt
+    // is unavailable, threaded into the DWELLING_SEPARATION finding instead of a generic
+    // "not available." Deliberately independent of setbackEvidenceGapReason below - dwelling
+    // separation no longer depends on lot-line roles at all (RC-1's footprint decoupling), so its
+    // own remaining gap always has a genuinely different cause (no selection made, a stale
+    // selection, or unavailable building-outline data).
+    let dwellingEvidenceGapReason: string | undefined;
+    // Maintenance correction (2026-09-15) - the real reason distanceTo{Rear,Side,Front}LotLineFt
+    // are undefined when lot-line roles could not be resolved, threaded through to the
+    // REQUIRES_VERIFICATION setback findings instead of being discarded (evaluate.ts's
+    // evaluateRearSetback/evaluateSideFrontSetback). Never set for dwelling separation - that
+    // fact no longer depends on lot-line roles at all (see computeSetbackDistances below).
+    let setbackEvidenceGapReason: string | undefined;
+    // The real, KNOWN PostGIS distance to every side-candidate edge, keyed by edgeRef - preserved
+    // for evidence/citation transparency (see postgis-adapter.ts's SetbackDistances docstring).
+    let sideEdgeDistancesFt: Record<string, number> | undefined;
+    // Maintenance correction (2026-09-17, founder correction after reviewer escalation
+    // 53f30444-b566-4197-b0dd-e2aff768fa65) - see postgis-adapter.ts's SetbackDistances docstring
+    // and ProjectDetails' own docstring for the full explanation. unresolvedStreetFrontageDistancesFt/
+    // streetFrontageHeuristics carry through unchanged; frontRoleEvidenceGapReason/
+    // rearRoleEvidenceGapReason/sideRoleEvidenceGapReason are derived here, the same way
+    // setbackEvidenceGapReason already is for the unrelated INSUFFICIENT-parcel-shape case.
+    let unresolvedStreetFrontageDistancesFt: Record<string, number> | undefined;
+    let streetFrontageHeuristics: ShedProjectDetails["streetFrontageHeuristics"];
+    let frontRoleEvidenceGapReason: string | undefined;
+    let rearRoleEvidenceGapReason: string | undefined;
+    let sideRoleEvidenceGapReason: string | undefined;
 
     if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value) {
       rawParcelAreaSqFt = await computeParcelAreaSqFt(db, geometryFact.value);
@@ -209,7 +419,22 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       distanceToRearLotLineFt = distances.distanceToRearLotLineFt;
       distanceToSideLotLineFt = distances.distanceToSideLotLineFt;
       distanceToFrontLotLineFt = distances.distanceToFrontLotLineFt;
+      sideEdgeDistancesFt = distances.sideEdgeDistancesFt;
+      unresolvedStreetFrontageDistancesFt = distances.unresolvedStreetFrontageDistancesFt;
+      streetFrontageHeuristics = distances.streetFrontageHeuristics;
       footprintProjected = computedFootprint;
+      if (snapshot.projectDetails.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
+        setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
+      }
+
+      const roleGapReasons = deriveStreetFrontageRoleGapReasons({
+        multipleFrontageAnswer: snapshot.projectDetails.lotLineRoleAssignment.multipleFrontageAnswer,
+        rearAlsoFacesStreet: snapshot.projectDetails.lotLineRoleAssignment.rearAlsoFacesStreet,
+        hasUnresolvedStreetFrontage: Boolean(unresolvedStreetFrontageDistancesFt && Object.keys(unresolvedStreetFrontageDistancesFt).length > 0),
+      });
+      frontRoleEvidenceGapReason = roleGapReasons.frontRoleEvidenceGapReason;
+      rearRoleEvidenceGapReason = roleGapReasons.rearRoleEvidenceGapReason;
+      sideRoleEvidenceGapReason = roleGapReasons.sideRoleEvidenceGapReason;
 
       boundaryPolygonWgs84 = await transformPolygonToWgs84(db, geometryFact.value);
       if (footprintProjected) {
@@ -250,6 +475,13 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         distanceToSideLotLineFt,
         distanceToFrontLotLineFt,
         spatialEvidenceQuality,
+        setbackEvidenceGapReason,
+        sideEdgeDistancesFt,
+        unresolvedStreetFrontageDistancesFt,
+        streetFrontageHeuristics,
+        frontRoleEvidenceGapReason,
+        rearRoleEvidenceGapReason,
+        sideRoleEvidenceGapReason,
       };
       // rawParcelAreaSqFt is only undefined when the parcel geometry itself came back
       // AvailabilityState.INSUFFICIENT (AVAILABLE/UNAVAILABLE/SOURCE_ERROR are all handled above -
@@ -265,9 +497,12 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // already use. classifyExistingStructures re-validates the user's stored selection against
       // THIS fetch's own outlineIds - a selection that no longer matches anything returned resolves
       // every footprint to UNKNOWN, never a guess.
-      if (buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected) {
+      let primaryDwellingFound = false;
+      let primaryDwellingSelectionStatus: "SELECTED" | undefined;
+      const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
+      if (buildingFootprintsAvailable) {
         const shedDetails = snapshot.projectDetails as ShedProjectConfiguration;
-        const structures = classifyExistingStructures(buildingFootprintsFact.value, buildingFootprintsFact.provenance, shedDetails.primaryDwellingSelection);
+        const structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, shedDetails.primaryDwellingSelection);
         existingStructuresForEvidence = structures;
         existingStructuresWgs84Display = await Promise.all(
           structures.map(async (s) => ({
@@ -278,17 +513,32 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
           }))
         );
         const primaryDwelling = findPrimaryDwelling(structures);
+        primaryDwellingFound = Boolean(primaryDwelling);
+        primaryDwellingSelectionStatus = shedDetails.primaryDwellingSelection?.status === "SELECTED" ? "SELECTED" : undefined;
         if (primaryDwelling) {
           distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
-        } else if (shedDetails.primaryDwellingSelection?.status === "SELECTED") {
-          // The user selected a specific building during configuration, but it's not among the
-          // footprints this fresh, generation-time re-fetch returned (removed/redrawn upstream,
-          // or a genuinely stale selection) - never guessed at or silently re-mapped to a
-          // different footprint (classifyExistingStructures' own hard invariant).
-          dwellingSelectionNotMatchedExplanation =
-            "The building you previously selected as the primary dwelling could not be matched against the current Seattle Building Outlines data, " +
-            "so dwelling separation could not be evaluated for this report. Other applicable findings below are unaffected.";
         }
+      }
+      // Maintenance correction (2026-09-15, RC-7) - the case is now DERIVED from the actual, real
+      // pipeline preconditions gathered above (never hand-picked), via a pure function that is
+      // directly unit-testable against every realistic combination of those preconditions - not
+      // just "given a case, what string" (the prior, incomplete extraction), but "given real
+      // state, which case genuinely applies."
+      const dwellingGapCase = selectDwellingSeparationEvidenceGapCase({
+        buildingFootprintsAvailable,
+        footprintProjected: Boolean(footprintProjected),
+        primaryDwellingFound,
+        primaryDwellingSelectionStatus,
+      });
+      dwellingEvidenceGapReason = deriveDwellingSeparationEvidenceGapReason({ case: dwellingGapCase });
+      if (dwellingGapCase === "SELECTION_NOT_MATCHED") {
+        // The user selected a specific building during configuration, but it's not among the
+        // footprints this fresh, generation-time re-fetch returned (removed/redrawn upstream, or
+        // a genuinely stale selection) - never guessed at or silently re-mapped to a different
+        // footprint (classifyExistingStructures' own hard invariant). Reuses the exact same text
+        // as the DWELLING_SEPARATION finding's own reason - one source of truth, never a second,
+        // independently-worded message for the same fact.
+        dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
       }
 
       project = {
@@ -302,6 +552,14 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         distanceToFrontLotLineFt,
         distanceToDwellingFt,
         spatialEvidenceQuality,
+        setbackEvidenceGapReason,
+        sideEdgeDistancesFt,
+        unresolvedStreetFrontageDistancesFt,
+        streetFrontageHeuristics,
+        frontRoleEvidenceGapReason,
+        rearRoleEvidenceGapReason,
+        sideRoleEvidenceGapReason,
+        dwellingSeparationEvidenceGapReason: dwellingEvidenceGapReason,
       };
     }
 
@@ -310,7 +568,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         propertyContext,
         project,
         candidateActiveRules: rowsToRegulatoryRules(activeRuleRows),
-        ecaFindings: [],
+        ecaFindings: environmentalConstraintsFact?.value ?? [],
         candidateActiveInferencePolicies: rowsToInferencePolicies(activePolicyRows),
         lotCoverageFacts,
       })
@@ -370,8 +628,9 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     }
 
     // Report Explanation (AI, optional) - never fails the job on unavailability (BR-U2-8).
+    const findingsForExplanation = selectFindingsForExplanation(outcome.findings);
     const explanationResult = deps.generateExplanation
-      ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
+      ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(findingsForExplanation))
       : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
 
     // Evidence & Report Artifact - immutable, generates the first access credential. `value` is

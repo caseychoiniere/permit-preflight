@@ -8,7 +8,11 @@ import { eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { screeningRequests } from "../db/schema.js";
 import { createReportGenerationJob } from "../report-generation-job/repository.js";
-import { isKnownUnhealthy } from "../data-source-registry/index.js";
+import { getSourceHealth, recordIngestionResult, SourceHealthState } from "../data-source-registry/index.js";
+import { fetchParcelBoundaryPolygon } from "../property-intelligence/king-county-parcel-geometry.js";
+import { SourceRecordNotFoundError } from "../property-intelligence/types.js";
+import { executeWithBoundedRetry, DEFAULT_RETRY_POLICY } from "../shared/retry.js";
+import { logger } from "../shared/logger.js";
 import { ProjectType, SUPPORTED_PROJECT_TYPES, ValidationState, WorkflowType } from "./types.js";
 import type { ExistingPropertyScreeningRequestSnapshot, VacantLandScreeningRequestSnapshot } from "./types.js";
 import { hydrateScreeningRequestRow } from "./hydrate.js";
@@ -51,10 +55,18 @@ export type ReadinessResult = { ready: true } | { ready: false; reason: string }
  *
  * `async` since 2026-08-25 (Unit 3) - the data-source-health check now reads the persisted
  * DataSourceHealth table (db/client.ts's Db) instead of an in-memory registry instance; no
- * behavioral change to this readiness logic itself, only its storage backend. */
+ * behavioral change to this readiness logic itself, only its storage backend.
+ *
+ * Maintenance correction (2026-09-15) - a real, discovered self-healing deadlock: the only path
+ * that could ever restore `king-county-parcel-polygon`'s observed health to HEALTHY lived inside
+ * `runReportGenerationPipeline`, which this very check prevents from ever running once that
+ * source is observed UNHEALTHY. See `recoverKingCountyParcelPolygonHealth` below - a bounded,
+ * real recovery probe using the actual source adapter for the CURRENT property, reusing the
+ * existing bounded-retry policy rather than a new subsystem. A manual UNHEALTHY override remains
+ * an absolute circuit-breaker: automatic recovery never attempts to bypass one. */
 export async function checkReadiness(
   db: Db,
-  screeningRequest: { workflowType: string; projectType: string | null; validationState: string },
+  screeningRequest: { workflowType: string; projectType: string | null; validationState: string; confirmedParcelId: string },
   requiredSourceIds: string[]
 ): Promise<ReadinessResult> {
   // Unit 5: branch on workflowType FIRST, per BR-U5-1's discriminated union - never inspect
@@ -72,11 +84,88 @@ export async function checkReadiness(
     return { ready: false, reason: "Screening request has not passed validation." };
   }
   for (const sourceId of requiredSourceIds) {
-    if (await isKnownUnhealthy(db, sourceId)) {
+    const snapshot = await getSourceHealth(db, sourceId);
+    if (snapshot.effectiveHealthState !== SourceHealthState.UNHEALTHY) continue;
+
+    // A manual UNHEALTHY override is a deliberate operator circuit-breaker (ADM-8) - automatic
+    // recovery must never bypass it, regardless of what the underlying source is actually doing
+    // right now.
+    if (snapshot.manualOverrideState === SourceHealthState.UNHEALTHY) {
       return { ready: false, reason: `Required data source "${sourceId}" is already known to be unhealthy.` };
     }
+
+    // Observed-only UNHEALTHY, no override. king-county-parcel-polygon is the one required source
+    // whose only success-recording path is downstream of this very check (a real, structural
+    // deadlock - aidlc-docs/aidlc-state.md's dated maintenance-correction entry). king-county-gis
+    // already self-heals via app/api/parcels/resolve's own, independent, frequently-exercised
+    // write path (every real address search updates it, unrelated to checkout) and has never
+    // exhibited this deadlock - no probe is needed for it here.
+    if (sourceId === "king-county-parcel-polygon") {
+      const recovered = await recoverKingCountyParcelPolygonHealth(db, snapshot.lastFailureAt, screeningRequest.confirmedParcelId);
+      if (recovered) {
+        // Caught on review (2026-09-15): the probe is a real, non-instantaneous network round
+        // trip (with retries) - an operator could set a manual UNHEALTHY override WHILE it was in
+        // flight. Re-read effective health now, after the probe, rather than trusting the
+        // pre-probe snapshot - a manual override applied mid-probe must still win.
+        const postRecovery = await getSourceHealth(db, sourceId);
+        if (postRecovery.effectiveHealthState !== SourceHealthState.UNHEALTHY) continue;
+      }
+    }
+
+    return { ready: false, reason: `Required data source "${sourceId}" is already known to be unhealthy.` };
   }
   return { ready: true };
+}
+
+/** Minimum time between real recovery probes while a source stays observed UNHEALTHY (reusing
+ * the already-persisted `lastFailureAt` timestamp - no new staleness/TTL infrastructure). Bounds
+ * how often a real outage can be "hammered" by repeated checkout attempts without inventing a new
+ * rate-limiting subsystem - a single failed checkout retried immediately gets one bounded probe
+ * (via executeWithBoundedRetry/DEFAULT_RETRY_POLICY), not a fresh one on every click. */
+const RECOVERY_PROBE_COOLDOWN_MS = 60_000;
+
+/**
+ * Real, bounded recovery probe for `king-county-parcel-polygon` - reuses the actual source
+ * adapter (`fetchParcelBoundaryPolygon`) for the CURRENT screening request's own confirmed
+ * parcel, never a fake administrative assertion. Reuses the existing bounded-retry policy
+ * (`executeWithBoundedRetry`/`DEFAULT_RETRY_POLICY`, `shared/retry.ts`) rather than inventing new
+ * resilience infrastructure - a `SourceRecordNotFoundError` (this specific parcel legitimately has
+ * no boundary) is never retried (retrying an immutable PIN cannot change the outcome) but is still
+ * treated as proof the source itself is reachable and healthy, matching the same
+ * source-vs-record distinction `assemblePropertyContext`/`pipeline.ts` now apply. Only a genuine
+ * successful source interaction (a real fetch, or a real "not found" response) ever writes
+ * `success: true` - this never fabricates health.
+ *
+ * Returns `false` without attempting a probe at all if the last failure was too recent
+ * (`RECOVERY_PROBE_COOLDOWN_MS`) - avoids hammering a genuinely down upstream service on every
+ * checkout attempt.
+ */
+async function recoverKingCountyParcelPolygonHealth(db: Db, lastFailureAt: string | undefined, confirmedParcelId: string): Promise<boolean> {
+  if (lastFailureAt && Date.now() - new Date(lastFailureAt).getTime() < RECOVERY_PROBE_COOLDOWN_MS) {
+    return false;
+  }
+
+  const result = await executeWithBoundedRetry(
+    () => fetchParcelBoundaryPolygon(confirmedParcelId),
+    DEFAULT_RETRY_POLICY,
+    (error) => !(error instanceof SourceRecordNotFoundError)
+  );
+
+  try {
+    if (result.outcome === "SUCCESS" || result.lastError instanceof SourceRecordNotFoundError) {
+      await recordIngestionResult(db, "king-county-parcel-polygon", { success: true });
+      return true;
+    }
+    await recordIngestionResult(db, "king-county-parcel-polygon", {
+      success: false,
+      reason: result.lastError instanceof Error ? result.lastError.message : "King County parcel-polygon recovery probe failed.",
+    });
+    return false;
+  } catch (err) {
+    // A health-recording failure must never itself be read as "recovery succeeded" - fail closed.
+    logger.warn("DATA_SOURCE_HEALTH_RECORDING_FAILED", { sourceId: "king-county-parcel-polygon", error: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
 }
 
 export type AuthorizeResult =

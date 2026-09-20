@@ -2,6 +2,7 @@ import { getDb } from "../../../../../src/db/client.js";
 import { claimByReportToken } from "../../../../../src/account-auth/workflows.js";
 import { resolveAccountSession } from "../../../../../src/account-auth/session.js";
 import { checkAccountSameOrigin } from "../../../../../src/account-auth/csrf.js";
+import { normalizeReportTokenInput } from "../../../../../src/account-auth/report-token-input.js";
 
 /**
  * claimPurchase Path B (workflow 3) - the deliberately SEPARATE route from Path A's email-trigger
@@ -27,7 +28,15 @@ export async function POST(request: Request) {
     return Response.json({ error: "token is required." }, { status: 400 });
   }
 
-  const result = await claimByReportToken(db, session.accountId, body.token);
+  // The form accepts a raw token OR a pasted report-access link (`.../report#access_token=<token>`)
+  // - the only link shape this app issues (correction 2). A shape we can't turn into a token is
+  // treated exactly like an invalid token below, never a distinct error (no oracle).
+  const rawToken = normalizeReportTokenInput(body.token);
+  if (!rawToken) {
+    return Response.json({ error: "INVALID_TOKEN" }, { status: 404 });
+  }
+
+  const result = await claimByReportToken(db, session.accountId, rawToken);
   if (result.outcome === "INVALID_TOKEN" || result.outcome === "ORDER_NOT_FOUND") {
     return Response.json({ error: result.outcome }, { status: 404 });
   }

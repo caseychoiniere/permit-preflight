@@ -42,6 +42,7 @@ import { createReportGenerationJob, claimQueuedJob } from "../../src/report-gene
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
 import { toNewRegulatoryRuleRow, STAGING_TEST_RULES } from "../../scripts/staging-test-rules.js";
+import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
 
@@ -54,7 +55,14 @@ const NONEXISTENT_OUTLINE_ID = "9999999999"; // never a real Building Outlines i
 // boundary shape (a simple 4-edge rectangle) - reused rather than guessed, matching a real
 // historical generation for this same parcel that succeeded before the regulatory_rules regression.
 const REAL_PLACEMENT = { anchor: { lat: 47.52175460888725, lng: -122.354484222839 }, orientationDeg: 0 };
-const REAL_LOT_LINE_ROLES = { method: "USER_INDICATED" as const, status: "ASSIGNED" as const, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] };
+const REAL_LOT_LINE_ROLES = {
+  method: "USER_INDICATED" as const,
+  status: "ASSIGNED" as const,
+  frontEdgeRef: "edge-0",
+  rearEdgeRef: "edge-2",
+  sideEdgeRefs: ["edge-1", "edge-3"],
+  multipleFrontageAnswer: "NO" as const,
+};
 
 function shedProjectDetails(overrides: Partial<ShedProjectConfiguration> = {}): ShedProjectConfiguration {
   return {
@@ -68,13 +76,22 @@ function shedProjectDetails(overrides: Partial<ShedProjectConfiguration> = {}): 
   };
 }
 
+// Maintenance correction (2026-09-15) - the exact well-known, shared source ids this suite's own
+// real runReportGenerationPipeline() calls can write (see pipeline.ts). Snapshotted before any
+// test runs and restored in afterAll (which Vitest runs even when a test throws) so this suite
+// can never leave the shared dev/staging dataSourceHealth state changed - the real root cause of
+// the 2026-09-10 king-county-parcel-polygon contamination this fixes.
+const AFFECTED_DATA_SOURCE_IDS = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca"];
+
 describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integration (building intelligence v1 regression)", () => {
   let db: Db;
   const cleanupScreeningRequestIds: string[] = [];
   const ownRuleIds: string[] = [];
+  let dataSourceHealthSnapshot: DataSourceHealthSnapshot;
 
   beforeAll(async () => {
     db = getDb();
+    dataSourceHealthSnapshot = await snapshotDataSourceHealth(db, AFFECTED_DATA_SOURCE_IDS);
     const rows = STAGING_TEST_RULES.map((def) => {
       const id = randomUUID();
       ownRuleIds.push(id);
@@ -84,12 +101,21 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
   });
 
   afterAll(async () => {
-    for (const id of cleanupScreeningRequestIds) {
-      await db.delete(evidenceReportArtifacts).where(eq(evidenceReportArtifacts.screeningRequestId, id));
-      await db.delete(reportGenerationJobs).where(eq(reportGenerationJobs.screeningRequestId, id));
-      await db.delete(screeningRequests).where(eq(screeningRequests.id, id));
+    // Maintenance correction (2026-09-15, caught on review): restoreDataSourceHealth now runs in
+    // an outer `finally`, independent of the fixture cleanup above - an unrelated cleanup failure
+    // (a transient delete error, an FK issue, etc.) must never prevent the SHARED, real
+    // king-county-parcel-polygon row from being restored. This suite's own random-id fixture rows
+    // are comparatively low-stakes; the shared health row is not.
+    try {
+      for (const id of cleanupScreeningRequestIds) {
+        await db.delete(evidenceReportArtifacts).where(eq(evidenceReportArtifacts.screeningRequestId, id));
+        await db.delete(reportGenerationJobs).where(eq(reportGenerationJobs.screeningRequestId, id));
+        await db.delete(screeningRequests).where(eq(screeningRequests.id, id));
+      }
+      await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, ownRuleIds));
+    } finally {
+      await restoreDataSourceHealth(db, dataSourceHealthSnapshot);
     }
-    await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, ownRuleIds));
   });
 
   /** Creates a real ScreeningRequest with an already-taken snapshot (as if authorization had

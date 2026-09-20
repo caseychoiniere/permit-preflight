@@ -18,6 +18,24 @@ interface ReportHistoryEntry {
   linkedAt: string;
   linkMethod: string;
   orderState: string;
+  workflowType: string;
+  projectType: string | null;
+  confirmedParcelId: string;
+  paidAt: string | null;
+}
+
+/** Humanizes an enum-ish token ("DETACHED_GARAGE" -> "Detached garage") for display only. */
+function humanizeToken(token: string): string {
+  const lower = token.toLowerCase().replace(/_/g, " ");
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** What was screened, from existing fields only (correction 4): the project type for an
+ * EXISTING_PROPERTY screening, or "Vacant land" for a VACANT_LAND one (which has no projectType). */
+function describeScreening(entry: ReportHistoryEntry): string {
+  if (entry.workflowType === "VACANT_LAND") return "Vacant land screening";
+  if (entry.projectType) return `${humanizeToken(entry.projectType)} screening`;
+  return "Screening";
 }
 
 export default function AccountPage() {
@@ -122,12 +140,19 @@ export default function AccountPage() {
         <div className="mb-8 flex flex-col gap-3">
           {reports.map((r) => (
             <Card key={r.orderId}>
-              <a href={`/account/reports/${r.orderId}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <strong className="text-sm text-slate-900">{describeScreening(r)}</strong>
+                <span className="text-xs uppercase tracking-wide text-slate-400">{r.orderState.replace(/_/g, " ")}</span>
+              </div>
+              <p className="mt-1 text-sm text-slate-600">
+                Parcel <span className="font-medium text-slate-800">{r.confirmedParcelId}</span>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {r.paidAt ? `Purchased ${new Date(r.paidAt).toLocaleDateString()}` : `Added ${new Date(r.linkedAt).toLocaleDateString()}`}
+              </p>
+              <a href={`/account/reports/${r.orderId}`} className="mt-2 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
                 View report
               </a>
-              <p className="mt-1 text-sm text-slate-500">
-                Linked {new Date(r.linkedAt).toLocaleDateString()} via {r.linkMethod} - order status: {r.orderState}
-              </p>
             </Card>
           ))}
         </div>
@@ -145,6 +170,10 @@ export default function AccountPage() {
               className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </label>
+          <p className="mt-1 text-xs text-slate-500">
+            From your &ldquo;Your Permit Preflight report is ready&rdquo; email, or the order-status page shown right after your purchase. We&apos;ll email
+            that address a link to confirm.
+          </p>
           <Button type="submit" variant="primary" className="mt-3">
             Send verification email
           </Button>
@@ -158,6 +187,7 @@ export default function AccountPage() {
               className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </label>
+          <p className="mt-1 text-xs text-slate-500">Paste the whole &ldquo;View your report&rdquo; link from your email, or just the token from it.</p>
           <Button type="submit" variant="primary" className="mt-3">
             Claim with token
           </Button>

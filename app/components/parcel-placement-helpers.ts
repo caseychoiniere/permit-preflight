@@ -12,7 +12,9 @@
  * spatial-analysis/lot-line-roles.ts) is untouched by anything in this file.
  */
 
-import type { GeographicPoint } from "../../src/spatial-analysis/types.js";
+import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
+import { deriveLotLineRoleAssignment } from "../../src/spatial-analysis/lot-line-roles.js";
+import { LotLineRoleStatus, MultipleFrontageAnswer } from "../../src/screening-request/types.js";
 
 const METERS_PER_DEGREE_LAT = 111_320;
 
@@ -211,6 +213,15 @@ export interface PlacementCompletenessInput {
    * sure/none of these." The initial largest-footprint SUGGESTION alone (never confirmed) must NOT
    * count as answered - callers must pass false here until the user actually interacts. */
   dwellingAnswered: boolean;
+  /** Maintenance correction (2026-09-15, founder direction) - true once the customer has answered
+   * the required "Does this property have street frontage on more than one side?" question (YES,
+   * NO, or NOT_SURE - any explicit answer counts; an unchecked/never-touched control does NOT,
+   * since that would be indistinguishable from a genuine "No"). Only meaningful once lotLineDecided
+   * is itself true (ASSIGNED) - callers should pass false while front/rear are still unresolved. */
+  multipleFrontageAnswered: boolean;
+  /** true when the customer answered YES but has not yet selected any street-facing edge - Next
+   * must stay disabled until at least one is picked (never a silent zero-edge YES). */
+  needsStreetFrontageEdges: boolean;
 }
 
 export interface PlacementCompletenessResult {
@@ -226,7 +237,85 @@ export interface PlacementCompletenessResult {
 export function checkPlacementCompleteness(input: PlacementCompletenessInput): PlacementCompletenessResult {
   const missing: string[] = [];
   if (!input.lotLineDecided) missing.push("Confirm the front and rear lot lines");
+  if (input.lotLineDecided && !input.multipleFrontageAnswered) missing.push("Answer whether this property has street frontage on more than one side");
+  if (input.needsStreetFrontageEdges) missing.push("Select the additional street-facing property line(s)");
   if (!input.hasPlacement) missing.push("Place the shed on the map");
   if (input.hasBuildingsToAskAbout && !input.dwellingAnswered) missing.push('Confirm your main house, or choose "I\'m not sure"');
   return { complete: missing.length === 0, missing };
+}
+
+/** Structurally identical to ParcelPlacementMap.tsx's own LotLineSelection - defined here (rather
+ * than imported from there) to avoid a circular import between this file and the component that
+ * already imports from it; TypeScript's structural typing makes the two interchangeable. Unlike
+ * the persisted LotLineRoleAssignment (screening-request/types.ts), frontEdgeRef/rearEdgeRef are
+ * allowed regardless of status - INSUFFICIENT may still carry the user's raw picks so the Review
+ * step can honestly display exactly what they chose (see deriveLotLineSelectionForDisplay below). */
+export interface LotLineSelectionLike {
+  status: typeof LotLineRoleStatus.ASSIGNED | typeof LotLineRoleStatus.INSUFFICIENT;
+  frontEdgeRef?: string;
+  rearEdgeRef?: string;
+  sideEdgeRefs?: string[];
+  /** Maintenance correction (2026-09-15, founder direction) - see applyMultipleFrontageAnswer
+   * (spatial-analysis/lot-line-roles.ts) for the full contract; layered onto an already-derived
+   * ASSIGNED selection, never onto INSUFFICIENT (there is no side-candidate set to classify yet). */
+  multipleFrontageAnswer?: MultipleFrontageAnswer;
+  streetFrontageEdgeRefs?: string[];
+  /** Maintenance correction (2026-09-17, founder-directed through-lot fix) - see
+   * LotLineRoleAssignment's own docstring (screening-request/types.ts) for the full contract. */
+  rearAlsoFacesStreet?: boolean;
+}
+
+/**
+ * Maintenance correction (2026-09-15) - the single place ParcelPlacementMap.tsx's front/rear-pick
+ * effect derives what to report upstream, given the user's raw edge picks. Previously this logic
+ * was duplicated inline in that effect (a second, unsynchronized copy of
+ * deriveLotLineRoleAssignment's own "opposite edges of a quadrilateral" rule), and its INSUFFICIENT
+ * result dropped frontEdgeRef/rearEdgeRef entirely - so a real user selection that this parcel's
+ * shape couldn't resolve into sides silently vanished by the time the Review step tried to render
+ * it (Review reads lotLineSelection.frontEdgeRef/.rearEdgeRef, which were simply absent). Delegating
+ * to the shared, already-tested deriveLotLineRoleAssignment removes the duplicate rule; this
+ * wrapper's only added behavior is attaching the raw picks to the INSUFFICIENT case too, so the
+ * Review step can honestly show what the customer chose even when the shape - for ANY reason
+ * deriveLotLineRoleAssignment might return INSUFFICIENT, not only "too many sides" - couldn't use it
+ * for side-line resolution. BR-U2-9's "never guess sides" invariant is unchanged: INSUFFICIENT still
+ * carries no sideEdgeRefs and still blocks setback computation for the sides.
+ */
+export function deriveLotLineSelectionForDisplay(boundaryPolygon: Polygon, frontEdgeRef: string, rearEdgeRef: string): LotLineSelectionLike {
+  const assignment = deriveLotLineRoleAssignment(boundaryPolygon, frontEdgeRef, rearEdgeRef);
+  if (assignment.status === LotLineRoleStatus.ASSIGNED) {
+    return { status: LotLineRoleStatus.ASSIGNED, frontEdgeRef: assignment.frontEdgeRef, rearEdgeRef: assignment.rearEdgeRef, sideEdgeRefs: assignment.sideEdgeRefs };
+  }
+  return { status: LotLineRoleStatus.INSUFFICIENT, frontEdgeRef, rearEdgeRef };
+}
+
+/**
+ * Maintenance correction (2026-09-15) - the explicit conversion from the frontend-only
+ * LotLineSelectionLike (which, per deriveLotLineSelectionForDisplay above, may carry
+ * frontEdgeRef/rearEdgeRef on INSUFFICIENT purely for Review display) into exactly the shape the
+ * persisted contract (screening-request/types.ts's LotLineRoleAssignmentSchema, a discriminated
+ * union that only permits those fields when status is ASSIGNED) accepts. configure/page.tsx must
+ * call this before submitting lotLineRoleAssignment - never spread the raw display-only selection
+ * into the API payload directly, even though the server's own Zod parsing would in practice strip
+ * the extra fields (confirmed: updateProjectDetails persists the parsed/stripped output, never the
+ * raw request body) - making the boundary explicit here means it no longer depends on that
+ * implicit behavior, and is independently testable.
+ *
+ * Maintenance correction (2026-09-15, founder direction) - also carries multipleFrontageAnswer/
+ * streetFrontageEdgeRefs through for ASSIGNED (the persisted schema now requires the former and
+ * cross-validates the latter - see LotLineRoleAssignmentSchema), and strips both for INSUFFICIENT
+ * (the persisted schema forbids them there, same as frontEdgeRef/rearEdgeRef/sideEdgeRefs).
+ */
+export function toPersistedLotLineRoleAssignment(selection: LotLineSelectionLike): LotLineSelectionLike {
+  if (selection.status === LotLineRoleStatus.ASSIGNED) {
+    return {
+      status: LotLineRoleStatus.ASSIGNED,
+      frontEdgeRef: selection.frontEdgeRef,
+      rearEdgeRef: selection.rearEdgeRef,
+      sideEdgeRefs: selection.sideEdgeRefs,
+      multipleFrontageAnswer: selection.multipleFrontageAnswer,
+      streetFrontageEdgeRefs: selection.streetFrontageEdgeRefs,
+      rearAlsoFacesStreet: selection.rearAlsoFacesStreet,
+    };
+  }
+  return { status: LotLineRoleStatus.INSUFFICIENT };
 }

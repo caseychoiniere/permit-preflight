@@ -47,11 +47,31 @@ atomic consumption statement is account-bound (`token-repository.ts`'s `consumeC
 claim-completion sequence is transactional, and `verify-claim`'s route is CSRF-protected.
 
 **Disclosed scope limitations** (not hidden): the Vercel Firewall rule itself remains unconfigured
-against any real project (`external-verification-tracker.md` item 17, open); the account-scoped
-report view (`app/account/reports/[orderId]/page.tsx`) is a deliberately minimal, standalone
-rendering rather than a fully shared component with the guest report view (`app/report/page.tsx`)
-— duplicated JSX for findings/explanation only, no `ReportMap`/PDF controls; extracting a shared
-component is a reasonable follow-up, not done in this pass. No live-database verification has run
-(no `DATABASE_URL` in this sandbox) — every DB-dependent behavior (atomic consumption races,
-`ON CONFLICT` races, FK cascade/restrict, the PAID-order join, transaction rollback) is covered by
-real, written `.integration.test.ts` assertions, not fabricated as passing.
+against any real project (`external-verification-tracker.md` item 17, open).
+
+**Founder review of Part 2 (2026-09-10): REQUEST CHANGES — four bounded customer-facing corrections, all implemented:**
+1. **Account Access now reuses the shared `ReportView`** (extracted during the validation pause, after
+   this unit was first generated). `app/account/reports/[orderId]/page.tsx` renders `<ReportView>`
+   verbatim — same map, findings, requires-verification, uncovered-constraint notices, vacant-land
+   scenarios, explanation, evidence notes as the guest and post-checkout views. New
+   `GET /api/account/reports/[orderId]/pdf` route: authorization is `AccountSession` →
+   `getAccountReport`'s `AccountOrderLink` check → existing `EvidenceReportArtifact` → existing
+   `getOrRenderReportPdf()`; it never mints/recovers/reads a guest report-access token, and is passed
+   as `ReportView`'s `pdfHref`.
+2. **`normalizeReportTokenInput`** (`src/account-auth/report-token-input.ts`, pure/deterministic) —
+   the "Claim a purchase" token field now really accepts both a raw token and a pasted
+   `.../report#access_token=<token>` link (fragment only, decoded); malformed/unrelated input fails
+   closed to `null` → 404 (no oracle). Never logs the token; the credential architecture is untouched.
+3. **Customer-facing Order reference** — `deliverGuestReportAccess` now includes an `Order reference`
+   line (the Order's own id, the value claim Path A already asks for) in the guest report-ready
+   email; also shown on the post-checkout status page. No new identifier/column.
+4. **Report-history entries are distinguishable** — `listLinksForAccount` joins `ScreeningRequest`
+   and returns `confirmedParcelId`, `workflowType`, `projectType`, `paidAt` (all existing fields);
+   the account page card now leads with the screening description + parcel + purchase date, and no
+   longer surfaces `linkMethod`.
+
+**Verification (2026-09-10):** `npm run typecheck` 0 errors; `npm test` **421/421** (+25 new
+deterministic — `report-token-input.test.ts`, `account-report-surface.test.ts`); `npm run build`
+clean; `npm run test:integration` — Unit 6 suite **11/11 against live Neon staging** (3 new
+integration tests). 8 unrelated integration failures were a live King County GIS outage, not a code
+defect.

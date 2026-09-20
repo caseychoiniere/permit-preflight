@@ -129,9 +129,9 @@ export async function runReconciliation(): Promise<ReconciliationSummary> {
   if (staleDeliveries.length > 0) {
     const resendClient = createResendClient();
     for (const delivery of staleDeliveries) {
-      const [orderRow] = await db.select({ customerEmail: orders.customerEmail }).from(orders).where(eq(orders.screeningRequestId, delivery.screeningRequestId));
+      const [orderRow] = await db.select({ id: orders.id, customerEmail: orders.customerEmail }).from(orders).where(eq(orders.screeningRequestId, delivery.screeningRequestId));
       try {
-        await deliverGuestReportAccess(db, resendClient, orderRow?.customerEmail ?? undefined, delivery.reportArtifactId);
+        await deliverGuestReportAccess(db, resendClient, orderRow?.customerEmail ?? undefined, delivery.reportArtifactId, orderRow?.id);
         summary.redeliveredGuestReports++;
       } catch (err) {
         logger.error("GUEST_DELIVERY_RECONCILIATION_FAILED", { reportArtifactId: delivery.reportArtifactId, reason: err instanceof Error ? err.message : "Unknown error." });

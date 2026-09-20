@@ -49,10 +49,128 @@ export class SpatialComputationError extends Error {
   }
 }
 
+/** Maintenance correction (2026-09-17, founder correction after reviewer escalation
+ * 53f30444-b566-4197-b0dd-e2aff768fa65) - a NON-AUTHORITATIVE diagnostic only. Parcel-boundary-edge
+ * azimuth is NOT proof that two STREETS are parallel or within 15 degrees of parallel (SMC 23.84A's
+ * own "Lot, through" test is about the streets, not about arbitrary parcel-boundary segments) - a
+ * prior version of this correction treated this heuristic as conclusive, and the founder's own
+ * live-verification run showed exactly why that fails: two adjacent fragments of the SAME rounded
+ * street corner (a tessellated arc) are locally near-parallel and would falsely satisfy the numeric
+ * test despite being part of one curved frontage, not two distinct streets. This field NEVER
+ * establishes legal role and NEVER produces a PASS/FAIL conclusion by itself - it exists solely so a
+ * human reviewer (or a future feature that adds real street-geometry evidence) has full raw
+ * traceability: the exact edge refs compared, their raw azimuths, the normalized angular
+ * difference, and the resulting non-authoritative label. */
+export interface StreetFrontageHeuristic {
+  frontEdgeRef: string;
+  edgeRef: string;
+  azimuthFrontDeg: number;
+  azimuthEdgeDeg: number;
+  angleFromParallelDeg: number;
+  /** Whether this parcel-edge-only heuristic falls within SMC 23.84A's 15-degree "Lot, through"
+   * threshold - a hint only, never a legal determination (see the interface docstring). */
+  possibleThroughLot: boolean;
+  evidenceQuality: "INFERRED";
+}
+
 export interface SetbackDistances {
+  /** The customer's own front-pick distance - always this and only this; never blended with any
+   * other edge's distance (a prior version of this correction folded in a "conclusively through
+   * lot" edge here, which the founder rejected - parcel-edge azimuth alone cannot conclusively
+   * establish a through lot). KNOWN whenever the front edge itself is measurable, even when the
+   * ROLE-DEPENDENT conclusion built on it must be REQUIRES_VERIFICATION (see
+   * `unresolvedStreetFrontageDistancesFt` below and regulatory-rules-engine's
+   * `frontRoleEvidenceGapReason`). */
   distanceToFrontLotLineFt?: number;
+  /** The minimum distance across ordinary side-candidate edges only - i.e. side-candidate edges
+   * the customer never confirmed as facing an additional street. Maintenance correction
+   * (2026-09-16, founder-directed current-code research): current SMC 23.44.090 Table A imposes no
+   * distinct required depth for a "side street lot line" (confirmed via SMC 23.84A.036's
+   * definitions and the current SDCI shed guidance page). A CONFIRMED street-frontage edge is
+   * excluded from this minimum - see `unresolvedStreetFrontageDistancesFt` below. */
   distanceToSideLotLineFt?: number;
+  /** The customer's own rear-pick distance - always this, never undefined and never blended with
+   * any other edge (same discipline as `distanceToFrontLotLineFt` above). KNOWN even when
+   * `rearAlsoFacesStreet` makes the ROLE-DEPENDENT rear conclusion uncertain (see
+   * regulatory-rules-engine's `rearRoleEvidenceGapReason`). */
   distanceToRearLotLineFt?: number;
+  /** The real, KNOWN PostGIS distance to every side-candidate edge, keyed by edgeRef - preserved
+   * unconditionally for evidence/citation transparency and any future rule that needs the
+   * per-edge breakdown (e.g. an encroachment-agreement exception, which this evaluator does not
+   * currently model). Cross-reference against the persisted LotLineRoleAssignment's
+   * streetFrontageEdgeRefs to identify which of these keys are confirmed street-frontage. */
+  sideEdgeDistancesFt?: Record<string, number>;
+  /** Maintenance correction (2026-09-17, founder correction after reviewer escalation) - every
+   * confirmed-street edge (a `streetFrontageEdgeRefs` entry, or the rear edge itself when
+   * `rearAlsoFacesStreet`), keyed by edgeRef (the literal `rearEdgeRef` string when it's the rear
+   * edge). The real, KNOWN PostGIS distance, but excluded from BOTH the front and ordinary-side
+   * confident minimums, because current code cannot determine from parcel-boundary geometry alone
+   * whether this represents a genuine through lot (mandatory front, SMC 23.44.090.B), a
+   * Director-determined corner-lot front (SMC 23.84A.024), or an ordinary side-street line - that
+   * determination requires real STREET geometry evidence (the actual relationship between the
+   * streets involved, not just this parcel's own boundary shape), which this correction does not
+   * add (founder direction: no new street GIS adapter in this correction). Until real street
+   * geometry is available, this stays UNRESOLVED - see `streetFrontageHeuristics` for
+   * non-authoritative diagnostic evidence only. */
+  unresolvedStreetFrontageDistancesFt?: Record<string, number>;
+  /** Maintenance correction (2026-09-17) - see `StreetFrontageHeuristic`'s own docstring. Keyed the
+   * same way as `unresolvedStreetFrontageDistancesFt` (one entry per confirmed-street edge this
+   * correction evaluated). NON-AUTHORITATIVE - never used to decide a PASS/FAIL conclusion. */
+  streetFrontageHeuristics?: Record<string, StreetFrontageHeuristic>;
+}
+
+/** SMC 23.84A's own "Lot, through" definition: "a lot abutting on two (2) streets that are
+ * parallel or within fifteen (15) degrees of parallel with each other." Used ONLY to label the
+ * NON-AUTHORITATIVE `streetFrontageHeuristic.possibleThroughLot` diagnostic - never to conclusively
+ * classify a lot line's legal role (see `StreetFrontageHeuristic`'s own docstring for why). */
+const THROUGH_LOT_HEURISTIC_TOLERANCE_DEG = 15;
+
+/** Maintenance correction (2026-09-17) - the real PostGIS-computed azimuth of two polygon edges'
+ * directions (`ST_Azimuth`, never local JS trigonometry, matching this module's production-boundary
+ * discipline) and the resulting non-authoritative "possible through lot" heuristic label. Returns
+ * raw bearings for both edges plus the normalized angular difference so the full computation is
+ * reproducible from persisted evidence (founder's "heuristic traceability" requirement) - this
+ * function itself never decides a regulatory outcome, it only reports the numbers. 0 degrees means
+ * perfectly parallel (a line and its reverse direction collapse to the same result, since a lot
+ * line has no inherent direction for this purpose - `abs(cos(...))` handles that collapse); 90
+ * means perfectly perpendicular. `ST_Azimuth` returns NULL for a degenerate (zero-length) edge;
+ * treated as `Infinity` (never flagged as a possible through lot). */
+async function computeStreetFrontageHeuristic(db: Db, boundaryPolygon: Polygon, frontEdgeRef: string, edgeRef: string): Promise<StreetFrontageHeuristic> {
+  const wktFront = edgeToWkt(boundaryPolygon, frontEdgeRef);
+  const wktEdge = edgeToWkt(boundaryPolygon, edgeRef);
+  const srid = boundaryPolygon.srid!;
+  const result = await db.execute(sql`
+    WITH edges AS (
+      SELECT
+        degrees(ST_Azimuth(
+          ST_StartPoint(ST_SetSRID(ST_GeomFromText(${wktFront}), ${srid}::int)),
+          ST_EndPoint(ST_SetSRID(ST_GeomFromText(${wktFront}), ${srid}::int))
+        )) AS azimuth_front_deg,
+        degrees(ST_Azimuth(
+          ST_StartPoint(ST_SetSRID(ST_GeomFromText(${wktEdge}), ${srid}::int)),
+          ST_EndPoint(ST_SetSRID(ST_GeomFromText(${wktEdge}), ${srid}::int))
+        )) AS azimuth_edge_deg
+    )
+    SELECT
+      azimuth_front_deg,
+      azimuth_edge_deg,
+      degrees(acos(abs(cos(radians(azimuth_front_deg - azimuth_edge_deg))))) AS angle_from_parallel_deg
+    FROM edges
+  `);
+  const row = result.rows[0] as { azimuth_front_deg: number | string | null; azimuth_edge_deg: number | string | null; angle_from_parallel_deg: number | string | null } | undefined;
+  if (row === undefined) throw new Error("PostGIS street-frontage-heuristic query returned no rows.");
+  const azimuthFrontDeg = row.azimuth_front_deg === null ? NaN : Number(row.azimuth_front_deg);
+  const azimuthEdgeDeg = row.azimuth_edge_deg === null ? NaN : Number(row.azimuth_edge_deg);
+  const angleFromParallelDeg = row.angle_from_parallel_deg === null ? Infinity : Number(row.angle_from_parallel_deg);
+  return {
+    frontEdgeRef,
+    edgeRef,
+    azimuthFrontDeg,
+    azimuthEdgeDeg,
+    angleFromParallelDeg,
+    possibleThroughLot: angleFromParallelDeg <= THROUGH_LOT_HEURISTIC_TOLERANCE_DEG,
+    evidenceQuality: "INFERRED",
+  };
 }
 
 function polygonToWkt(polygon: Polygon): string {
@@ -141,16 +259,23 @@ async function distanceToEdge(db: Db, footprintWkt: string, edgeWkt: string, sri
  *
  * BR-U2-9 (hard invariant): only computes role-dependent distances when `lotLineRoleAssignment.
  * status === "ASSIGNED"` - never infers front/rear/side from the polygon's shape itself. When
- * INSUFFICIENT, returns an empty result (all fields undefined) so the Regulatory Rules Engine's
+ * INSUFFICIENT, `distances` is empty (all fields undefined) so the Regulatory Rules Engine's
  * existing missing-evidence path produces REQUIRES_VERIFICATION, exactly as it already does for
- * any other missing spatial input.
+ * any other missing spatial input - but `footprintProjected` is still returned (maintenance
+ * correction, 2026-09-15 - see below).
  */
 export interface SetbackComputationResult {
   distances: SetbackDistances;
   /** The proposed footprint as actually constructed and measured, in the boundary's projected
-   * CRS - undefined when INSUFFICIENT/missing-role short-circuited before it was built. Exposed
-   * so callers (the orchestrator) can persist it once, for ReportMap's later display use, without
-   * a second PostGIS round-trip. */
+   * CRS. Maintenance correction (2026-09-15): now populated even when lot-line roles are
+   * INSUFFICIENT - footprint construction only needs the placement anchor, shed dimensions, and
+   * orientation, never front/rear/side role knowledge, so a genuine (if separate) parcel-shape
+   * limitation on lot-line-role resolution must never also starve footprint-dependent facts that
+   * don't actually need it (dwelling separation, existing-structure display geometry). Only
+   * undefined if the boundary/placement inputs themselves were insufficient to build a footprint
+   * at all (never the case once this function is called with a real Polygon + ProposedPlacement).
+   * Exposed so callers (the orchestrator) can persist it once, for ReportMap's later display use,
+   * without a second PostGIS round-trip. */
   footprintProjected?: Polygon;
 }
 
@@ -163,32 +288,84 @@ export async function computeSetbackDistances(
 ): Promise<SetbackComputationResult> {
   assertAuthoritativeSrid(boundaryPolygon);
 
+  // Maintenance correction (2026-09-15): moved ahead of the lot-line-role check - footprint
+  // construction depends only on the placement anchor/dimensions/orientation, never on which
+  // edges are front/rear/side, so it must not be gated behind role resolution.
+  const anchorProjected = await transformAnchorToProjectedCrs(db, proposedPlacement.anchor, boundaryPolygon.srid!);
+  const footprint = buildFootprintInProjectedCrs(anchorProjected, shedDimensions.widthFt, shedDimensions.depthFt, proposedPlacement.orientationDeg);
+
   if (lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
-    return { distances: {} };
+    return { distances: {}, footprintProjected: footprint };
   }
 
   const validRefs = new Set(edgeRefsForPolygon(boundaryPolygon));
   const { frontEdgeRef, rearEdgeRef, sideEdgeRefs } = lotLineRoleAssignment;
   if (!frontEdgeRef || !validRefs.has(frontEdgeRef) || !rearEdgeRef || !validRefs.has(rearEdgeRef)) {
     // Defensive - Boundary Validator should already have rejected this upstream. Never guess.
-    return { distances: {} };
+    return { distances: {}, footprintProjected: footprint };
   }
-
-  const anchorProjected = await transformAnchorToProjectedCrs(db, proposedPlacement.anchor, boundaryPolygon.srid!);
-  const footprint = buildFootprintInProjectedCrs(anchorProjected, shedDimensions.widthFt, shedDimensions.depthFt, proposedPlacement.orientationDeg);
 
   const footprintWkt = polygonToWkt(footprint);
   const srid = boundaryPolygon.srid!;
   const distances: SetbackDistances = {};
 
+  // Maintenance correction (2026-09-17, founder correction after reviewer escalation
+  // 53f30444-b566-4197-b0dd-e2aff768fa65) - front and rear are ALWAYS just the customer's own
+  // picks, full stop - never blended with any other edge's distance. A prior version of this
+  // correction folded a "conclusively through lot" edge into the front minimum based on parcel-
+  // edge azimuth alone; the founder rejected that (azimuth is not proof two STREETS are parallel -
+  // see StreetFrontageHeuristic's own docstring) and required this simpler, unconditional shape.
   distances.distanceToFrontLotLineFt = await distanceToEdge(db, footprintWkt, edgeToWkt(boundaryPolygon, frontEdgeRef), srid);
   distances.distanceToRearLotLineFt = await distanceToEdge(db, footprintWkt, edgeToWkt(boundaryPolygon, rearEdgeRef), srid);
 
+  let sideEdgeDistances: [string, number][] = [];
   if (sideEdgeRefs && sideEdgeRefs.length > 0) {
-    const sideDistances = await Promise.all(
-      sideEdgeRefs.filter((ref) => validRefs.has(ref)).map((ref) => distanceToEdge(db, footprintWkt, edgeToWkt(boundaryPolygon, ref), srid))
+    const validSideRefs = sideEdgeRefs.filter((ref) => validRefs.has(ref));
+    sideEdgeDistances = await Promise.all(
+      validSideRefs.map(async (ref): Promise<[string, number]> => [ref, await distanceToEdge(db, footprintWkt, edgeToWkt(boundaryPolygon, ref), srid)])
     );
-    if (sideDistances.length > 0) distances.distanceToSideLotLineFt = Math.min(...sideDistances);
+    if (sideEdgeDistances.length > 0) distances.sideEdgeDistancesFt = Object.fromEntries(sideEdgeDistances);
+  }
+
+  // Maintenance correction (2026-09-16, founder-directed current-code research): current SMC
+  // 23.44.090 Table A imposes no distinct required depth for a "side street lot line" - a
+  // confirmed street-frontage edge is subject to the SAME side-setback standard as an ordinary
+  // side once its role is actually established. Maintenance correction (2026-09-17, founder
+  // correction after reviewer escalation): but WHICH role a confirmed-street edge actually has
+  // (through-lot front per 23.44.090.B, Director-determined front per 23.84A.024, or ordinary
+  // side-street) cannot be established from this parcel's own boundary geometry alone - that needs
+  // real STREET geometry evidence this correction does not add (no new street GIS adapter). Every
+  // confirmed-street edge (streetFrontageEdgeRefs, plus the rear edge itself when the customer
+  // separately confirmed rearAlsoFacesStreet - the ordinary way a real through lot presents, since
+  // the customer typically clicks their opposite/far edge as "rear," not as an "additional side
+  // street") is therefore excluded from BOTH the front and ordinary-side confident minimums,
+  // KNOWN-but-unresolved, alongside a NON-AUTHORITATIVE parcel-edge-azimuth heuristic kept purely
+  // for diagnostic traceability (never used to decide the outcome).
+  const confirmedStreetEdgeRefs = [...(lotLineRoleAssignment.streetFrontageEdgeRefs ?? [])];
+  if (lotLineRoleAssignment.rearAlsoFacesStreet) confirmedStreetEdgeRefs.push(rearEdgeRef);
+
+  const unresolvedStreetFrontageDistancesFt: Record<string, number> = {};
+  const streetFrontageHeuristics: Record<string, StreetFrontageHeuristic> = {};
+
+  for (const edgeRef of confirmedStreetEdgeRefs) {
+    if (!validRefs.has(edgeRef) || edgeRef === frontEdgeRef) continue; // defensive - schema already enforces this
+    const edgeDistanceFt = edgeRef === rearEdgeRef ? distances.distanceToRearLotLineFt : sideEdgeDistances.find(([ref]) => ref === edgeRef)?.[1];
+    if (edgeDistanceFt === undefined) continue; // defensive - schema already enforces streetFrontageEdgeRefs subset of sideEdgeRefs
+    unresolvedStreetFrontageDistancesFt[edgeRef] = edgeDistanceFt;
+    streetFrontageHeuristics[edgeRef] = await computeStreetFrontageHeuristic(db, boundaryPolygon, frontEdgeRef, edgeRef);
+  }
+
+  if (Object.keys(unresolvedStreetFrontageDistancesFt).length > 0) {
+    distances.unresolvedStreetFrontageDistancesFt = unresolvedStreetFrontageDistancesFt;
+    distances.streetFrontageHeuristics = streetFrontageHeuristics;
+  }
+
+  // Side: only an edge NEVER confirmed as street-facing counts toward the ordinary-side minimum -
+  // a confirmed-street edge's role is unresolved (above), never confidently "ordinary side."
+  const streetFrontageSet = new Set(lotLineRoleAssignment.streetFrontageEdgeRefs ?? []);
+  const ordinarySideDistancesFt = sideEdgeDistances.filter(([ref]) => !streetFrontageSet.has(ref)).map(([, distanceFt]) => distanceFt);
+  if (ordinarySideDistancesFt.length > 0) {
+    distances.distanceToSideLotLineFt = Math.min(...ordinarySideDistancesFt);
   }
 
   return { distances, footprintProjected: footprint };

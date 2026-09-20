@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assemblePropertyContext, type ConfirmedParcelResolution } from "../../src/property-intelligence/assemble.js";
+import { SourceRecordNotFoundError } from "../../src/property-intelligence/types.js";
 
 const confirmed: ConfirmedParcelResolution = {
   status: "CONFIRMED",
@@ -49,6 +50,46 @@ describe("Workflow 2: PropertyContext Assembly", () => {
     // PropertyFact has no "classification" field at all - Property Intelligence structurally
     // cannot assign KNOWN/INFERRED/REQUIRES_VERIFICATION (see property-intelligence/types.ts).
     expect(context.facts[0]).not.toHaveProperty("classification");
+  });
+
+  it(
+    "[maintenance correction, 2026-09-15] a retriever throwing SourceRecordNotFoundError records UNAVAILABLE, never SOURCE_ERROR - " +
+      "a legitimate 'no result for this specific parcel' outcome must never be conflated with a genuine source/transport failure, " +
+      "since a data-source-health decision (data-source-registry) reads exactly this distinction",
+    async () => {
+      const context = await assemblePropertyContext(confirmed, {
+        retryPolicy: { maxAttempts: 1, baseDelayMs: 0 },
+        retrievers: [
+          {
+            factType: "parcel-geometry-available",
+            sourceAgency: "King County GIS",
+            dataset: "KingCo_Parcels (parcel boundary polygon)",
+            retrieve: async () => {
+              throw new SourceRecordNotFoundError("No parcel boundary found for PIN \"test\".");
+            },
+          },
+        ],
+      });
+      expect(context.facts[0]!.availabilityState).toBe("UNAVAILABLE");
+      expect(context.facts[0]!.value).toBeUndefined();
+    }
+  );
+
+  it("a plain Error (genuine source/transport/validation failure) still records SOURCE_ERROR, unaffected by the SourceRecordNotFoundError distinction", async () => {
+    const context = await assemblePropertyContext(confirmed, {
+      retryPolicy: { maxAttempts: 1, baseDelayMs: 0 },
+      retrievers: [
+        {
+          factType: "parcel-geometry-available",
+          sourceAgency: "King County GIS",
+          dataset: "KingCo_Parcels (parcel boundary polygon)",
+          retrieve: async () => {
+            throw new Error("King County parcel-polygon request failed: 503 Service Unavailable");
+          },
+        },
+      ],
+    });
+    expect(context.facts[0]!.availabilityState).toBe("SOURCE_ERROR");
   });
 
   it("PropertyContext is immutable once assembled - re-assembling produces a distinct object/facts array, never a shared mutable reference", async () => {

@@ -52,7 +52,11 @@ export type LogEvent =
   | "BUILDING_OUTLINES_DISPLAY_FETCH_FAILED"
   // Regression diagnostics (2026-08-30) - counts/booleans only, see pipeline.ts's own comment at
   // the call site for exactly what is (and isn't) included.
-  | "SHED_REPORT_DIAGNOSTICS";
+  | "SHED_REPORT_DIAGNOSTICS"
+  // Maintenance correction (2026-09-15) - a retriever threw SourceRecordNotFoundError (a specific
+  // parcel/record legitimately has no result, never a source-health signal). No PII beyond what
+  // SOURCE_FAILURE already logs (factType/dataset only).
+  | "SOURCE_RECORD_NOT_FOUND";
 
 export interface LogDetail {
   [key: string]: string | number | boolean | undefined;

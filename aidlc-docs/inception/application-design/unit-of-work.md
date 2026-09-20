@@ -213,6 +213,54 @@ request, and delete their account per the retention policy.
 
 ---
 
+## Unit 6B: Shed Report Value Expansion
+*(Added 2026-09-10, after Unit 6 and before Unit 7. Existing units are NOT renumbered — the
+project's AI-DLC convention uses stable unit identifiers, and a "6B" insert mirrors the earlier
+"2B" precedent. See `aidlc-docs/decisions/2026-09-10-unit-6b-shed-report-value-expansion.md`.)*
+
+**Why it was added**: Real product / real-browser testing showed the technically-complete shed
+report was too heavily weighted toward setback / placement information. Before expanding
+horizontally to Fences / Decks / Retaining Walls / Additions / ADUs, the founder chose to **deepen
+one report and validate paid-product value** — moving the shed report toward answering "Can I
+probably build this here, what might stop me, will I likely need a permit, and what should I verify
+before spending more money?"
+
+**Delivers** (subject to scope approval — research complete, scope pending): a richer shed report
+adding **ECA (environmentally critical area) screening**, **building-permit-requirement
+determination**, and **estimated lot-coverage analysis**. Preliminary feasible-placement-area
+mapping was researched and **deferred**. Not an architecture change: PostGIS stays the spatial
+source of truth, rules stay deterministic/versioned, the LLM never decides regulatory conclusions,
+KNOWN/INFERRED/REQUIRES_VERIFICATION is preserved, missing data never becomes PASS, reports stay
+immutable, and the flow still fails closed on claims, not on the customer journey.
+
+**Extends**: Property Intelligence (two new reusable facts: `environmental-constraints`,
+`existing-structure-coverage`), Screening Request (new optional shed intake fields), Regulatory
+Rules Engine (a new `PermitRequirementFinding` result + a shed lot-coverage rule; candidate rules
+enter as `RESEARCHED`, none activated in this unit without founder tier confirmation), Report
+Generation (new report sections through the existing shared `ReportView`). Reuses Unit 5's PostGIS
+operations (`computeSetbackConstrainedArea`, `computeEcaExclusionGeometry`, `computeParcelAreaSqFt`)
+and the already-ACTIVE ECA map-fact / regulatory-implication policy (BR-5 / BR-4a) unchanged.
+
+**Depends on**: Unit 2B, Unit 3 (operational gate), and Unit 6 (accounts land first per the
+approved sequence). Does not block on Unit 6's Code Generation re-review, but is sequenced after
+it. Introduces one new external data source (Seattle ECA feature services,
+`services.arcgis.com/ZOyb2t4B0UYuYNYH` — same ArcGIS org and CRS as the already-integrated
+Building Outlines) and **no** new infrastructure, npm dependency, or paid service.
+
+**Stories**: no new stories — 6B deepens the existing shed stories (`SRE-SHED-1`, `RGD-1`–`RGD-6`,
+`SRE-0`). See `unit-of-work-story-map.md`.
+
+**Exit criteria**: a paid shed report that, for a typical parcel, states a likely building-permit
+pathway with its reasons and a verification list, screens the parcel against Seattle's mapped ECA
+layers (data fact separated from regulatory conclusion), and shows an estimated lot-coverage
+position — every figure carrying an honest KNOWN / ESTIMATED / REQUIRES_VERIFICATION label, and
+never implying permit approval or survey-grade geometry.
+
+**Research artifacts**: `aidlc-docs/construction/unit-6b-shed-report-value-expansion/`
+(`research-findings.md`, `candidate-regulatory-rules.md`, `recommended-scope.md`).
+
+---
+
 ## Unit 7: Fences
 
 **Delivers**: The third structure project type — deliberately low-complexity. Candidate for the C3

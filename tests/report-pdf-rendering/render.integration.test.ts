@@ -1,10 +1,13 @@
 /**
- * Real headless-Chromium PDF rendering via `puppeteer-core` + `@sparticuz/chromium` (Unit 2B
- * platform pivot, 2026-08-24 - see src/report-pdf-rendering/render.ts). `@sparticuz/chromium`
- * ships Linux-only binaries (built for Lambda/Vercel's function runtime) - this suite skips
- * cleanly on any other platform, same "skip cleanly without what this needs" discipline as every
- * credential-gated live-integration test, just gated on platform instead of an env var. CI runs
- * on Linux (ubuntu-latest), so this still runs unconditionally there.
+ * Real headless-Chromium PDF rendering (Unit 2B platform pivot, 2026-08-24 - see
+ * src/report-pdf-rendering/render.ts). On Linux (Vercel's actual production runtime, and CI's
+ * ubuntu-latest), `renderPdfBytes` uses `puppeteer-core` + `@sparticuz/chromium`, unchanged since
+ * the platform pivot. Maintenance correction (2026-09-18, founder-directed bug fix) - on any other
+ * platform (a developer's local macOS/Windows machine, where `@sparticuz/chromium`'s Linux-only
+ * binary cannot execute - `spawn ENOEXEC`, live-verified 2026-09-17/18), `renderPdfBytes` instead
+ * uses `playwright`'s own locally-executable Chromium, a local-verification-only fallback that
+ * never runs on Vercel. This test therefore now runs unconditionally on every platform - whichever
+ * branch `renderPdfBytes` takes for the current OS, it must produce real, valid PDF bytes.
  */
 
 import { describe, expect, it } from "vitest";
@@ -23,7 +26,7 @@ const artifact: EvidenceReportArtifactRow = {
   generatedAt: new Date(),
 };
 
-describe.skipIf(process.platform !== "linux")("Real PDF rendering (headless Chromium)", () => {
+describe("Real PDF rendering (headless Chromium)", () => {
   it("produces real PDF bytes starting with the %PDF header", async () => {
     const html = renderReportHtml(artifact);
     const bytes = await renderPdfBytes(html);

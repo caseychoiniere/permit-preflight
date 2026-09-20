@@ -12,8 +12,18 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { detectRearEdge, suggestLargestStructure, checkPlacementCompleteness, resolveBuildingVisualState, shedFootprintGeoJson } from "../../app/components/parcel-placement-helpers.js";
-import type { GeographicPoint } from "../../src/spatial-analysis/types.js";
+import {
+  detectRearEdge,
+  suggestLargestStructure,
+  checkPlacementCompleteness,
+  resolveBuildingVisualState,
+  shedFootprintGeoJson,
+  deriveLotLineSelectionForDisplay,
+  toPersistedLotLineRoleAssignment,
+} from "../../app/components/parcel-placement-helpers.js";
+import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
+import { LotLineRoleStatus } from "../../src/screening-request/types.js";
+import { AUTHORITATIVE_PARCEL_SRID } from "../../src/property-intelligence/king-county-parcel-geometry.js";
 
 // A simple rectangle, small enough that the local-meters approximation stays linear/well-behaved,
 // large enough to have a clearly non-degenerate front edge. Matches edge-i = points[i]->points[(i+1)%n].
@@ -90,7 +100,14 @@ describe("suggestLargestStructure (regression item 7)", () => {
 });
 
 describe("checkPlacementCompleteness (regression items 14/15/16, the Next-button gate)", () => {
-  const complete = { lotLineDecided: true, hasPlacement: true, hasBuildingsToAskAbout: true, dwellingAnswered: true };
+  const complete = {
+    lotLineDecided: true,
+    hasPlacement: true,
+    hasBuildingsToAskAbout: true,
+    dwellingAnswered: true,
+    multipleFrontageAnswered: true,
+    needsStreetFrontageEdges: false,
+  };
 
   it("[hard invariant, item 14] incomplete when lot lines are undecided", () => {
     const result = checkPlacementCompleteness({ ...complete, lotLineDecided: false });
@@ -127,8 +144,34 @@ describe("checkPlacementCompleteness (regression items 14/15/16, the Next-button
   });
 
   it("only lists items actually missing, never satisfied ones", () => {
-    const result = checkPlacementCompleteness({ lotLineDecided: false, hasPlacement: true, hasBuildingsToAskAbout: true, dwellingAnswered: false });
+    const result = checkPlacementCompleteness({
+      lotLineDecided: false,
+      hasPlacement: true,
+      hasBuildingsToAskAbout: true,
+      dwellingAnswered: false,
+      multipleFrontageAnswered: false,
+      needsStreetFrontageEdges: false,
+    });
+    // multipleFrontageAnswered is only checked once lotLineDecided is true (nothing to answer yet
+    // otherwise) - so with lotLineDecided false, only the front/rear item and the dwelling item
+    // are missing here.
     expect(result.missing).toEqual(["Confirm the front and rear lot lines", 'Confirm your main house, or choose "I\'m not sure"']);
+  });
+
+  it(
+    "[maintenance correction, 2026-09-15, founder direction] incomplete when lot lines ARE decided but the multiple-frontage question " +
+      "was never answered - no default, Next stays disabled until an explicit answer",
+    () => {
+      const result = checkPlacementCompleteness({ ...complete, multipleFrontageAnswered: false });
+      expect(result.complete).toBe(false);
+      expect(result.missing).toContain("Answer whether this property has street frontage on more than one side");
+    }
+  );
+
+  it("incomplete when the customer answered YES but has not yet selected any street-facing edge", () => {
+    const result = checkPlacementCompleteness({ ...complete, needsStreetFrontageEdges: true });
+    expect(result.complete).toBe(false);
+    expect(result.missing).toContain("Select the additional street-facing property line(s)");
   });
 });
 
@@ -224,5 +267,80 @@ describe("shedFootprintGeoJson (real-bug regression 2026-08-30 - Placement-step 
     const unrotated = shedFootprintGeoJson(anchor, 8, 10, 0);
     const rotated = shedFootprintGeoJson(anchor, 8, 10, 90);
     expect(rotated).not.toEqual(unrotated);
+  });
+});
+
+// Maintenance correction (2026-09-15, reviewer decision 9947a0ef-ed89-43f2-9fcc-e2a487cbdc49, RC-3)
+// - covers the actual regression: a real customer front/rear selection that
+// deriveLotLineRoleAssignment (lot-line-roles.ts, already tested in
+// tests/spatial-analysis/lot-line-roles.test.ts) resolves to INSUFFICIENT must still be visible on
+// the Review step, but must NEVER be submitted to the server for that status (BR-U2-9's persisted
+// contract, LotLineRoleAssignmentSchema, only permits frontEdgeRef/rearEdgeRef/sideEdgeRefs when
+// ASSIGNED).
+const rectangleBoundary: Polygon = {
+  units: "FEET",
+  srid: AUTHORITATIVE_PARCEL_SRID,
+  points: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 100 }, { x: 0, y: 100 }],
+};
+const pentagonBoundary: Polygon = {
+  units: "FEET",
+  srid: AUTHORITATIVE_PARCEL_SRID,
+  points: [{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 80, y: 40 }, { x: 30, y: 80 }, { x: -20, y: 40 }],
+};
+
+describe("deriveLotLineSelectionForDisplay (maintenance correction 2026-09-15 - the defect: a real user selection silently vanished on Review)", () => {
+  it("[hard invariant] a valid opposite-edge pick on a rectangle produces ASSIGNED with sideEdgeRefs, matching deriveLotLineRoleAssignment's own result", () => {
+    const result = deriveLotLineSelectionForDisplay(rectangleBoundary, "edge-0", "edge-2");
+    expect(result).toEqual({ status: LotLineRoleStatus.ASSIGNED, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] });
+  });
+
+  it(
+    "[founder-directed widening, 2026-09-15] a non-quadrilateral parcel's valid (non-adjacent) front/rear pick now ASSIGNS - " +
+      "side setback is a shape-agnostic minimum-distance computation, never a rectangle-only operation - so the Review step " +
+      "shows a real ASSIGNED result with every remaining edge as a side edge, not a fallback message",
+    () => {
+      const result = deriveLotLineSelectionForDisplay(pentagonBoundary, "edge-0", "edge-2");
+      expect(result.status).toBe(LotLineRoleStatus.ASSIGNED);
+      expect(result.frontEdgeRef).toBe("edge-0");
+      expect(result.rearEdgeRef).toBe("edge-2");
+      expect((result.sideEdgeRefs ?? []).sort()).toEqual(["edge-1", "edge-3", "edge-4"]);
+    }
+  );
+
+  it("[the actual reported defect, now only reachable via an adjacent pick] a non-quadrilateral parcel's ADJACENT front/rear pick is still INSUFFICIENT (front/rear can never touch) but RETAINS the user's raw picks for Review display", () => {
+    const result = deriveLotLineSelectionForDisplay(pentagonBoundary, "edge-0", "edge-1");
+    expect(result.status).toBe(LotLineRoleStatus.INSUFFICIENT);
+    expect(result.frontEdgeRef).toBe("edge-0");
+    expect(result.rearEdgeRef).toBe("edge-1");
+    expect(result.sideEdgeRefs).toBeUndefined();
+  });
+
+  it("[cause-neutral case] an adjacent pick on an ORDINARY rectangle is ALSO INSUFFICIENT with picks retained - proves the defect fix is not limited to non-quadrilateral parcels", () => {
+    const result = deriveLotLineSelectionForDisplay(rectangleBoundary, "edge-0", "edge-1");
+    expect(result.status).toBe(LotLineRoleStatus.INSUFFICIENT);
+    expect(result.frontEdgeRef).toBe("edge-0");
+    expect(result.rearEdgeRef).toBe("edge-1");
+  });
+});
+
+describe("toPersistedLotLineRoleAssignment (maintenance correction 2026-09-15 - the persisted-contract boundary)", () => {
+  it("[hard invariant] strips frontEdgeRef/rearEdgeRef from an INSUFFICIENT selection before it would reach the server - the persisted schema forbids them for this status", () => {
+    const displayOnly = { status: LotLineRoleStatus.INSUFFICIENT, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2" };
+    expect(toPersistedLotLineRoleAssignment(displayOnly)).toEqual({ status: LotLineRoleStatus.INSUFFICIENT });
+  });
+
+  it("passes an ASSIGNED selection through unchanged, including sideEdgeRefs", () => {
+    const assigned = { status: LotLineRoleStatus.ASSIGNED, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] };
+    expect(toPersistedLotLineRoleAssignment(assigned)).toEqual(assigned);
+  });
+
+  it("round-trips deriveLotLineSelectionForDisplay's own ASSIGNED output (non-quadrilateral parcel) through unchanged", () => {
+    const displayResult = deriveLotLineSelectionForDisplay(pentagonBoundary, "edge-0", "edge-2");
+    expect(toPersistedLotLineRoleAssignment(displayResult)).toEqual(displayResult);
+  });
+
+  it("round-trips deriveLotLineSelectionForDisplay's own INSUFFICIENT output (adjacent pick) back down to the bare persisted shape", () => {
+    const displayResult = deriveLotLineSelectionForDisplay(pentagonBoundary, "edge-0", "edge-1");
+    expect(toPersistedLotLineRoleAssignment(displayResult)).toEqual({ status: LotLineRoleStatus.INSUFFICIENT });
   });
 });

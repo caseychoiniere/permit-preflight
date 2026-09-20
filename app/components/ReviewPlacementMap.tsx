@@ -48,6 +48,11 @@ interface Props {
    * never a guess. */
   frontEdgeRef?: string;
   rearEdgeRef?: string;
+  /** Maintenance correction (2026-09-15, founder direction) - the same streetFrontageEdgeRefs
+   * ParcelPlacementMap already established (no new computation), rendered in the same amber used
+   * there. Omitted/empty renders no additional highlighting, matching frontEdgeRef/rearEdgeRef's
+   * own "nothing to show" behavior above. */
+  streetFrontageEdgeRefs?: string[];
 }
 
 const MAPTILER_STYLE_URL = process.env.NEXT_PUBLIC_MAPTILER_KEY
@@ -59,6 +64,9 @@ const FOOTPRINT_COLOR = "#ea580c"; // orange - matches ParcelPlacementMap's own 
 // Same front/rear colors as ParcelPlacementMap.tsx - a consistency requirement (item 11).
 const FRONT_COLOR = "#16a34a";
 const REAR_COLOR = "#dc2626";
+// Same street-frontage color as ParcelPlacementMap.tsx (maintenance correction, 2026-09-15) - see
+// that file's own comment for why this is deliberately not amber/orange.
+const STREET_FRONTAGE_COLOR = "#0891b2";
 // Same building/selected-dwelling colors as ParcelPlacementMap.tsx and ReportMap.tsx - a
 // consistency requirement (the same selected dwelling must look the same across every stage).
 const BUILDING_COLOR = "#64748b";
@@ -95,7 +103,18 @@ function ringToCoords(points: GeographicPoint[]): [number, number][] {
   return [...coords, coords[0]!];
 }
 
-export function ReviewPlacementMap({ boundaryPolygonWgs84, anchor, orientationDeg, widthFt, depthFt, existingStructures = [], selectedDwellingOutlineId, frontEdgeRef, rearEdgeRef }: Props) {
+export function ReviewPlacementMap({
+  boundaryPolygonWgs84,
+  anchor,
+  orientationDeg,
+  widthFt,
+  depthFt,
+  existingStructures = [],
+  selectedDwellingOutlineId,
+  frontEdgeRef,
+  rearEdgeRef,
+  streetFrontageEdgeRefs = [],
+}: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -117,15 +136,17 @@ export function ReviewPlacementMap({ boundaryPolygonWgs84, anchor, orientationDe
       map.addLayer({ id: "parcel-boundary-fill", type: "fill", source: "parcel-boundary", paint: { "fill-color": BOUNDARY_COLOR, "fill-opacity": 0.1 } });
       map.addLayer({ id: "parcel-boundary-line", type: "line", source: "parcel-boundary", paint: { "line-color": BOUNDARY_COLOR, "line-width": 2 } });
 
-      // Front/rear lot lines (regression item 11) - read-only recap of the SAME edges Placement
-      // established, no click handlers, no numeric labels (matches Placement's own no-numbers UX).
-      if (frontEdgeRef || rearEdgeRef) {
+      // Front/rear/street-frontage lot lines (regression item 11; street-frontage added 2026-09-15
+      // per founder direction) - read-only recap of the SAME edges Placement established, no click
+      // handlers, no numeric labels (matches Placement's own no-numbers UX).
+      if (frontEdgeRef || rearEdgeRef || streetFrontageEdgeRefs.length > 0) {
         const segments = edgeSegments(boundaryPolygonWgs84);
+        const streetFrontageSet = new Set(streetFrontageEdgeRefs);
         const lineFeatures: GeoJSON.Feature[] = segments
-          .filter((s) => s.edgeRef === frontEdgeRef || s.edgeRef === rearEdgeRef)
+          .filter((s) => s.edgeRef === frontEdgeRef || s.edgeRef === rearEdgeRef || streetFrontageSet.has(s.edgeRef))
           .map((s) => ({
             type: "Feature",
-            properties: { role: s.edgeRef === frontEdgeRef ? "front" : "rear" },
+            properties: { role: s.edgeRef === frontEdgeRef ? "front" : s.edgeRef === rearEdgeRef ? "rear" : "streetFrontage" },
             geometry: { type: "LineString", coordinates: [[s.a.lng, s.a.lat], [s.b.lng, s.b.lat]] },
           }));
         if (lineFeatures.length > 0) {
@@ -135,7 +156,10 @@ export function ReviewPlacementMap({ boundaryPolygonWgs84, anchor, orientationDe
             type: "line",
             source: "lot-lines",
             layout: { "line-cap": "round" },
-            paint: { "line-color": ["case", ["==", ["get", "role"], "front"], FRONT_COLOR, REAR_COLOR], "line-width": 5 },
+            paint: {
+              "line-color": ["case", ["==", ["get", "role"], "front"], FRONT_COLOR, ["==", ["get", "role"], "rear"], REAR_COLOR, STREET_FRONTAGE_COLOR],
+              "line-width": 5,
+            },
           });
         }
       }

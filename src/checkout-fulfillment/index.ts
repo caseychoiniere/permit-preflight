@@ -133,6 +133,11 @@ export interface GuestReportView {
    * window right after generation completes) - the frontend should treat that the same as
    * EMAIL_PENDING (delivery is in progress, not failed), never as a failure. */
   emailDeliveryStatus?: DeliveryStatus;
+  /** The customer-facing Order reference (the Order's own id) - correction 3. Shown on the
+   * post-checkout status page as a second, in-browser place a purchaser can obtain it (the email
+   * is the durable one). Not a new identifier - the same value the "Claim a purchase" form and the
+   * emailed report already use. */
+  orderReference: string;
 }
 
 /**
@@ -165,7 +170,7 @@ export async function getGuestReport(db: Db, stripeCheckoutSessionId: string): P
   if (!artifact) return undefined;
 
   const emailDeliveryStatus = await getActiveCredentialDeliveryStatus(db, artifact.id);
-  return { artifact, emailDeliveryStatus };
+  return { artifact, emailDeliveryStatus, orderReference: order.id };
 }
 
 /**
@@ -181,8 +186,10 @@ export async function handleGenerationOutcome(db: Db, getResendClient: () => Res
   if (job.state === ReportGenerationJobState.COMPLETE && job.evidenceReportArtifactId) {
     const order = await getOrderById(db, authorization.orderId);
     // Constructed lazily, only on this branch - the FAILED/refund branch below needs no Resend
-    // credential at all, and must not fail because one happens to be missing.
-    await deliverGuestReportAccess(db, getResendClient(), order?.customerEmail, job.evidenceReportArtifactId);
+    // credential at all, and must not fail because one happens to be missing. authorization.orderId
+    // is the customer-facing Order reference (correction 3) - the email carries it so a guest who
+    // later opens an account has what claimPurchase Path A asks for.
+    await deliverGuestReportAccess(db, getResendClient(), order?.customerEmail, job.evidenceReportArtifactId, authorization.orderId);
   } else if (job.state === ReportGenerationJobState.FAILED) {
     // BR-U2B-6/BR-U2B-8: automatic refund on terminal generation failure, independent of the
     // (never-issued, since generation failed) report-access state. Started as a durable Vercel

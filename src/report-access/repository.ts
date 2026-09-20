@@ -84,7 +84,14 @@ export async function deliverGuestReportAccess(
   db: Db,
   resendClient: ResendClient,
   customerEmail: string | undefined,
-  reportArtifactId: string
+  reportArtifactId: string,
+  /** The customer-facing Order reference (the Order's own id) - Unit 6 Code Generation Part 2
+   * review, correction 3. Included in the email so a guest who later creates an account has the
+   * value claimPurchase Path A ("Claim a purchase" -> "Order reference") asks for. Optional only
+   * so a redelivery path that somehow lacks it still sends the report link; every real call site
+   * passes it. Not an internal-only identifier being newly exposed for its own sake - it is the
+   * same id the claim form already consumes, just made reachable by the customer. */
+  orderReference?: string
 ): Promise<void> {
   if (!customerEmail) {
     logger.error("GUEST_DELIVERY_NO_EMAIL", { reportArtifactId });
@@ -102,11 +109,20 @@ export async function deliverGuestReportAccess(
   // Search Params, not fragments) or this application's own server-side logging at all. See
   // app/report/page.tsx for the client-side exchange that turns this into an HttpOnly cookie.
   const reportUrl = `${resolveAppBaseUrl()}/report#access_token=${encodeURIComponent(credential.rawToken)}`;
+  // The Order reference block - correction 3. Kept as a plain labelled line (never a link, never
+  // adjacent to the access-token URL) so a customer can copy it into the "Claim a purchase" form
+  // later without exposing anything else.
+  const orderReferenceHtml = orderReference
+    ? `<p>Order reference: <code>${orderReference}</code><br/>Keep this if you ever want to add this purchase to a Permit Preflight account.</p>`
+    : "";
+  const orderReferenceText = orderReference
+    ? `\n\nOrder reference: ${orderReference}\nKeep this if you ever want to add this purchase to a Permit Preflight account.`
+    : "";
   const result = await resendClient.sendEmail({
     to: customerEmail,
     subject: "Your Permit Preflight report is ready",
-    html: `<p>Your Permit Preflight shed buildability report is ready.</p><p><a href="${reportUrl}">View your report</a></p>`,
-    text: `Your Permit Preflight shed buildability report is ready: ${reportUrl}`,
+    html: `<p>Your Permit Preflight shed buildability report is ready.</p><p><a href="${reportUrl}">View your report</a></p>${orderReferenceHtml}`,
+    text: `Your Permit Preflight shed buildability report is ready: ${reportUrl}${orderReferenceText}`,
   });
 
   await db

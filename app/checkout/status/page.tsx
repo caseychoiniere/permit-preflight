@@ -76,7 +76,7 @@ const STATUS_TONE: Record<Status, BadgeTone> = {
   NOT_FOUND: "danger",
 };
 
-type ReportFetchState = "IDLE" | "LOADING" | "NOT_FOUND" | (Report & { emailDeliveryStatus?: EmailDeliveryStatus });
+type ReportFetchState = "IDLE" | "LOADING" | "NOT_FOUND" | (Report & { emailDeliveryStatus?: EmailDeliveryStatus; orderReference?: string });
 
 /** Requirement 6 (2026-08-28 bug report): a 200 response with an unparseable, empty, or
  * unexpectedly-shaped body must be treated the same as a real failure - explicitly, never left to
@@ -170,6 +170,7 @@ export default function CheckoutStatusPage() {
 
   const loadedReport = typeof report === "object" ? report : null;
   const emailStatusCopy = loadedReport ? EMAIL_STATUS_COPY[loadedReport.emailDeliveryStatus ?? "UNKNOWN"] : null;
+  const orderReference = loadedReport && "orderReference" in loadedReport ? loadedReport.orderReference : undefined;
 
   return (
     <Container>
@@ -204,6 +205,13 @@ export default function CheckoutStatusPage() {
               }
             >
               {emailStatusCopy.text}
+            </p>
+          )}
+          {orderReference && (
+            <p className="mt-2 text-sm text-slate-500">
+              Order reference: <code className="text-slate-700">{orderReference}</code>
+              <br />
+              Keep this if you ever want to add this purchase to a Permit Preflight account.
             </p>
           )}
           <div className="mt-6">

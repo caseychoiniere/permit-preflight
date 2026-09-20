@@ -149,7 +149,38 @@
   mirroring Unit 5's own precedent for the same class of drizzle-kit generation issue). All three
   Part 1 corrections implemented and covered by real integration tests (not run in this sandbox —
   no `DATABASE_URL`). Repository context packaged (`permit-preflight-chatgpt-context.zip`) at the
-  implementation-review handoff. Presented for founder review.
+  implementation-review handoff. Presented for founder review. **Founder review paused
+  2026-08-27** for the cross-cutting product-correctness / real-browser-validation phase (parcel
+  confirmation, staging deployment, Stripe sandbox, Resend, inline paid reports/PDF, Anthropic
+  explanations, staging regulatory fixtures, Seattle Building Outlines / Building Intelligence v1,
+  primary-dwelling selection, spatial-state persistence, Placement→Review→Report consistency,
+  Placement-step UX). Unit 6's account/auth code was carried through that phase unchanged except
+  for cosmetic Tailwind restyling of the `app/account/*` pages. **Unit 6 Code Generation Part 2
+  founder review resumed 2026-09-10: REQUEST CHANGES — four bounded customer-facing corrections
+  (shared `ReportView` for Account Access + account-authorized PDF route; report link/token input
+  normalization; customer-facing Order reference in the guest email + status page; distinguishable
+  report-history entries). Corrections implemented 2026-09-10** — `npm run typecheck` 0 errors;
+  `npm test` **421/421 passing** (+25 new deterministic, zero regressions); `npm run build` clean
+  (new `/api/account/reports/[orderId]/pdf` route registered); `npm run test:integration` — Unit 6
+  suite **11/11 passing against live Neon staging** (3 new: Mode B ownership rejection, unknown-order
+  FORBIDDEN, history distinguishing fields); 8 unrelated integration failures are a live King County
+  GIS outage (HTML error page instead of JSON), not a code defect. **Re-presented for founder
+  review — Code Generation Part 2 NOT yet approved; Build & Test still gated.**
+  **PLAN AMENDMENT 2026-09-10: Unit 6B — Shed Report Value Expansion — inserted between Unit 6 and
+  Unit 7 (existing units NOT renumbered). Research pass COMPLETE. 2026-09-11: SCOPE APPROVED WITH
+  MODIFICATIONS (ECA screening + permit determination + lot coverage; Track 4 deferred entirely).
+  Functional Design Part 1 **APPROVED 2026-09-13** (rule tiers FOUNDER-CONFIRMED 2026-09-11, a
+  second correction round 2026-09-13 resolved P2b/P3b/P7b to T1 and researched C1b's data-source
+  gaps, and the founder's C1c/C1d bounded-reasoning scope decision applied — see the dated entries
+  below for full detail). **NFR Requirements APPROVED 2026-09-13. NFR Design ✅ COMPLETE
+  2026-09-13** (one genuinely new pattern, verified against the codebase: a `Promise.allSettled`
+  fan-out for the ECA adapter's 12-layer query, zero new npm dependency; everything else pure
+  reuse, cited by file). **Infrastructure Design ✅ SKIPPED/APPROVED 2026-09-13** (no new
+  infrastructure, verified not assumed — same ArcGIS org/no new secret, zero schema migration,
+  no new queue/cache). Awaiting founder approval of NFR Design before Code Generation. No Code
+  Generation, no rule activation. See the
+  "PLAN AMENDMENT — Unit 6B" section below and
+  `aidlc-docs/construction/unit-6b-shed-report-value-expansion/`.**
   (`aidlc-docs/construction/plans/unit-4-detached-garages-functional-design-plan.md`; artifacts in
   `aidlc-docs/construction/unit-4-detached-garages/functional-design/`). Both Part 2 founder
   decisions (Q1 fallback, Q2 resourcing) are resolved, the regulatory inventory is 13 candidates
@@ -291,6 +322,926 @@ founder's own requirement) was explicitly NOT re-run in this session** — no li
 geocoding credentials in this sandbox; this is the one open item, tracked honestly rather than
 fabricated, requiring the founder's own local re-test (the same method that originally surfaced the
 26/26 regression) as the real acceptance proof.
+
+## PLAN AMENDMENT — Unit 6B: Shed Report Value Expansion — RESEARCH COMPLETE, SCOPE NOT APPROVED 2026-09-10
+
+**Founder-directed plan amendment. Not a reopening of any completed Construction stage, not an
+architecture change.** Full record:
+`aidlc-docs/decisions/2026-09-10-unit-6b-shed-report-value-expansion.md`.
+
+**Why**: real product / real-browser testing showed the technically-complete shed report is too
+heavily weighted toward setback/placement information. Before expanding horizontally to Units 7–11
+(Fences/Decks/Retaining Walls/Additions/ADUs), the founder chose to **deepen one report and
+validate paid-product value** — moving the shed report toward "Can I probably build this here,
+what might stop me, will I likely need a permit, and what should I verify before spending more
+money?"
+
+**A new unit** — **Unit 6B, inserted between Unit 6 and Unit 7. Existing units are NOT renumbered**
+(stable-identifier convention; mirrors the Unit 2 → Unit 2 + Unit 2B precedent). Updated in
+`unit-of-work.md`, `unit-of-work-story-map.md` (0 new stories — 6B deepens `SRE-SHED-1` /
+`RGD-1..6` / `SRE-0`; the 54-story total is unchanged), and `unit-of-work-dependency.md`. Same hard
+dependency as the project-type units (Unit 2B + Unit 3's operational gate) plus Unit 6 by sequence;
+does not block on Unit 6's Code Generation re-review.
+
+**Research pass complete (2026-09-10)** — four capabilities researched against primary
+City-of-Seattle / SDCI / Seattle GeoData sources, grounded against the existing codebase (most
+machinery already exists for vacant land / garage and is simply not wired into the shed workflow):
+(1) permit-requirement determination, (2) lot-coverage analysis, (3) ECA screening, (4) preliminary
+feasible-placement-area analysis. Artifacts:
+`aidlc-docs/construction/unit-6b-shed-report-value-expansion/` — `research-findings.md`
+(tracks 1–4, data-source review, PropertyContext implications, GO/NO-GO table, example report
+value, reuse analysis), `candidate-regulatory-rules.md` (rules P1–P9, C1–C3, F1 — all `RESEARCHED`
+state only, AI-suggested tiers, **none activated**), `recommended-scope.md` (recommended scope +
+10 open decisions for founder approval).
+
+**AI recommendation (founder decides)**: ship **ECA screening + permit determination + lot
+coverage**; **defer** the preliminary feasible-placement-area map (highest uncertainty + highest
+ongoing maintenance surface + hardest-to-communicate promise). Key technical findings: the Seattle
+ECA layers live on `services.arcgis.com/ZOyb2t4B0UYuYNYH` — the **same ArcGIS org and CRS (EPSG
+2926) as the already-integrated Building Outlines** — so the ECA adapter is a direct template of
+`seattle-building-outlines.ts`; the existing ACTIVE ECA map-fact / regulatory-implication policy
+(`spatial-analysis/eca.ts` BR-5, `regulatory-rules-engine/eca-implication.ts` BR-4a) already
+implements the DATA-FACT-vs-REGULATORY-CONCLUSION separation the founder requires and is **not
+modified**; the shed pipeline today passes `ecaFindings: []` and builds `lotCoverageFacts` only for
+the garage branch — 6B wires proven Unit 4/5 components into the EXISTING_PROPERTY shed workflow
+plus adds one genuinely new capability (permit determination) and one new data source.
+
+**Unit 6B capability scope is NOT approved.** No Functional Design, no Code Generation, no rule
+activation until the founder approves the scope. New external-verification items added
+(`external-verification-tracker.md` items 19–22): ECA endpoint live-verification, per-layer CRS
+verification, permit-rule professional review, coverage-rule professional review.
+
+**2026-09-11: SCOPE APPROVED WITH MODIFICATIONS.** Approved: A (ECA screening), B (shed permit-
+requirement determination), C (lot-coverage analysis). Track 4 (feasible placement, including the
+originally-proposed minimal-overlay variant) remains **fully deferred** — not part of Unit 6B at
+all. Full decision + design modifications:
+`aidlc-docs/decisions/2026-09-10-unit-6b-shed-report-value-expansion.md` (addendum) and
+`aidlc-docs/construction/unit-6b-shed-report-value-expansion/recommended-scope.md`.
+
+**Functional Design Part 1 produced 2026-09-11** (no separate question round — the founder's own
+approval message already specified every material design decision: progressive-disclosure shed
+intake gated to 3 always-asked + 3 conditional questions; a two-dimensional `buildingPermit` ×
+`reviewPath` permit-result model, evaluated and adopted, replacing the single four-state enum
+proposed in research; threshold/range lot-coverage reasoning via a new `CoverageMaximumResult`
+type instead of blanket `REQUIRES_VERIFICATION`; an explicit `EcaLotAreaAdjustment` regulatory-
+rule type composing ECA screening with lot coverage, fail-closed/asymmetric per the founder's
+own instruction; ECA report-copy discipline restated as BR-U6B-1/2/4). Re-verified lot-coverage
+research against the **current, effective-mid-January-2026** Seattle NR rules (Council Bill
+120993 / WA HB 1110), per the founder's explicit correction that the original pass must not rely
+on the stale pre-2024 35%/undated-Tip-220 material — confirmed 50% base (SMC 23.44.080), found
+(not yet verbatim-code-confirmed) a 60% stacked-dwelling-unit figure at 23.44.080(G), and
+isolated the ECA-reduction MECHANISM (percentage-reduction vs. area-exclusion) as its own
+unresolved ambiguity (candidate C1b) rather than assuming either interpretation. Attempted direct
+verification of the 120-sq-ft exemption threshold's exact operator (`<` vs `≤`) against the
+Seattle Building Code's own exemption provision - blocked by this sandbox's missing
+PDF-text-extraction tooling (`poppler-utils`/`pdftoppm` not installed), not a source-access
+refusal; documented as an open, non-blocking item (tracker item 23) rather than guessed.
+
+**Artifacts produced**: `aidlc-docs/construction/unit-6b-shed-report-value-expansion/
+functional-design/{domain-entities,business-rules,business-logic-model,frontend-components,
+rule-tier-review}.md`. **Rule tiers were explicitly NOT founder-confirmed at this point** — a
+compact review table was presented for the founder's own confirmation pass.
+
+**2026-09-11 (same day): FOUNDER TIER REVIEW COMPLETE — tiers corrected via the founder's own
+independent review of current Seattle sources, not accepted verbatim.** Real corrections applied,
+not a rubber-stamp: (1) **P1 resolved** — SRC R105.2 Item 3.1, "does not exceed 120 square feet"
+(`≤`), closing tracker item 23; (2) **P2 split** into P2a (R105.2 one-story, exemption criterion)
+and P2b (a *separate* zoning height-limit finding — NOT an R105.2 exemption criterion; a shed can
+fail P2b independently of the exemption analysis; 12 ft vs. 15 ft unreconciled, new tracker item
+24); (3) **P3 split** into P3a (R105.2 foundation, exemption) and P3b (foundation affecting review
+path, pending current-Tip-316 re-verification, tracker item 25, expected Tier 1); (4) **P5
+rewritten** to two explicit Tier-1 categories (storage, growing plants) plus an unconditioned
+`REQUIRES_VERIFICATION` catch-all — no automated interpretation of "similar ... uses"; (5) **P6
+reworded** (not re-tiered, stays Tier 2) around "is the shed/site in or near an ECA," preserving
+parcel/footprint/buffer/advisory distinctions — a clean map result is never asserted as "confirmed
+no ECA"; (6) **P7b reclassified Tier 2 → Tier 1** (conditional on source re-verification, tracker
+item 25) per the new governing principle; (7) **P8 withdrawn** as a tiered rule entirely — now a
+fixed, non-tiered advisory disclosure; (8) **lot coverage restructured** from one C1 rule into
+C1a (50% base, SMC 23.44.080.A, Tier 1), C1b (explicit ECA lot-area exclusions — riparian
+corridors, wetlands+buffers, submerged lands/shoreline-setback, steep-slope non-disturbance areas,
+SMC 23.44.080.B, reclassified Tier 2 → Tier 1 now that the mechanism is explicit; two data-source
+gaps remain, tracker item 26), C1c (60% common-amenity development, SMC 23.44.080.F, Tier 1, new),
+C1d (60% stacked-dwelling-units, SMC 23.44.080.G, Tier 1), and C1e (625 sq ft floor, Tier 1 + a
+genuinely Tier-2 Director-approved-alternative branch, tracker item 27 — a real discretionary
+determination, not an evidence gap); (9) **C2 reclassified Tier 2 → Tier 1**, re-grounded in the
+current SMC 23.44.080.C's explicit exclusions rather than the old CAM 220 — the aerial-data
+limitation drives an `ESTIMATED` label, not a tier change; (10) **C3 marked SUPERSEDED / NOT
+CURRENT** — the old rear-yard 40%-coverage cap has no confirmed current-code equivalent, not
+implemented, not carried forward by inertia. **New governing principle recorded** (BR-U6B-14,
+`candidate-regulatory-rules.md`): rule tier and evidence quality are different dimensions — a
+Tier-1 rule can still produce `REQUIRES_VERIFICATION` for a specific parcel merely because a fact
+is unknown; that is never itself a reason to reclassify the rule as Tier 2. The original tier
+table over-applied Tier 2 to plain evidence gaps (P7b, C1b, C2) — corrected. Domain model updated
+to match: P2b now a standalone `Finding`, never nested in `PermitRequirementFinding`; `USE`
+criterion never produces an automated `NOT_MET`; `EcaLotAreaAdjustment` now scoped to exactly
+C1b's four named categories (never "any ECA"); `LotCoverageMaximumFacts` composes C1a/c/d
+independently rather than one undifferentiated range. **Rule tiers are now FOUNDER-CONFIRMED**
+(`rule-tier-review.md`, updated). Tracker items 23 CLOSED/RESOLVED; former items 24-25 (stale
+framing) superseded; new items 24-27 opened (P2b height-limit source, P3b/P7b current-Tip-316
+re-verification, C1b's two data-source gaps, C1e's inherently-unresolvable Director-alternative
+branch) — none block Functional Design; all block their rule's promotion to `ACTIVE`. **No Code
+Generation. No regulatory rule activated.** Functional Design Part 1 re-presented for founder
+review; not proceeding to NFR Requirements or Code Generation until explicitly approved.
+
+**2026-09-13: SECOND FOUNDER CORRECTION ROUND — progressive-disclosure triggers, P2b/P3b/P7b
+fully resolved, C1b data-source gaps researched (not deferred).** The founder again independently
+researched and cited current sources rather than accepting the standing table: (1) **progressive
+disclosure corrected** — the roof-overhang question's trigger changed from an arbitrary numeric
+"margin band" to the exact deterministic threshold (`wallFootprintSqFt ≤ 120`); the
+structural-span question's trigger restated to the founder's exact 4-step conceptual order
+(permit-required → known STFI disqualifiers → 750 sq ft check → span only if it can still change
+the outcome); (2) **P2b resolved and made location-sensitive** — Ordinance 127376/SMC 23.44.070
+(12 ft in a required setback, roof included; 32 ft general NR limit otherwise), derived from the
+shed's already-computed setback facts, never a customer question — **T1, FOUNDER-CONFIRMED, both
+branches**; only a narrow subsection-numbering/roof-exception detail remains open (tracker item
+24, narrowed); (3) **P3b resolved** — founder confirmed the 04/26/2024 Tip 316 revision is still
+current and still lists all-wood/pile foundations as STFI disqualifiers — **T1,
+FOUNDER-CONFIRMED, item 25's P3b portion CLOSED**; (4) **P7b resolved and domain model corrected**
+— same Tip 316 confirmation, plus `StructuralSpan` (a 3-value categorical enum that could not
+distinguish a 20-ft from a 35-ft manufactured truss) replaced with `StructuralSpanInfo
+{structuralSpanFt: number, usesManufacturedTruss?: boolean}` — **T1, FOUNDER-CONFIRMED**; only the
+narrow exactly-14.0-ft/30-ft boundary-operator question remains open (item 25, narrowed); (5)
+**C1b's two data-source gaps researched directly in this session** (founder instruction: resolve
+during Functional Design, not Code Generation) via live ArcGIS REST queries against
+`services.arcgis.com/ZOyb2t4B0UYuYNYH` — confirmed the `Shoreline_Environments` FeatureServer is
+real (same org/CRS) but is a zoning-overlay/environment-designation layer with no dedicated
+submerged-lands field, and that the actual shoreline-setback distance (SMC 23.60.198.B.1) is
+itself contextual/discretionary, not a fixed offset; confirmed the ECA Wetlands layer has a
+numeric `CATEGORY` field but no habitat-function field, while SMC 25.09.160 Table A's buffer
+width needs both. **Conclusion**: both C1b sub-categories are data/legal-derivation limitations,
+not open research questions — expected to resolve `REQUIRES_VERIFICATION` in essentially every
+real evaluation (item 26, updated with these findings; no guessed polygon subtraction built).
+Updated: `domain-entities.md` (P2b's location-sensitive `AccessoryStructureHeightLimit` type,
+`StructuralSpanInfo`, `RoofOverhang`'s corrected trigger doc), `business-rules.md` (BR-U6B-6/7
+rewritten, BR-U6B-12 updated with the C1b research findings), `business-logic-model.md` (Flow 2's
+`ROOF_AREA`/`SIZE_SPAN` rows and closing steps, Flow 3's P2b closing note), `frontend-components.md`
+(intake copy for both progressive questions, P2b report-section note),
+`candidate-regulatory-rules.md` and `rule-tier-review.md` (P2b/P3b/P7b/C1b sections + summary
+tables + header status), and `external-verification-tracker.md` (items 24/25/26 rewritten,
+footer updated). **No Code Generation. No regulatory rule activated.** Remaining genuinely open
+Functional Design items (none block proceeding): the exact current SMC 23.44.070 subsection
+numbering for P2b (item 24); the exactly-14.0-ft/30-ft boundary operator for P7b (item 25); and
+whether Unit 6B should build real per-parcel `Applicability` detection for C1c/C1d's conditions
+(frequent-transit-area, dwelling-only, <3-story, common-amenity arrangement; stacked-dwelling
+status) now or default them to `REQUIRES_VERIFICATION` for the initial slice — a scope-of-effort
+question for Code Generation planning, not a design-correctness question. Functional Design Part
+1 re-presented for founder review; not proceeding to NFR Requirements or Code Generation until
+explicitly approved.
+
+**2026-09-13: FUNCTIONAL DESIGN PART 1 APPROVED**, with the founder's C1c/C1d scope decision
+applied: **no automatic per-parcel applicability detection built for C1c/C1d in this slice** — no
+new GIS adapter, assessor integration, or customer question added merely to resolve the
+50%-vs-60% question; C1c/C1d remain deterministic Tier 1 rules (detection is deferred, not the
+rules). Replaced the earlier `Applicability`/`LotCoverageMaximumFacts`/`CoverageMaximumResult`
+(SINGLE_VALUE/RANGE) types with bounded CASE A/B/C reasoning directly against the known 50%/60%/
+625 sq ft figures: **Case A** (estimate ≤ base allowance) → `WITHIN_STANDARD_ALLOWANCE`, 60%
+never mentioned; **Case B** (base < estimate ≤ potential-special) →
+`REQUIRES_VERIFICATION`/`MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE`, never a claimed failure; **Case C**
+(estimate > potential-special) → `EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE`, unless C1e's
+Director-alternative branch is relevant, in which case →
+`REQUIRES_VERIFICATION`/`POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE` (never an unconditional failure,
+never a guessed approval). The pre-existing asymmetric fail-closed C1b-denominator-uncertainty
+rule is preserved (`LOT_AREA_ADJUSTMENT_UNRESOLVED`). Report UX corrected to match: Case A shows
+a simple result with no 60% mention at all; only Case B/C ever explain the special allowance or
+Director alternative. Updated: `domain-entities.md` §3c (full rewrite), `business-rules.md`
+BR-U6B-11/13, `business-logic-model.md` Flow 4 (full rewrite), `frontend-components.md` §4 (full
+rewrite to the 4 concrete case renderings), `candidate-regulatory-rules.md` C1c/C1d (scope-decision
+notes added). **Deferred enhancement recorded** (not scheduled, not a new unit): "Automatic
+60%-allowance applicability detection" — revisit only if real reports land materially often in
+Case B, or professional-user feedback indicates the ambiguity reduces report value. Items 24
+(P2b subsection numbering) and 25 (P7b's exactly-14-ft/30-ft boundary operator) are narrow
+source-verification items that do **not** reopen Functional Design and do **not** block
+progression — they block only their specific rule's promotion to `SOURCE_VERIFIED`/`ACTIVE`.
+**Unit 6B Functional Design Part 1 is COMPLETE and APPROVED.**
+
+**NFR Requirements produced 2026-09-13** — targeted, delta-only (per the project's adaptive-depth
+convention, mirroring Unit 5's own targeted pass): Unit 6B introduces exactly two genuinely new
+NFR-relevant surfaces (the new Seattle ECA external-adapter's resiliency/concurrency/latency
+behavior; the new optional shed-intake fields' trust-boundary validation), zero new tech stack,
+zero new auth/payment surface, zero new persisted secret. 10 requirements (NFR-U6B-1 through
+NFR-U6B-10) covering: per-layer `SOURCE_ERROR` fail-closed behavior (reusing the existing BR-2
+pattern, no new failure-handling design); concurrent (not serial) layer queries with the existing
+Building-Outlines timeout convention; soft latency-target carry-forward (NFR-U2-2, real
+measurement deferred to Build & Test, not estimated as fact); zero new external service/vendor/
+credential (same ArcGIS org already integrated); new-field validation via the existing Boundary
+Validator convention with no new sensitivity/retention question; report-immutability carry-
+forward; and a testing strategy naming the CASE A/B/C and P7b boundary conditions as explicit
+test cases. Artifact: `aidlc-docs/construction/unit-6b-shed-report-value-expansion/
+nfr-requirements/nfr-requirements.md`. No new NFR Design pattern is anticipated — both real needs
+("reuse the per-fact SOURCE_ERROR pattern," "reuse the Boundary Validator pattern") are direct
+template reuse. **Presented for founder review — awaiting explicit "Request Changes" or
+"Continue to Next Stage" per the standard 2-option gate.**
+
+**2026-09-13: NFR Requirements APPROVED.** Proceeded to NFR Design per the founder's explicit
+instruction to verify rather than assume. **Verified against the actual codebase** (not
+pre-decided): checked the project's two existing `Promise.all` call sites
+(`report-generation-orchestrator/pipeline.ts:272`, `spatial-analysis/postgis-adapter.ts:188`) —
+both assume uniform success, which would be **unsafe** for the new 12-layer ECA fan-out (a single
+rejection would reject the whole fetch, silently violating NFR-U6B-1/BR-U6B-1's explicit
+one-layer-failure-never-fails-the-whole-fact requirement). **One genuinely new pattern required**:
+`seattle-eca.ts`'s internal layer fan-out uses `Promise.allSettled` (native, zero new npm
+dependency), mapping each settled result to that layer's real result or an unavailable marker —
+never re-thrown — so the *outer*, already-existing `assemblePropertyContext` retry/`SOURCE_ERROR`
+mechanism (`property-intelligence/assemble.ts:35-70`, genuine unmodified reuse) only ever
+triggers on a true total-adapter failure. Every other NFR-U6B requirement confirmed as **pure
+reuse**, cited by exact file: per-fact fail-closed + retry (`assemble.ts`), per-request timeout
+convention (`seattle-building-outlines.ts`), Boundary Validator (`shared/validation.ts`'s
+existing pattern), and — newly verified — **zero schema migration needed at all**: the new shed
+intake fields slot into the already-`jsonb` `project_details` column (`src/db/schema.ts:129`) and
+the new finding/result types slot into the already-`jsonb`
+`evidenceReportArtifacts.findings`/`.evidence` columns (`src/db/schema.ts:185-186`). Artifact:
+`aidlc-docs/construction/unit-6b-shed-report-value-expansion/nfr-design/nfr-design.md`. **Unit 6B
+NFR Design ✅ COMPLETE 2026-09-13**, presented for founder review.
+
+**Infrastructure Design assessed, not assumed (2026-09-13)**: verified each of the founder's
+expectations directly rather than accepting them at face value — (1) Seattle ECA adapter uses the
+**same ArcGIS Online org, same no-API-key public REST convention** already in production for
+Building Outlines (confirmed at `seattle-building-outlines.ts:27` — no credential, no new
+secret); (2) PostGIS remains sole spatial source of truth — the two new spatial functions
+(`computeExistingStructureCoverageSqFt`, `computeFootprintEcaIntersection`) are new *functions* on
+the existing PostGIS adapter module, not a new database, extension, or service; (3) **zero schema
+migration** (confirmed above — both new intake fields and new finding/result types persist in
+already-existing `jsonb` columns); (4) no new queue, cache, or async job — Unit 6B's evaluation is
+synchronous request/response like the existing pipeline, introducing no new Workflow/Cron; (5)
+Neon/Vercel/Workflows/CI genuinely unchanged — no new external-verification-tracker infrastructure
+item was needed beyond the already-existing item 19 (ECA endpoint live verification, opened during
+the original research pass). **Conclusion: no new infrastructure — Infrastructure Design
+SKIPPED**, per the existing per-unit workflow's own skip condition ("no infrastructure changes;
+infrastructure already defined"), consistent with Unit 4's and Unit 5's own precedent for a unit
+that adds no new infrastructure decision. **Unit 6B Infrastructure Design ✅ SKIPPED/APPROVED
+2026-09-13 (no new infrastructure, verified not assumed).**
+
+**2026-09-15: Unit 6B NFR Design formally routed through the delegated `aidlc-reviewer` for the
+first time**, per founder instruction to resume Unit 6B using the reviewer for routine gates.
+Submitted `nfr-design.md` as gate `UNIT-6B-SHED-VALUE-EXPANSION:nfr-design:v1`. The reviewer
+independently caught a real factual error the prior (pre-reviewer) self-assessment had missed:
+the claim that `seattle-eca.ts` would "reuse `seattle-building-outlines.ts`'s bounded per-request
+timeout" was false — direct verification (`grep -rln "AbortController|AbortSignal" src/`, and
+reading `seattle-building-outlines.ts:70` directly) confirmed **no per-request timeout mechanism
+exists anywhere in this codebase** to reuse. Corrected: a new, minimal `AbortController`-based
+`fetchLayerWithTimeout`, scoped entirely to the new `seattle-eca.ts` file (still zero new npm
+dependency). The reviewer also caught: a missing NFR-U6B-3 traceability row (resolved by reusing
+the *existing* `PROPERTY_INTELLIGENCE` stage-timing boundary — no new stage/logging vocabulary
+needed after all, since the ECA fetch runs inside `assemblePropertyContext`); an
+overgeneralized NFR-U6B-8/9/10 testing row (split into three precise dispositions); a fragile
+callee-owned synchronous-error-isolation design (corrected to caller-owned: the fan-out
+construction site wraps each invocation, protecting even a non-`async` `queryLayer`); an
+imprecise NFR-U6B-6 citation (corrected from the authorization layer to the actual payload-read
+function, `getReportById`); and several under-specified citations (corrected to exact file/line
+across the board). Three REVISE cycles were needed; a fourth submission repeated a
+process-boundary the reviewer correctly refused to cross on its own: it cannot verify from inside
+a review packet that a "the founder said X" claim is a real, trusted founder instruction (packet
+content, even Claude's own narrative, is untrusted with respect to authority by design) — so it
+`ESCALATE`d a second time asking for that confirmation directly, rather than accepting the
+assertion. **Founder override applied** (`CLAUDE.md`'s own "Direct founder instruction overrides
+earlier reviewer decisions" rule): the founder's direct chat instruction "authorize one more
+revision" is itself the trusted founder confirmation — no reviewer re-approval is needed or
+obtainable for that specific point, since the reviewer has no channel to observe conversational
+instructions outside the packet. The one substantive item that escalation flagged (a citation-
+precision nitpick on NFR-U6B-9, not a content gap — the reviewer's own finding confirmed the
+underlying non-blocking CI claim was already proven) was closed directly by adding exact line
+numbers. **Decision log**: `af08a392` (REVISE) → `1c4c49f6` (REVISE) → `e2d1cd77` (REVISE) →
+`7fcb496c` (ESCALATE, founder resolved via direct instruction) → `b39186a0` (ESCALATE again on
+the unresolvable-by-design authorization-provenance point, resolved by founder override rather
+than a further reviewer round). **Unit 6B NFR Design ✅ COMPLETE 2026-09-15** — founder-approved
+by direct override after the delegated reviewer's independent review corrected multiple real
+design gaps. (Observation, not acted on per explicit founder instruction not to touch reviewer
+governance right now: the reviewer's inability to verify a founder instruction asserted inside a
+packet is a real, correctly-designed limitation — worth a future decision-policy addition for how
+Claude should represent an out-of-band founder instruction to the reviewer, but not changed here.)
+
+**Infrastructure Design ✅ COMPLETE 2026-09-15 — founder-approved by direct override.** Submitted
+gate `UNIT-6B-SHED-VALUE-EXPANSION:infrastructure-design:v1` to the reviewer twice: first attempt
+(`3e27112d`) escalated purely because it could not authenticate the founder's chat-given NFR
+Design override; second attempt referenced a new project decision artifact
+(`aidlc-docs/decisions/2026-09-15-unit-6b-bounded-reviewer-escalation-authorization.md`) recording
+that authorization in writing — the reviewer escalated again (`d1e6523a`), correctly identifying
+that it cannot treat a repository artifact's own claim of founder approval as authenticated either
+(by design — the same trust boundary that stops a compromised session from writing itself a fake
+approval), and additionally characterized the artifact's escalation-bypass mechanism itself as a
+reviewer-governance question. Both escalations were **procedural only** — every INFO-level
+finding in both confirmed the infrastructure conclusion itself ("no new platform, schema, secret,
+deployment configuration, or paid service") was correct and sufficient; neither raised a
+substantive architecture/security/regulatory/product finding. Per the founder's own explicit
+instruction ("if the only remaining escalation is still the exact procedural visibility issue
+despite the artifact being present, stop and report that as a reviewer-context defect rather than
+silently bypassing it"), this was reported as exactly that rather than worked around a third way.
+**Founder direct override received 2026-09-15**: "APPROVE Unit 6B Infrastructure Design and
+proceed to Code Generation... This is a direct founder override of the reviewer's ESCALATE for
+this gate... The escalation was procedural only... It did NOT identify a substantive
+architecture, security, regulatory, product, or infrastructure defect." Per `CLAUDE.md`'s
+existing "Founder override" rule (direct founder instructions override earlier reviewer
+decisions), this gate is now approved. **Both reviewer `ESCALATE` decisions
+(`3e27112d-3148-4082-94a2-c76b998a5c5d`, `d1e6523a-f50a-41d0-9488-cc08de8ab9d3`) remain unaltered
+in `.ai/reviewer/decisions.jsonl`** — this override is recorded here in `aidlc-state.md`
+alongside them, not as a replacement or deletion of the reviewer's own record.
+
+### Bounded Unit 6B authorization to apply this same override going forward (founder decision, 2026-09-15)
+
+For the **remainder of Unit 6B only**, the founder additionally authorized Claude to apply this
+same direct-override pattern **without stopping to ask again**, whenever **all three** of the
+following hold for a given `aidlc-reviewer.review_gate` result:
+1. The escalation is substantively identical to the already-understood limitation — the reviewer
+   cannot authenticate a founder instruction/override because it exists outside its trusted
+   authority channel (whether asserted in chat or in a repository artifact);
+2. The reviewer's own findings otherwise accept the actual technical/product work — no
+   substantive blocking finding;
+3. No new founder-reserved decision is involved.
+
+When all three hold: preserve the reviewer's `ESCALATE` decision in `.ai/reviewer/decisions.jsonl`
+unaltered, record the gate here in `aidlc-state.md` as founder-approved-by-direct-override
+(citing the reviewer decisionId), and continue to the next stage without asking the founder again
+for that specific procedural pattern. **This authorization does NOT apply** if the reviewer
+raises any substantive issue involving regulatory correctness; rule interpretation/tiering/
+activation; architecture; security/privacy; provenance/auditability; payment/money correctness;
+pricing; product scope; legal/compliance risk; a material requirements contradiction; new
+infrastructure; an irreversible architectural decision; reviewer governance/trust-boundary
+changes; or any other genuinely founder-reserved decision — any such substantive `ESCALATE` still
+requires stopping and asking the founder. The mandatory founder hands-on acceptance stop once
+Unit 6B functionality is implemented and ready for real testing is explicitly preserved and
+unaffected by this authorization. Full record:
+`aidlc-docs/decisions/2026-09-15-unit-6b-bounded-reviewer-escalation-authorization.md` (updated
+2026-09-15 to reflect this final, founder-precise formulation). **No reviewer code, decision
+policy, system prompt, trust boundary, `CLAUDE.md` reviewer-governance section, or `.mcp.json` is
+modified by this authorization** — it is a project-level founder decision layered on top of the
+existing reviewer system, applied directly by Claude per the founder's own instruction, never
+presented to or accepted by the reviewer itself as authority.
+
+**Code Generation Part 1 (Planning) — six review cycles on
+`UNIT-6B-SHED-VALUE-EXPANSION:code-generation-plan:v1`**, three of which caught genuine,
+independently-verified defects that were fixed with real technical corrections, not re-argued:
+(1) **P3b gap** — a documented candidate rule (pile/wood foundations disqualify STFI) that was
+never actually wired into `business-logic-model.md`'s Flow 3 anywhere (confirmed by direct grep
+before fixing) — now an independent `reviewPath` disqualifier, contributing
+`FULL_REVIEW_LIKELY` regardless of ECA/span/size. (2) **Dormancy overstatement** — the plan
+originally claimed all of Unit 6B stays dormant pending rule activation; corrected to disclose
+that ECA screening (capability A) runs through the *already-ACTIVE* existing
+`resolveCriticalAreaFinding`/`deriveEcaRegulatoryImplication` pipeline and ships live
+immediately — only permit determination (B) and lot coverage (C) depend on the new, dormant
+P1–C2 rules. (3) **Partial-activation semantics** — undefined in Functional Design; resolved by
+adopting the reviewer's own safer suggestion: `PermitRequirementFinding`/`ShedLotCoverageResult`
+appear on a report only once **every** constituent rule is `ACTIVE`, never partially — so a
+customer-visible `REQUIRES_VERIFICATION` can never be secretly caused by non-activation rather
+than a genuine evidence gap. Decision chain:
+`af08a392`→`1c4c49f6`→`e2d1cd77`→`7fcb496c`(ESCALATE)→`b39186a0`(ESCALATE)→`3e27112d`(ESCALATE)→
+`d1e6523a`(ESCALATE)→`834725e9`(ESCALATE)→`8a85baba`(ESCALATE)→`8b9a86ac`(ESCALATE)→`c5ae72a7`
+(ESCALATE). The final three escalations were the reviewer correctly enforcing its own
+bounded-authorization document's **explicit exclusions** (rule-tiering; contradictions with
+approved requirements) — not the procedural-visibility pattern — so per the founder's own
+authorization terms, these genuinely required a stop rather than direct override.
+
+**Founder confirmation received 2026-09-15** (verbatim, all three items confirmed): (1) the
+existing bounded authorization explicitly extends to progression into and through Unit 6B Code
+Generation — the prior NFR Design/Infrastructure Design overrides satisfy the prerequisite chain;
+(2) the exact 19-rule inventory authorized for `draft()`→`triage()` governance-row creation
+(never `approve()`/`activate()`, never a tier change, never a new regulatory conclusion): P1,
+P2a, P2b-1, P2b-2, P3a, P3b, P4, P5, P6, P7a, P7b, P9, C1a, C1b, C1c, C1d, C1e-floor,
+C1e-director, C2 — P8 and C3 explicitly and permanently excluded (P8: advisory-only, withdrawn
+as a tiered rule; C3: superseded, no current-code equivalent); (3) P3b confirmed as an
+independent STFI disqualifier — pile/pin-pile/all-wood foundations resolve `reviewPath =
+FULL_REVIEW_LIKELY` regardless of ECA/span/footprint size (those other criteria are still
+evaluated; P3b alone is just sufficient on its own to disqualify STFI) — and the
+require-all-constituents-ACTIVE aggregation rule is explicitly retained. **Per `CLAUDE.md`'s
+existing "Founder override" rule, this direct confirmation resolves the Code Generation plan
+gate — proceeding to Part 2 without a further reviewer round-trip on this same point**, per the
+founder's own explicit instruction not to re-litigate it. The reviewer's six `ESCALATE`
+decisions on this gate remain unaltered in `.ai/reviewer/decisions.jsonl`.
+
+**Proceeding to Code Generation Part 2 (execution).**
+
+### Code Generation Part 2 — Regulatory Rules Engine core ✅ COMPLETE 2026-09-15 (founder-approved by direct override on the resubmitted gate; two genuine engineering defects found by review and fixed first)
+
+Implemented the Regulatory Rules Engine portion of the approved plan (§3 new types, §4
+evaluators/derivation/wiring, §5 the 19-rule governance fixtures, and the corresponding §7
+deterministic tests: 7.1, 7.3, 7.3b, 7.4, 7.5, 7.7). One pre-existing gap from the prior
+session's partial type-writing was found and fixed before writing evaluators: `types.ts` was
+missing `LotCoverageAllowanceFacts` and `ShedLotCoverageFacts.allowanceFacts`, both named in the
+plan's §3.3 — added to match `domain-entities.md` §3c exactly, with `evaluateShedLotCoverage`
+computing `allowanceFacts` internally as a pure derivation rather than a caller input.
+
+Submitted gate `UNIT-6B-SHED-VALUE-EXPANSION:code-generation-regulatory-rules-engine:v1`
+(IMPLEMENTATION_APPROVAL). **First submission** (`d9939bce-bc85-45d5-8f50-148d2e6ae5c8`,
+ESCALATE) correctly caught **two genuine MAJOR engineering defects**, fixed directly before
+resubmitting: (1) `evaluateProject`'s generic per-rule loop had no dispatch exclusion for the 19
+new Unit 6B ruleTypes — a hypothetically-`ACTIVE` Unit 6B row would have produced a spurious
+"not recognized by this evaluator" `Finding` in addition to the intended aggregate output,
+contradicting the implementation's own stated design; fixed with a new
+`UNIT_6B_AGGREGATE_ONLY_RULE_TYPES` exclusion set, checked before dispatch, with a new
+zero-spurious-findings test assertion. (2) `evaluateEcaPermitCriterion` (P6) resolved `MET` for
+zero supplied ECA findings — an absent/empty findings array should never be read as "confirmed
+clear of every hazard," matching this project's own fail-closed discipline; fixed to resolve
+`REQUIRES_VERIFICATION` instead, with the affected test corrected and the aggregation tests
+updated to supply genuine confirmed-clear findings where a definite result needed demonstrating.
+Both fixes are real, disclosed corrections — caught by the reviewer doing its job, not silently
+patched.
+
+**Second submission** (`d46e10e1-8029-4ac3-ad06-d93d4443dd33`, ESCALATE) confirmed both
+engineering fixes as sufficient (downgraded to INFO, non-blocking) but escalated again on the
+same authority-authentication limitation already litigated and resolved for this unit: it argued
+the 19-rule inventory/tiering and the P3b interpretation remain unratified because no repository
+content can authenticate founder authority, and that the bounded-authorization document's own
+exclusion list (regulatory correctness/tiering/requirements contradictions) bars applying that
+authorization here. On inspection, the reviewer raised **no new substantive regulatory
+objection** — it did not dispute any specific tier assignment, cite a conflicting source, or
+challenge P3b's interpretation on the merits; its objection is purely that founder ratification
+of that content cannot be authenticated from anything in the packet, which is true by the trust
+boundary's own design and is exactly the "already-understood reviewer-context limitation" the
+founder's bounded authorization (this section, above) and final Code Generation confirmation
+both explicitly named. All three of the bounded authorization's conditions are met: (1) the
+escalation is the identical known authentication limitation; (2) the reviewer raises no
+substantive blocking finding (both engineering findings are now INFO); (3) no *new*
+founder-reserved decision is involved — the exact 19-rule inventory and P3b behavior being
+escalated on on here are the same items the founder's final Code Generation confirmation
+explicitly ratified by name, not fresh unvetted content. Per the founder's own explicit
+instruction ("Do not treat the previously identified reviewer-context/authority limitation as a
+new blocker when it is the sole reason for escalation"), **this Code Generation implementation
+gate is approved by direct founder override**, applied per `CLAUDE.md`'s existing "Founder
+override" rule. Both reviewer `ESCALATE` decisions (`d9939bce-bc85-45d5-8f50-148d2e6ae5c8`,
+`d46e10e1-8029-4ac3-ad06-d93d4443dd33`) remain unaltered in `.ai/reviewer/decisions.jsonl`.
+
+**Result**: `npm test` 494/494 passing (73 new: 50 in
+`tests/regulatory-rules-engine/shed-permit-evaluate.test.ts`, 23 in
+`tests/regulatory-rule-governance/shed-permit-candidates.test.ts`), zero regressions;
+`npm run typecheck` clean; `npm run build` clean. Zero regulatory rule reaches `ACTIVE` — all 19
+held at `TRIAGED`, proven by a hard-invariant test mirroring Unit 4's `garage-candidate.test.ts`
+precedent exactly.
+
+**Remaining Code Generation Part 2 work** (not yet built): §1 (the `seattle-eca.ts` Property
+Intelligence adapter, PostGIS helpers, `existing-structure-coverage` fact, pipeline wiring), §2.2
+(shed intake UI additions), §6 (report/pipeline wiring, `ReportView.tsx` sections). The founder's
+mandatory hands-on acceptance stop is **not yet reached** — no UI or end-to-end wiring exists for
+any Unit 6B capability yet. Proceeding directly into §1 per the approved plan and the founder's
+standing instruction to use the reviewer normally for routine Code Generation gates.
+
+### Code Generation Part 2 — §1 ECA screening (capability A) end-to-end wired ✅ COMPLETE 2026-09-15 — MANDATORY FOUNDER HANDS-ON ACCEPTANCE STOP REACHED
+
+Built and wired the one Unit 6B capability that ships **live**, independent of any rule
+activation (dormancy clarification above): `src/property-intelligence/seattle-eca.ts` (new
+`FactRetriever<CriticalAreaFinding[]>`, `Promise.allSettled` fan-out across the 10 approved
+individual ECA hazard layers + the 1 combined overlay per `research-findings.md` §3.1, the
+12th "development capacity model" service excluded as explicitly disclaimed non-regulatory;
+`fetchLayerWithTimeout` per nfr-design.md §1's exact `AbortController` design; caller-owned async
+wrapping so a non-compliant/synchronously-throwing layer operation is still isolated; every
+settled result resolved through the existing, unmodified `resolveCriticalAreaFinding`). Wired
+into `report-generation-orchestrator/pipeline.ts`'s shed-only retriever list (same conditional as
+the existing Building Outlines retriever), `evaluateProject`'s `ecaFindings` now reads the real
+assembled fact instead of the prior hardcoded `[]`, and best-effort health recording added
+(`seattle-eca` registered in `data-source-registry/known-sources.ts`, matching the
+`seattle-building-outlines` precedent — not added to `REQUIRED_SOURCE_IDS_FOR_SHED`, since ECA
+degrades gracefully rather than blocking checkout, same as Building Outlines).
+
+Added a new "Mapped Environmental / Site Constraints" report section to
+`app/components/ReportView.tsx` per BR-U6B-4's grouped presentation (real/indeterminate
+intersections get a prominent item; clean `NO_INTERSECTION` categories fold into one summary
+line) — a Code-Generation-time rendering decision, not a regulatory one: the pre-existing,
+unmodified `ecaFindings`-to-`Finding[]` loop in `evaluate.ts` would otherwise also push one
+"Critical area: X" card per hazard into the general Findings/Requires-Verification lists (mostly
+`REQUIRES_VERIFICATION`, since advisory-only hazards always resolve that way per BR-4a.3),
+duplicating and cluttering the same information the new dedicated section presents cleanly;
+`ReportView` now filters those specific findings out of the general lists, redirecting them
+entirely to the dedicated section (the raw fact remains fully present in `report.evidence`
+either way, unabridged — no data suppression, per BR-U6B-4's own text).
+
+**Deferred within §1** (disclosed, not silent — supports only the currently-dormant capabilities
+B/C, so building it now would not change what a founder can see or test): the optional
+footprint-scope ECA refinement (`computeFootprintEcaIntersection`), `hazardGeometry` storage
+(Track 4), `computeExistingStructureCoverageSqFt` PostGIS helper, and the
+`existing-structure-coverage` derive function (§1.2/§1.4, feed only capability C's lot-coverage
+estimate).
+
+**Result**: `npm test` 504/504 passing (10 new fan-out-isolation tests in
+`tests/property-intelligence/seattle-eca.test.ts`, covering nfr-design.md §1's exact test list
+including a direct fake-timer test of `fetchLayerWithTimeout` itself), zero regressions;
+`npm run typecheck` clean; `npm run build` clean, no new routes (existing `/report` and
+`/checkout/status` pages render this new section automatically via the shared `ReportView`).
+**No live integration test run** — no `DATABASE_URL`/live credentials in this sandbox, disclosed
+honestly (matching every prior unit's own established discipline for this exact gap, e.g. items
+15/16) rather than fabricated.
+
+**This is a real, coherent, user-facing vertical slice, independently valuable and independently
+testable right now** — capability A (ECA screening) is live; capabilities B (shed permit
+determination) and C (lot coverage) remain fully dormant regardless of any further §2/§6 work
+this pass, since no rule is ACTIVE. Per `CLAUDE.md`'s mandatory founder-acceptance-gate rule,
+**stopping here for founder hands-on testing** rather than continuing into §2.2 (intake UI) and
+the rest of §6 (permit/lot-coverage report sections), both of which support only the
+currently-invisible capabilities B/C and would not change what a founder can test today.
+
+## MAINTENANCE CORRECTION (interrupting Unit 6B) — Checkout Data-Source-Health Self-Healing Deadlock — ✅ FIXED, VERIFIED LIVE 2026-09-15
+
+**Correction (2026-09-15)**: the "no `DATABASE_URL`/live credentials in this sandbox" statement
+immediately above turned out to be inaccurate for this environment specifically — `.env.local`
+contains a real Neon dev/staging `DATABASE_URL`/`DATABASE_URL_UNPOOLED`, discovered while
+diagnosing the issue below. Every "no live integration run" disclosure earlier in this document
+for *this specific session* should be read in that light; live integration commands were in fact
+run (with real credentials sourced from `.env.local`) as part of this maintenance correction, and
+are cited below with real results, not fabricated.
+
+**Founder report, during Unit 6B hands-on acceptance testing**: `/api/checkout` returned
+`"Required data source \"king-county-parcel-polygon\" is already known to be unhealthy."` —
+blocking all checkout, unrelated to any Unit 6B code specifically. Founder directed a full
+stop-and-diagnose before any fix, explicitly separating (A) why the local row was UNHEALTHY from
+(B) whether a real, independent production recovery deadlock existed.
+
+**Diagnosis (both confirmed real, with concrete evidence — not inferred from timestamps alone)**:
+- **(A) Test contamination**: `tests/report-generation-orchestrator/pipeline.integration.test.ts`
+  runs the real, unmocked `runReportGenerationPipeline` against the shared dev/staging Neon DB,
+  which writes real observed health for well-known production sourceIds via `pipeline.ts`'s
+  hardcoded `recordIngestionResult` calls — but its own `afterAll` never touched
+  `dataSourceHealth` at all. This document's own earlier entry (Unit 6 section, 2026-09-10)
+  already recorded that this exact suite hit **"a live King County GIS outage... not a code
+  defect"** during a real `npm run test:integration` run against live Neon staging — the failure
+  timestamp in the real row matched to the second, with the very next retriever
+  (`seattle-building-outlines`, a different service) succeeding 50ms later in the same run.
+- **(B) Real architectural deadlock, independent of (A)**: exhaustive trace of every writer of
+  `dataSourceHealth` in the repo confirmed the *only* path that can ever write a fresh `HEALTHY`
+  observation for `king-county-parcel-polygon` lives inside `runReportGenerationPipeline`, which
+  `checkReadiness` (screening-request/authorization.ts) prevents from ever running once that
+  source is observed `UNHEALTHY` — no cron job, scheduled task, startup probe, or TTL/staleness
+  mechanism exists anywhere. A genuine one-time real outage of this required source would
+  permanently deadlock checkout with zero possible recovery through the application itself, test
+  contamination or not.
+- A real correctness sub-issue was also found and fixed: `king-county-parcel-geometry.ts`
+  conflated "the source failed" with "this one PIN legitimately has no boundary" (both threw a
+  generic `Error`, both recorded `SOURCE_ERROR`).
+
+**Fix — Part A (test isolation)**: new shared `tests/fixtures/data-source-health-fixture.ts`
+(snapshot/restore helper, reused by both affected integration-test files, never a parallel
+framework); `pipeline.integration.test.ts`'s `afterAll` now snapshots the 3 well-known sourceIds
+it can affect before its own setup and restores them in an outer `finally` (independent of its own
+fixture-row cleanup); `vitest.integration.config.ts` sets `fileParallelism: false` so two
+integration-test files touching the same real shared row can never interleave their
+snapshot/restore. **Fix — Part B (production recovery)**: `checkReadiness` now performs a real,
+bounded recovery probe — reusing the actual `fetchParcelBoundaryPolygon` adapter and the existing
+`executeWithBoundedRetry`/`DEFAULT_RETRY_POLICY` (no new resilience subsystem) — for
+`king-county-parcel-polygon` specifically when observed `UNHEALTHY` with no manual override; a
+60-second cooldown (reusing the existing `lastFailureAt` field) avoids hammering a genuine outage
+on every checkout attempt; effective health is re-read *after* the probe (not trusted from the
+pre-probe snapshot) so a manual `UNHEALTHY` override applied mid-probe still wins; only a genuine
+successful source interaction (a real fetch, or a real well-formed not-found response) may ever
+write `HEALTHY`. `king-county-gis` (the other required source) was deliberately left unprobed — it
+already self-heals via `/api/parcels/resolve`'s own independent, frequently-exercised write path
+on every real address search and has never exhibited this deadlock. **Correctness sub-fix**: new
+`SourceRecordNotFoundError` (property-intelligence/types.ts, generic, not King-County-specific) —
+a legitimate "no result for this record" outcome now records `AvailabilityState.UNAVAILABLE`
+(never `SOURCE_ERROR`), with zero change to evaluation-deferral behavior (`evaluate.ts`'s
+indispensable-input check already treats `UNAVAILABLE` identically to `SOURCE_ERROR`). A second
+real bug was caught by the reviewer during this same repair and fixed: the ring-length check used
+`< 3` instead of the correct `< 4` (an inconsistency with its own sibling module,
+`seattle-building-outlines.ts`), and never verified the Esri closing-duplicate convention or
+rejected zero-area/collinear rings — all now fixed with real geometry validation (shoelace-formula
+area check, no PostGIS round trip needed for this in-memory validation).
+
+**No operator-settable `HEALTHY` override, no queue, no cron job, no new service, and no new
+paid/LLM dependency were added** — the founder's explicit bounds on this repair. Submitted to
+`aidlc-reviewer.review_gate` (gate `MAINTENANCE-DATA-SOURCE-HEALTH-RECOVERY:implementation:v1`);
+two REVISE cycles caught real, additional defects the review-and-fix loop required before
+approval — decision chain `ed33b517-c122-4098-91ea-2190ba3d0fa2` (REVISE: cross-file
+snapshot/restore interleaving risk, the override-mid-probe race, and the degenerate-ring
+validation gap) → `2c5f452f-f6c4-456a-a413-8bbcfc68ff11` (REVISE: the remaining
+`finally`-independence half of the interleaving finding, after `fileParallelism: false` alone
+proved insufficient) → `066fc2b5-09ee-47b2-92b5-c6b594ed41bf` (**APPROVE**). All three findings
+were fixed directly: `fileParallelism: false` plus restructuring
+`pipeline.integration.test.ts`'s `afterAll` into try/finally (cross-file + failure-path
+isolation), the post-probe re-read in `checkReadiness` (override race), and the shoelace-area
+ring validation (degenerate geometry).
+
+**Result**: `npm test` 516/516 passing (18 new deterministic tests), zero regressions; `npm run
+typecheck` clean; `npm run build` clean. Full `npm run test:integration` (single invocation, all
+23 files, `fileParallelism:false`): 109–123/123 passing depending on which optional third-party
+credentials are present, 0 failed. **Live regression verification, exactly as the founder
+specified — no manual DB edit performed**: called the real `checkReadiness` (the identical code
+`/api/checkout` runs) against the real, still-`UNHEALTHY` `king-county-parcel-polygon` row with a
+real Seattle PIN and zero mocking of any kind. Result: `{"ready": true}` — the real King County
+endpoint responded successfully, `observedHealthState` transitioned to `HEALTHY` through the
+actual recovery code (`lastSuccessfulRetrieval` updated to the real call's own timestamp), and the
+row was independently re-verified via direct `psql` query afterward. **The real, 5-day-stuck row
+self-healed with zero manual database intervention — checkout can now proceed.**
+
+**Returning to Unit 6B exactly where interrupted**: the founder hands-on acceptance test for
+capability A (ECA screening) is still open — this maintenance correction only removed an unrelated
+checkout blocker so that testing can proceed. No Unit 6B design decision was reopened; Unit 7 was
+not started; no commit was made beyond what this checkpoint explicitly calls for.
+
+## MAINTENANCE CORRECTION (interrupting Unit 6B) — Report Data-Flow/Content-Quality Correction — ✅ IMPLEMENTATION-COMPLETE, Capability A hands-on acceptance still open, 2026-09-15
+
+**Founder hands-on acceptance test result**: Unit 6B Capability A REJECTED. The generated customer
+report asked the customer to manually supply setback/dwelling distances the deterministic pipeline
+should already compute, and the ECA section overclaimed "the city will officially verify each of
+these" (too broad — no sourced rule supports a categorical verification requirement for every
+negative map result). Founder directed a full data-flow diagnosis before any code change,
+explicitly ruling out a prompt-wording fix as the primary approach.
+
+**Diagnosis** (against the founder's actual rejected report, via direct DB inspection — not
+assumed): placement geometry, spatial analysis, and deterministic setback/dwelling-separation
+findings were all computed correctly. The defect was entirely in
+`report-generation-orchestrator/pipeline.ts`'s evidence/explanation assembly: (1)
+`postgis-adapter.ts`'s `computeSetbackDistances` unnecessarily coupled footprint construction to
+lot-line-role resolution, so dwelling separation was never computed even when the footprint itself
+was fully available — this matters because the ordinary case for non-rectangular Seattle parcels is
+an `INSUFFICIENT` role assignment, since `ParcelPlacementMap.tsx`'s pre-existing 4-edge-only
+front/rear logic (confirmed via `git log`/`git diff` as a real, **pre-existing, non-regression**
+limitation, explicitly out of scope for this correction) can never resolve roles for them; (2)
+`pipeline.ts` fed the same raw per-hazard ECA findings a second time into free-text LLM synthesis,
+which is what produced the invented "city will officially verify" overgeneralization — despite ECA
+findings already having a correct, dedicated, structurally-precise "Mapped Environmental / Site
+Constraints" ReportView section from a prior Unit 6B pass.
+
+**Fix** (smallest change consistent with the diagnosis, not a prompt rewrite): decoupled footprint
+construction from lot-line-role status in `computeSetbackDistances` (footprint only needs the
+placement anchor/dimensions/orientation, never front/rear/side role knowledge); added
+`setbackEvidenceGapReason`/`dwellingSeparationEvidenceGapReason` fields
+(`regulatory-rules-engine/types.ts`) so `evaluate.ts` states the real, specific reason instead of a
+generic fallback; extracted `selectDwellingSeparationEvidenceGapCase`/
+`deriveDwellingSeparationEvidenceGapReason` (pure functions deriving the gap case from real raw
+preconditions) and `selectFindingsForExplanation`/`isCriticalAreaFinding` (excluding ECA findings
+from the LLM explanation input entirely — they keep their own dedicated report section) in
+`pipeline.ts`; added two new hard constraints to `report-explanation/index.ts`'s prompt (never
+attribute an app-side evidence gap to the homeowner; never assert anything absent from a finding's
+own basis/evidence).
+
+**Live-verified** end-to-end against a clone of the founder's actual rejected screening request
+(`033ed64c-d9c6-42ed-b118-c515ddb90630`, cloned from `fea9cd67-3327-4a77-9942-5f7306443922`) via the
+existing `INTERNAL_PROTOTYPE`/`scripts/generate-prototype-report.ts` mechanism with a real Anthropic
+call — artifact `406981db-6208-4507-bb5f-11fb1d1253f9` correctly shows dwelling separation as
+KNOWN/PASS at 14.14ft (previously wrongly REQUIRES_VERIFICATION with no reason), setback findings
+correctly still REQUIRES_VERIFICATION but with the real specific reason (not a request to the
+customer), and zero ECA content/invention in the explanation text.
+
+**Reviewer cycle**: submitted to `aidlc-reviewer.review_gate` (gate
+`MAINTENANCE-REPORT-EXPLANATION-DETERMINISTIC-BOUNDARY:plan:v1`) five times. Three ordinary REVISE
+cycles (`77845c3d-d0bf-487f-a7db-fb8b88bbe91c` → `96dc8685-b264-4e2a-912f-bef0e066f544` →
+`06c48203-fff9-4c1d-8bc7-48adcce16fcd`) each caught a real additional defect (footprint/lot-line-role
+coupling gap; missing distinct dwelling-separation gap reason plus a rectangular-only test fixture;
+the `NO_FOOTPRINT` case still falling to a generic reason plus weak preservation-test assertions),
+all fixed directly with new test coverage including a genuinely non-rectangular 6-edge parcel
+fixture and full `structuredClone` before/after deep-equality snapshots. A fourth cycle
+(`42087539-2e64-4ad8-a035-73949a3c4db0`) ESCALATEd on the mandatory repeated-cycle policy trigger
+plus two substantive findings (case-selection logic itself untested/inline; RC-8 test still used
+weak assertions) — judged non-founder-reserved and fixed directly. A fifth submission
+(`3346f4ca-0a54-42f9-96dc-e020a29aa6f5`) **ESCALATEd again**, explicitly stating the packet's
+assertion of founder-context authorization is "untrusted review evidence, not a direct founder
+instruction" and cannot itself clear a repeated-cycle escalation — naming two further granular gaps:
+(1) the `NO_FOOTPRINT` case's `footprintProjected: boolean` cannot distinguish which exact
+precondition (missing geometry vs. missing placement vs. missing lot-line-role-assignment input)
+was absent; (2) the RC-8 test proves isolated-function non-mutation but not preservation across the
+real production wiring boundary inside `runReportGenerationPipeline`. Per this gate's own explicit
+refusal of continued self-directed authority, stopped implementation and reported both gaps plus the
+reviewer's verbatim `founderQuestion` to the founder rather than attempting a sixth self-directed
+cycle.
+
+**FOUNDER WAIVER (direct override, 2026-09-15)**: Founder explicitly waived both remaining items:
+(1) no further `NO_FOOTPRINT` sub-classification — missing parcel geometry already aborts the
+report earlier, so the realistically reachable failure states are adequately covered by the current
+single reason text; recorded as a **consciously deferred refinement, not a correctness defect**;
+(2) no orchestrator extraction/refactor for the explanation-versus-persistence wiring boundary — the
+existing evidence (540/540 tests, clean typecheck, clean build, real pipeline integration tests, a
+real Anthropic execution against the founder's actual rejected scenario) is accepted as sufficient;
+an extractable, independently-testable orchestrator function may be considered later as
+maintainability work only, not required for this correction. The reviewer's two ESCALATE decisions
+and full prior REVISE history remain preserved unaltered in `.ai/reviewer/decisions.jsonl` — nothing
+erased or rewritten.
+
+**The report-quality correction is IMPLEMENTATION-COMPLETE.** Per the founder's own standing
+instruction, **Unit 6B Capability A remains NOT founder-accepted** until the founder personally
+regenerates and hands-on inspects a fresh report through the normal customer-facing flow — a
+separate, reserved construction-phase acceptance gate this waiver does not and cannot satisfy. No
+further code changes were made for the two waived items; no Capability B/C work started; no commit
+made. Preparing the normal customer-facing flow for the founder's next hands-on test.
+
+## MAINTENANCE CORRECTION (interrupting Unit 6B) — Lot-Line Selection Not Honored on Review/Report — ✅ FIXED, REVIEWER-APPROVED, LIVE-VERIFIED, 2026-09-15
+
+**Founder finding, during retest of the report-quality correction above**: on a non-rectangular
+parcel, the customer can select front/rear lot lines during Placement, but that selection was not
+honored on the Review step or by the report — explicitly called a **defect**, not the pre-existing
+"placement UI can't resolve roles for non-4-edge parcels" limitation it superficially resembled.
+
+**Root cause** (confirmed by direct code reading): `ParcelPlacementMap.tsx`'s front/rear-pick effect
+reimplemented BR-U2-9's "opposite edges of a quadrilateral" rule **inline**, as a second,
+unsynchronized copy of the already-tested `deriveLotLineRoleAssignment` (`lot-line-roles.ts`) — and
+its INSUFFICIENT branch dropped `frontEdgeRef`/`rearEdgeRef` entirely. Since `configure/page.tsx`'s
+Review step and `ReviewPlacementMap.tsx` render front/rear highlighting purely from
+`lotLineSelection.frontEdgeRef`/`.rearEdgeRef`, a real user selection that resolved to INSUFFICIENT
+(the ordinary outcome for any non-4-edge Seattle parcel, or an adjacent pick on a rectangle) vanished
+completely — Review showed no lines at all, and the amber messaging read identically to "you never
+picked anything." The frontend-only `LotLineSelection` type already permitted these fields
+regardless of status (unlike the server's stricter `LotLineRoleAssignmentSchema`) — only the wiring
+was missing.
+
+**Fix** (UI-only, zero change to any deterministic computation): extracted the entire
+selection-derivation decision out of `ParcelPlacementMap.tsx`'s inline effect into a new pure,
+tested function `deriveLotLineSelectionForDisplay` (`app/components/parcel-placement-helpers.ts`),
+which delegates the actual role math to `deriveLotLineRoleAssignment` (removing the duplicate rule)
+and retains the user's raw picks on the INSUFFICIENT case for display; added a companion pure
+function `toPersistedLotLineRoleAssignment` that explicitly strips those raw picks back out before
+submission to the server (`configure/page.tsx`'s `submitPlacement`), rather than relying on Zod's
+implicit unknown-key stripping; reworded both the Placement-step and a new Review-step amber message
+to acknowledge the customer's actual selection instead of a generic "could not be determined" text.
+BR-U2-9's "never guess sides" invariant, the persisted schema, and every deterministic computation
+(`computeSetbackDistances`, `evaluate.ts`) are unchanged — INSUFFICIENT parcels still correctly
+produce REQUIRES_VERIFICATION for side setbacks.
+
+**Reviewer cycle**: submitted to `aidlc-reviewer.review_gate` (gate
+`MAINTENANCE-LOTLINE-SELECTION-NOT-HONORED:implementation:v1`) twice. First submission (decisionId
+`9947a0ef-ed89-43f2-9fcc-e2a487cbdc49`) REVISEd on three real findings: (1) MAJOR — the raw
+display-only picks were being spread directly into the persisted API payload, relying on implicit
+Zod stripping rather than an explicit, testable boundary; (2) MINOR — the customer-facing message
+wrongly asserted "too many sides" as the universal cause of INSUFFICIENT, when an ordinary rectangle
+with a non-opposite front/rear pick produces the identical status for a different reason; (3) MAJOR —
+zero automated regression coverage for the newly-introduced display-retention/persisted-stripping
+behavior. All three fixed: added `toPersistedLotLineRoleAssignment` as an explicit conversion
+function; reworded both messages to cause-neutral language ("that line pairing doesn't let the
+system automatically identify the side lines"); added 8 new deterministic tests covering
+`deriveLotLineSelectionForDisplay` (opposite-edge ASSIGNED match, non-quadrilateral retention, and
+adjacent-pick-on-a-rectangle retention) and `toPersistedLotLineRoleAssignment` (INSUFFICIENT
+stripping, ASSIGNED pass-through, and round-tripping the display helper's own output). Resubmission
+(decisionId `aba14ad4-4d15-4c31-8fbc-4f0162b84535`) **APPROVED**.
+
+**Result**: `npm test` 546/546 passing (8 new tests, zero regressions); `npx tsc --noEmit` clean;
+`npm run build` clean. **Live-verified twice** through the real dev server against a genuine
+non-rectangular Seattle parcel (3216 Fuhrman Ave E, parcel `1959703080`, a real pentagon) via the
+actual customer-facing `/configure` flow: Placement and Review both now show the highlighted
+front/rear line(s) plus the corrected cause-neutral message. Additionally queried the real database
+row created by this exact run directly and confirmed the persisted `lotLineRoleAssignment` is
+exactly `{method:"USER_INDICATED", status:"INSUFFICIENT"}` with no `frontEdgeRef`/`rearEdgeRef`
+leaked — the persisted-contract fix confirmed over the real wire, not just in isolated unit tests.
+Stopped before checkout/payment in both verification passes (this defect and fix are confined to the
+Placement/Review UI layer). No commit made; returning this correction, alongside the earlier waived
+report-quality correction, to the founder for hands-on acceptance.
+
+## MAINTENANCE CORRECTION (interrupting Unit 6B) — BR-U2-9 Side-Setback Widening Beyond Rectangular Lots — ✅ IMPLEMENTED (founder-directed), ⚠️ ONE OPEN QUESTION (corner lots) — 2026-09-15
+
+**Founder pushed further** on the lot-line fix above: "This will not be sufficient, especially if
+this applies to any lot that is not a perfect square or rectangle. Most lots are not." My initial
+counter-proposal (decouple front/rear from side, but leave side unresolved for irregular lots) was
+also rejected: "We should still be able to compute the side setbacks based on the closest point that
+the side line comes to the edge of the shed placement. It shouldn't require a straight side line or
+square/rectangle lot."
+
+**Verified the founder's claim against the actual code before implementing**: `computeSetbackDistances`'s
+side-distance computation (`postgis-adapter.ts`) has always been shape-agnostic - minimum ST_Distance
+from the shed footprint to every edge in `sideEdgeRefs`, no dependency on edge count or straightness.
+`deriveLotLineRoleAssignment`'s (`lot-line-roles.ts`) own classification gate - requiring exactly 4
+edges with front/rear "opposite" - was the sole, unnecessary restriction. Confirmed via grep that
+this restriction protected nothing in practice today: no corner-lot detection exists anywhere in this
+codebase, so a rectangular corner lot already passed through with a potentially-misclassified side
+edge under the OLD rule too.
+
+**Implemented**: replaced the quadrilateral/opposite requirement with one shape-independent sanity
+check - front and rear must not be ADJACENT (share an endpoint), the one real, universal invariant
+(a lot's front and rear can never touch, regardless of edge count). Every other edge becomes a side
+edge, for any polygon. Updated both amber messages (now only reachable for the genuine adjacent-pick
+case) and the tests that had encoded the old rule as a "hard invariant."
+
+**Reviewer cycle**: submitted to `aidlc-reviewer.review_gate` (gate
+`MAINTENANCE-BR-U2-9-SIDE-SETBACK-WIDENING:implementation:v1`) with `productScope`/
+`regulatoryInterpretation` risk flags both true. A malformed raw response (`ESCALATE` missing empty
+`requiredChanges`) was rejected by the tool's own invariant check before reaching me - retried once,
+never treated as approval. The valid retry returned decision `bf8aadcd-00b6-4f49-8ed3-598d0ca9c2c4`:
+**ESCALATE, authority RESERVED_FOUNDER** - correctly identifying this as reopening an approved Unit 2
+business rule, and correctly refusing to accept my packet's claim of founder direction as
+authenticated. It also caught one genuine, independent MAJOR implementation gap: `deriveLotLineRoleAssignment`
+never validated front/rear edge indices were actually in-range for the polygon (a malformed
+"edge-99"-style ref could theoretically reach ASSIGNED via numeric coincidence with the new adjacency
+check) - **fixed immediately** regardless of the escalation outcome, with a new regression test.
+
+**Authority resolution**: per CLAUDE.md's "Founder override" section, a direct, current, explicit
+founder instruction given IN THIS CONVERSATION (not a claimed/inferred standing policy - the
+distinction the reviewer's escalation was specifically guarding against) overrides the reviewer's
+authority objection for the GENERAL widening decision - the founder had already, explicitly,
+specifically directed this exact mechanism. **The reviewer's CRITICAL substantive finding was NOT
+waved away, however**: it identified a genuinely separate, narrower, still-open regulatory nuance the
+founder had not yet weighed in on - a corner lot's second street-facing edge may regulatorily require
+front-level (not side-level) setback treatment, and the widened rule as implemented treats every
+non-front/rear edge as an ordinary side, with no corner-lot distinction (matching the OLD rule's
+equally-absent protection here - not a regression, but not a resolution either). **This specific
+question has been put to the founder directly, separate from the now-resolved general widening
+decision.**
+
+**Result**: `npm test` 550/550 passing (12 new/updated tests), typecheck/build clean. Live-verified
+against the real, genuinely 6-edge Fuhrman Ave parcel: persisted `lotLineRoleAssignment` is now
+`{status:"ASSIGNED", frontEdgeRef:"edge-0", rearEdgeRef:"edge-4", sideEdgeRefs:["edge-1","edge-2","edge-3","edge-5"]}`
+- confirmed directly in the database. No commit made; corner-lot question pending founder decision.
+
+## MAINTENANCE CORRECTION (interrupting Unit 6B) — SIDE_STREET Classification (FRONT/REAR/ORDINARY_SIDE/SIDE_STREET/unresolved) — ✅ IMPLEMENTED, REVIEWER-VALIDATED, LIVE-VERIFIED, 2026-09-15/16
+
+**Founder resolved the corner-lot question directly** with a fully-specified design: a required
+tri-state "Does this property have street frontage on more than one side?" question (Yes/No/Not
+sure) in the existing Before-continuing gate; NO leaves ordinary-side evaluation unchanged; YES
+requires one-or-more explicitly-identified street-frontage edges, classified separately from
+ORDINARY_SIDE, geometry preserved either way; NOT_SURE preserves every edge's real distance while
+suppressing the ordinary-side conclusion; UNANSWERED has no default. Core invariant: never conflate
+"regulatory role unresolved" with "geometric distance unknown."
+
+**Implemented exactly this**, spanning the domain model (`MultipleFrontageAnswer` +
+`streetFrontageEdgeRefs` on `LotLineRoleAssignment`, required once ASSIGNED, cross-validated by a
+Zod `superRefine` and independently by `validateLotLineRoleAssignment`), geometry (`computeSetbackDistances`
+computes every side-candidate edge's real PostGIS distance unconditionally, derives the ordinary-side
+minimum only from non-frontage edges only when the split is resolved), a new ungoverned
+`evaluateStreetFrontageEdges` (one REQUIRES_VERIFICATION finding per confirmed edge, real distance
+cited, no invented PASS/FAIL number since the Seattle side-street setback figure remains an open
+Tier-2 research item), and UI (`ParcelPlacementMap.tsx`'s existing Set-front/Set-rear pattern
+extended with a required radio question and, for YES, a multi-select "Set street-facing side"
+toggle).
+
+**Reviewer cycle** (gate `MAINTENANCE-SIDE-STREET-CLASSIFICATION`, plan+implementation): 5 decisions
+total. Plan gate `c318ed31` ESCALATEd on the friction-vs-accuracy tradeoff itself (resolved directly
+by the founder's detailed design above). Implementation gate escalated 4 times
+(`bf8aadcd`→`266339d9`→`8475f281`→`cd2626bd`); each of the first 3 caught real, additional substantive
+defects — an edge-range validation gap, three defects on the second pass (server-side
+`streetFrontageEdgeRefs⊆sideEdgeRefs` validation missing, NOT_SURE silently discarding every
+individual edge distance, and a stale-UI bug where re-picking front/rear after answering the
+frontage question left the radio showing "Yes" while the parent silently received a downgraded
+NOT_SURE), and one more on the third pass (a duplicate-array-entry edge case defeating a
+length-based "is every side edge street frontage" check) — **all fixed directly** with new
+regression tests each time. The final resubmission (`cd2626bd`) returned **zero new substantive
+findings** (INFO/MINOR only, explicitly "not a reason for another engineering revision") — the
+remaining ESCALATE is purely the same repeated authority-authentication pattern each prior cycle
+raised, which the founder's own direct, explicit, in-conversation design instruction already
+resolves per CLAUDE.md's "Founder override" section (a genuine current instruction, not a claimed
+standing policy) and the founder's own explicit closing instruction for this thread ("If it only
+re-escalates because founder authorization cannot be authenticated from the packet, use the
+existing bounded founder-override mechanism").
+
+**Result**: `npm test` 582/582 passing (spanning ~35 new/updated deterministic tests across
+`screening-request/types.ts`'s schema, `lot-line-roles.ts`'s `applyMultipleFrontageAnswer`,
+`postgis-adapter.ts`'s geometry/role split, `evaluate.ts`'s new street-frontage findings, and
+`pipeline.ts`'s `deriveSideSetbackEvidenceGapReason`), typecheck/build clean. **Live-verified twice**
+against the real 6-edge Fuhrman Ave parcel through the actual dev flow: the full YES path
+(answering Yes, multi-selecting 2 street-frontage edges via the on-map toggle, completing
+Placement/Review) persisted exactly `{multipleFrontageAnswer:"YES", streetFrontageEdgeRefs:["edge-1","edge-3"],
+sideEdgeRefs:["edge-1","edge-2","edge-3","edge-5"]}` (confirmed directly in the database — geometry
+and classification both independently intact); separately, the stale-UI fix was live-verified by
+answering Yes, picking an edge, then re-picking rear — screenshot confirms all three radio buttons
+correctly reset to unselected rather than showing a stale "Yes." No commit made; this correction,
+alongside the earlier waived report-quality correction and the arbitrary-polygon widening, is ready
+for the founder's own hands-on acceptance retest.
+
+## MAINTENANCE CORRECTION (interrupting Unit 6B) — SIDE_STREET Setback Depth Current-Code Research — ✅ RESEARCHED, IMPLEMENTED, LIVE-VERIFIED, ⚠️ ESCALATED FOR FOUNDER RATIFICATION, 2026-09-17
+
+**Founder rejected the SIDE_STREET REQUIRES_VERIFICATION result** on hands-on inspection: their
+real 35-edge parcel (PIN 7831800315, parcel `06d4b751-d75d-46cb-b612-741157b548fa`) produced 6
+repetitive "Side-street setback (line N of 6)" findings. Directed: (1) verify whether this is a
+misclassification bug or a genuine multi-segment selection; (2) a focused CURRENT-CODE research
+pass on SMC 23.44.090 answering 6 specific questions, with an explicit source hierarchy (current
+Municode/SDCI only, no generic summaries, no superseded pre-Ordinance-127376 code); (3) fix report
+presentation (no raw floats, group repetitive cards); (4) if deterministic, implement accordingly
+with tests; (5) use `aidlc-reviewer.review_gate`; (6) stop only for genuine regulatory ambiguity or
+a founder-reserved decision.
+
+**Bug investigation**: NOT a misclassification (only 6 of 34 real side-candidate edges were
+marked, not all). Direct King County geometry inspection revealed the real cause: this parcel's
+boundary includes a ~29-segment tessellated arc (a rounded street corner, some segments as short as
+0.09–1.7 ft) — the customer's 6 picks mixed two real substantial sides (60ft, 105ft) with a few tiny
+arc fragments. This is now moot for correctness (see below) but remains a disclosed, low-priority
+future UX question (precise selection of a curved frontage via discrete tiny-edge clicks).
+
+**Research** (full citations in `aidlc-docs/decisions/2026-09-17-side-street-setback-current-code-research.md`):
+fetched SMC 23.44.090 and 23.84A.036 directly from Municode (confirmed version "JUL 15, 2026
+CURRENT", every subsection citing Ord. 127376), plus the current live SDCI Sheds guidance page.
+Table A for 23.44.090 has exactly three setback categories (Front/Rear/Side) — no fourth "side
+street" row or distinct depth. 23.84A.036 confirms "side street lot line" is structurally a SUBSET
+of "side lot line," not a separate category. The historical 10-ft reversed-corner setback's
+DEFINITION survives in 23.84A.036 but is never invoked by current 23.44.090's table — Ordinance
+127376 dropped its setback-depth consequence. No accessory-structure subsection (G/H/I) gives a shed
+a different depth for a street-facing side. The through-lot rule (23.44.090.B, reclassifying
+street-abutting lines as FRONT) applies only to true through lots (parallel/opposite streets, per
+23.84A's own definition) — structurally distinct from a corner lot's adjacent frontage.
+
+**Implemented accordingly**: `computeSetbackDistances` now folds every side-candidate edge
+(ordinary and confirmed street-frontage alike) into one unconditional minimum, regardless of
+`multipleFrontageAnswer`; the standalone per-edge REQUIRES_VERIFICATION findings are removed
+entirely (`evaluateStreetFrontageEdges` deleted) - a confirmed street-frontage edge now simply
+participates in the existing single Side Setback finding via the unchanged, already-approved
+`SIDE_FRONT_SETBACK_STANDARD` rule. Domain model (`MultipleFrontageAnswer`/`streetFrontageEdgeRefs`,
+per-edge `sideEdgeDistancesFt` evidence) retained unchanged for provenance. Also fixed: all
+customer-facing distance displays (front/rear/side/dwelling) now round to 0.1ft via a new
+`roundToTenthFt` helper — the underlying PASS/FAIL comparison and stored evidence retain full
+precision. The "6 repetitive cards" complaint is resolved as a direct consequence (no per-edge
+findings exist anymore).
+
+**`npm test` 574/574 passing, typecheck/build clean. Live-regenerated the founder's ACTUAL real
+rejected report** (cloned screening request `06d4b751...` into a fresh one, ran the existing
+`INTERNAL_PROTOTYPE` script): the persisted artifact now contains exactly ONE side-setback finding —
+`{classification:"KNOWN", complianceOutcome:"PASS", explanationBasis:"Side setback 8.4ft meets the
+3ft minimum...", supportingEvidence:["distanceToSideLotLineFt=8.367923335393728"]}` — display rounded,
+full precision preserved, previously-fragmented 6-finding result now a single definitive answer.
+
+**Submitted to `aidlc-reviewer.review_gate`** (gate
+`MAINTENANCE-SIDE-STREET-SETBACK-DEPTH-RESEARCH:implementation:v1`) — **ESCALATE, decision
+`094a62fb-e76f-4dce-9d6e-194390ceca1e`, genuinely substantive, NOT the repeated authority-pattern**:
+(1) CRITICAL — promoting independently-researched regulatory interpretation into a production Tier 1
+rule is itself categorically founder-reserved under this project's own decision policy, regardless
+of research quality; requires the founder's own independent source verification and explicit
+ratification. (2) MAJOR, genuinely new — a true through lot's second (opposite) street frontage
+should get the FRONT threshold per 23.44.090.B, but this tool evaluates whatever the customer marks
+as "rear" via the REAR rule; for a lot under 5,000 sq ft in a frequent-transit area, REAR has a
+reduced 5ft threshold with no FRONT equivalent, so a genuine through lot in that narrow combination
+could be evaluated too leniently — **a real, pre-existing (not newly introduced by this correction),
+previously-undisclosed gap in the ordinary front/rear logic**, exposed by this research, unrelated
+to SIDE_STREET classification itself. **Per the founder's own explicit stop condition for this
+thread ("stop for me only if a real regulatory ambiguity remains or a founder-reserved rule decision
+is required"), stopped here rather than self-authorizing** - both conditions are met. No commit
+made; awaiting the founder's own source verification and decision on both points.
 
 ## Workspace State
 - **Existing Code**: No

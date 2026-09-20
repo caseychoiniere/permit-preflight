@@ -55,3 +55,16 @@ export interface PropertyContext {
 export function getFact<TValue = unknown>(context: PropertyContext, factType: string): PropertyFact<TValue> | undefined {
   return context.facts.find((f) => f.factType === factType) as PropertyFact<TValue> | undefined;
 }
+
+/**
+ * Maintenance correction (2026-09-15) - a FactRetriever throws this, instead of a plain `Error`,
+ * to signal "the source responded correctly (reachable, well-formed, correctly-CRS'd), but this
+ * SPECIFIC parcel/record legitimately has no result" - e.g. a PIN with zero matching features, or
+ * a matched feature whose geometry cannot be represented. This is structurally distinct from a
+ * genuine source/transport/validation/CRS failure: `assemblePropertyContext` records it as
+ * `AvailabilityState.UNAVAILABLE` (not `SOURCE_ERROR`) precisely so a data-source-health decision
+ * (data-source-registry) is never conflated with a single parcel's own legitimate absence of data
+ * - a source that correctly reports "not found" for one record has just demonstrated it is
+ * reachable and functioning, the opposite of what SOURCE_ERROR is meant to signal.
+ */
+export class SourceRecordNotFoundError extends Error {}

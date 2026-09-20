@@ -44,6 +44,18 @@ removed the Commercial GO/Unit 0C dependency; see aidlc-state.md's FOUNDER DECIS
 - **Accounts**: ACC-2, ACC-3, ACC-4 (3)
 - **Project Configuration**: PC-3 (save/resume, authenticated-user feature) (1)
 
+## Unit 6B: Shed Report Value Expansion — 0 new stories
+*(Added 2026-09-10, between Unit 6 and Unit 7. Existing units not renumbered.)*
+- **No new stories.** Unit 6B **deepens existing shed stories** rather than adding project-type
+  coverage: `SRE-0` (evidence classification applies consistently — extended to the new ECA,
+  permit, and coverage findings), `SRE-SHED-1` (shed spatial/regulatory evaluation — adds ECA
+  screening, building-permit-requirement determination, and estimated lot-coverage analysis), and
+  `RGD-1`–`RGD-6` (the report itself gains sections). The 54-story total is unchanged.
+- Rationale: real product testing showed the shed report was too setback-weighted; the founder
+  chose to deepen one report and validate paid-product value before horizontal expansion to
+  Units 7–11. See `unit-of-work.md` and
+  `aidlc-docs/construction/unit-6b-shed-report-value-expansion/`.
+
 ## Unit 7: Fences — 1 story
 - **Spatial/Regulatory Evaluation**: SRE-FENCE-1 (1)
 

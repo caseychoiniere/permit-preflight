@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const result = await getGuestReport(getDb(), sessionId);
   if (!result) return notFound();
 
-  const { artifact, emailDeliveryStatus } = result;
+  const { artifact, emailDeliveryStatus, orderReference } = result;
   return Response.json(
     {
       id: artifact.id,
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       generatedAt: artifact.generatedAt,
       ruleVersionsUsed: artifact.ruleVersionsUsed,
       emailDeliveryStatus,
+      orderReference,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

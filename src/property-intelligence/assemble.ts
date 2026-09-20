@@ -11,7 +11,7 @@ import { executeWithBoundedRetry, type RetryPolicy, DEFAULT_RETRY_POLICY } from 
 import { logger } from "../shared/logger.js";
 import { ParcelResolutionStatus } from "../parcel-resolution/types.js";
 import type { CandidateParcel, ParcelResolutionResult } from "../parcel-resolution/types.js";
-import { AvailabilityState } from "./types.js";
+import { AvailabilityState, SourceRecordNotFoundError } from "./types.js";
 import type { PropertyContext, PropertyFact, Provenance } from "./types.js";
 
 /** The only ParcelResolutionResult shape this module will accept. */
@@ -62,11 +62,20 @@ export async function assemblePropertyContext(
     } else {
       // Property Intelligence records unavailability - it NEVER assigns REQUIRES_VERIFICATION
       // itself (BR-3.3). That classification happens later, only in the Regulatory Rules Engine.
-      logger.warn("SOURCE_FAILURE", { factType: retriever.factType, dataset: retriever.dataset });
+      //
+      // Maintenance correction (2026-09-15): a retriever throwing SourceRecordNotFoundError has
+      // proven the source itself is reachable and responding correctly - only THIS parcel/record
+      // legitimately has no result. Recorded as UNAVAILABLE (never SOURCE_ERROR) so a downstream
+      // data-source-health decision is never conflated with one parcel's own legitimate absence
+      // of data (see property-intelligence/types.ts's docstring on that error class). Every other
+      // failure (transport, malformed response, CRS mismatch, or any other thrown error) is
+      // unchanged - still SOURCE_ERROR.
+      const isRecordNotFound = result.outcome === "EXHAUSTED" && result.lastError instanceof SourceRecordNotFoundError;
+      logger.warn(isRecordNotFound ? "SOURCE_RECORD_NOT_FOUND" : "SOURCE_FAILURE", { factType: retriever.factType, dataset: retriever.dataset });
       facts.push({
         factType: retriever.factType,
         provenance,
-        availabilityState: AvailabilityState.SOURCE_ERROR,
+        availabilityState: isRecordNotFound ? AvailabilityState.UNAVAILABLE : AvailabilityState.SOURCE_ERROR,
       });
     }
   }

@@ -52,6 +52,14 @@ function buildExplanationPrompt(findings: Finding[]): string {
   return [
     "Explain the following deterministic buildability findings in plain, homeowner-friendly language.",
     "Do NOT change, question, or reinterpret any classification or compliance outcome - only explain what is already there.",
+    // Maintenance correction (2026-09-15) - closes a real deterministic-to-LLM boundary gap, not a
+    // wording preference: a customer report asked the homeowner to "provide" setback distances
+    // that are actually computed server-side from placement geometry, and a separate synthesis
+    // asserted a specific claim ("the city will officially verify this") that existed in no
+    // individual finding's own basis text. Both are now structurally forbidden, not merely
+    // discouraged by tone.
+    "A REQUIRES_VERIFICATION finding whose basis says a value \"is not available\" or gives a specific reason for that gap reflects an evidence limitation in what this system could determine - never something the homeowner failed to provide or must go calculate themselves. State the reason given in that finding's own basis; do not imply the homeowner is responsible for supplying it.",
+    "Never state a fact, requirement, or conclusion that does not appear in at least one finding's own explanationBasis or supportingEvidence below. Do not generalize, combine, or infer a new claim across multiple findings (for example, inventing a shared procedural requirement) unless that exact claim is already present in one of them.",
     "Reference specific finding indices (from the [N] labels below) in referencedFindingIds.",
     "Respond with ONLY a JSON object: {\"text\": string, \"referencedFindingIds\": string[]}. No markdown fences.",
     "",

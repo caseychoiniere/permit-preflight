@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, withAccountTransaction, type Db } from "../../src/db/client.js";
 import { accounts, accountOrderLinks, accountSessions, orders, screeningRequests, evidenceReportArtifacts, reportAccessCredentials, reportGenerationJobs } from "../../src/db/schema.js";
-import { requestLoginLink, verifyLoginLink, completeClaimByEmail, claimByReportToken, deleteAccount } from "../../src/account-auth/workflows.js";
+import { requestLoginLink, verifyLoginLink, completeClaimByEmail, claimByReportToken, deleteAccount, getAccountReport, listReportHistory } from "../../src/account-auth/workflows.js";
 import { insertClaimToken } from "../../src/account-auth/token-repository.js";
 import { createLink } from "../../src/account-auth/link-repository.js";
 import { hashToken } from "../../src/report-access/credential.js";
@@ -81,6 +81,21 @@ describe.skipIf(!hasDb)("Unit 6 Optional Accounts - live Neon integration", () =
       })
       .returning({ id: orders.id });
     return { orderId: order!.id, screeningRequestId: screeningRequest!.id };
+  }
+
+  /** Adds a real COMPLETE job + EvidenceReportArtifact for an existing fixture screening request,
+   * so getAccountReport (Mode B) has a real artifact to resolve. Unit 6 Code Generation Part 2
+   * review, correction 1. */
+  async function attachReportArtifact(screeningRequestId: string): Promise<{ artifactId: string }> {
+    const [job] = await db
+      .insert(reportGenerationJobs)
+      .values({ screeningRequestId, state: "COMPLETE", generationAuthorization: { type: "VERIFIED_PAYMENT", orderId: crypto.randomUUID() } })
+      .returning({ id: reportGenerationJobs.id });
+    const [artifact] = await db
+      .insert(evidenceReportArtifacts)
+      .values({ screeningRequestId, reportGenerationJobId: job!.id, findings: [{ subject: "Rear setback", classification: "KNOWN", complianceOutcome: "PASS", explanationBasis: "test", supportingEvidence: [] }], evidence: [] })
+      .returning({ id: evidenceReportArtifacts.id });
+    return { artifactId: artifact!.id };
   }
 
   afterAll(async () => {
@@ -259,5 +274,57 @@ describe.skipIf(!hasDb)("Unit 6 Optional Accounts - live Neon integration", () =
     expect(orderAfter).toEqual(orderBefore); // Byte-for-byte unmodified.
     // deleteAccount already succeeded (no accountId left to register), so cleanupAccountIds is
     // deliberately NOT pushed to here - the account is already gone.
+  });
+
+  // --- Unit 6 Code Generation Part 2 review, corrections 1 & 4 ---------------------------------
+
+  it("[hard invariant] getAccountReport (Mode B) rejects an order this account does not own - FORBIDDEN, no artifact leaked", async () => {
+    const { orderId, screeningRequestId } = await createPaidOrderFixture();
+    await attachReportArtifact(screeningRequestId);
+
+    const [ownerAccount] = await db.insert(accounts).values({ email: testEmail("mode-b-owner") }).returning({ id: accounts.id });
+    const [strangerAccount] = await db.insert(accounts).values({ email: testEmail("mode-b-stranger") }).returning({ id: accounts.id });
+    cleanupAccountIds.push(ownerAccount!.id, strangerAccount!.id);
+    await withAccountTransaction((tx) => createLink(tx, ownerAccount!.id, orderId, "REPORT_ACCESS_TOKEN"));
+
+    // The stranger has a valid session but no AccountOrderLink for this order.
+    const strangerResult = await getAccountReport(db, strangerAccount!.id, orderId);
+    expect(strangerResult.outcome).toBe("FORBIDDEN");
+
+    // The owner resolves the real, existing artifact - proving the rejection above was about
+    // ownership, not a broken lookup.
+    const ownerResult = await getAccountReport(db, ownerAccount!.id, orderId);
+    expect(ownerResult.outcome).toBe("FOUND");
+    if (ownerResult.outcome === "FOUND") {
+      const [artifactRow] = await db.select().from(evidenceReportArtifacts).where(eq(evidenceReportArtifacts.id, ownerResult.artifactId));
+      expect(artifactRow).toBeDefined();
+      expect(artifactRow!.screeningRequestId).toBe(screeningRequestId);
+    }
+  });
+
+  it("[hard invariant] getAccountReport for a completely unknown orderId is FORBIDDEN, identical to the not-owned case (no existence oracle)", async () => {
+    const [account] = await db.insert(accounts).values({ email: testEmail("mode-b-unknown-order") }).returning({ id: accounts.id });
+    cleanupAccountIds.push(account!.id);
+    const result = await getAccountReport(db, account!.id, crypto.randomUUID());
+    expect(result.outcome).toBe("FORBIDDEN");
+  });
+
+  it("listReportHistory returns enough EXISTING data to distinguish screenings - parcel id, workflow/project type, paid date (correction 4)", async () => {
+    const { orderId, screeningRequestId } = await createPaidOrderFixture();
+    const [screeningRow] = await db.select().from(screeningRequests).where(eq(screeningRequests.id, screeningRequestId));
+    const [orderRow] = await db.select().from(orders).where(eq(orders.id, orderId));
+
+    const [account] = await db.insert(accounts).values({ email: testEmail("history-fields") }).returning({ id: accounts.id });
+    cleanupAccountIds.push(account!.id);
+    await withAccountTransaction((tx) => createLink(tx, account!.id, orderId, "EMAIL_VERIFICATION"));
+
+    const history = await listReportHistory(db, account!.id);
+    const entry = history.find((h) => h.orderId === orderId);
+    expect(entry).toBeDefined();
+    expect(entry!.confirmedParcelId).toBe(screeningRow!.confirmedParcelId);
+    expect(entry!.workflowType).toBe("EXISTING_PROPERTY");
+    expect(entry!.projectType).toBe("SHED");
+    expect(entry!.paidAt).toBe(orderRow!.paidAt!.toISOString());
+    expect(entry!.orderState).toBe("PAID");
   });
 });

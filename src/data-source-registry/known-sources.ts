@@ -39,4 +39,9 @@ export const KNOWN_SOURCE_DEFINITIONS: Record<string, KnownSourceDefinition> = {
     expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
     description: "City of Seattle Building Outlines 2023 (property-intelligence, building intelligence v1) - queried live, per shed report-generation request.",
   },
+  "seattle-eca": {
+    sourceId: "seattle-eca",
+    expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
+    description: "City of Seattle Environmentally Critical Areas layers (property-intelligence, Unit 6B) - queried live, per shed report-generation request.",
+  },
 };

@@ -7,6 +7,14 @@
 
 import type { EvidenceQuality, RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import type { InferencePolicy } from "../regulatory-rule-governance/types.js";
+import type {
+  FoundationType,
+  RoofOverhang,
+  ShedAttachment,
+  ShedIntendedUse,
+  StructuralSpanInfo,
+  UtilityIntent,
+} from "../screening-request/types.js";
 
 export type { EvidenceQuality };
 
@@ -42,6 +50,93 @@ export interface ShedProjectDetails {
    * 1's original behavior, unchanged). GENERAL_LOCATION_ONLY triggers the evidence-quality gate
    * on KNOWN classification for REAR_SETBACK/SIDE_FRONT_SETBACK_STANDARD findings. */
   spatialEvidenceQuality?: EvidenceQuality;
+  /** Maintenance correction (2026-09-15) - when the front/rear/side lot-line roles could not be
+   * confidently resolved for this parcel's shape (LotLineRoleAssignment.status === INSUFFICIENT),
+   * distanceToRearLotLineFt/distanceToSideLotLineFt/distanceToFrontLotLineFt are all undefined,
+   * exactly as before - but the REASON is now carried through here instead of being discarded, so
+   * the resulting REQUIRES_VERIFICATION findings can state the real cause ("the front, rear, and
+   * side property lines could not be confidently identified for this parcel's shape") rather than
+   * a bare "not available." Deliberately NOT used by dwelling separation - that fact no longer
+   * depends on lot-line roles at all (postgis-adapter.ts's computeSetbackDistances now computes
+   * the footprint regardless), so conflating the two reasons would misattribute an unrelated gap. */
+  setbackEvidenceGapReason?: string;
+  /** The real, KNOWN PostGIS distance to every side-candidate edge (ordinary and confirmed
+   * street-frontage alike), keyed by edgeRef - preserved for evidence/citation transparency.
+   * Maintenance correction (2026-09-16, founder-directed current-code research): current SMC
+   * 23.44.090 imposes no distinct required depth for a "side street lot line" (see
+   * postgis-adapter.ts's computeSetbackDistances for the full citation), so distanceToSideLotLineFt
+   * above already reflects the minimum across every one of these entries - this field exists purely
+   * so the individual per-edge breakdown remains available if ever needed. */
+  sideEdgeDistancesFt?: Record<string, number>;
+  /** Maintenance correction (2026-09-17, founder correction after reviewer escalation
+   * 53f30444-b566-4197-b0dd-e2aff768fa65) - every confirmed-street edge whose role (through-lot
+   * front per SMC 23.44.090.B, Director-determined front per SMC 23.84A.024, or ordinary
+   * side-street) current code cannot resolve from this parcel's own boundary geometry alone, keyed
+   * by edgeRef - the real, KNOWN PostGIS distance, but excluded from both
+   * distanceToFrontLotLineFt's and distanceToSideLotLineFt's confident minimums. Resolving this
+   * would require real STREET geometry evidence (the actual relationship between the streets
+   * involved), which this correction deliberately does not add (no new street GIS adapter). See
+   * postgis-adapter.ts's computeSetbackDistances for the full citation and classification logic. */
+  unresolvedStreetFrontageDistancesFt?: Record<string, number>;
+  /** Maintenance correction (2026-09-17) - NON-AUTHORITATIVE diagnostic evidence only, keyed the
+   * same way as unresolvedStreetFrontageDistancesFt. A parcel-edge-azimuth heuristic that MAY hint
+   * a given confirmed-street edge is a possible through lot - never used to decide a PASS/FAIL
+   * conclusion (see postgis-adapter.ts's StreetFrontageHeuristic for why: azimuth of this parcel's
+   * own boundary segments is not proof that two STREETS are parallel, and a tessellated/curved
+   * frontage can falsely satisfy the numeric test). Persisted purely so a human reviewer (or a
+   * future feature that adds real street-geometry evidence) has full raw traceability. */
+  streetFrontageHeuristics?: Record<
+    string,
+    { frontEdgeRef: string; edgeRef: string; azimuthFrontDeg: number; azimuthEdgeDeg: number; angleFromParallelDeg: number; possibleThroughLot: boolean; evidenceQuality: "INFERRED" }
+  >;
+  /** Maintenance correction (2026-09-17, founder correction after reviewer escalation) - set
+   * whenever unresolvedStreetFrontageDistancesFt is non-empty, OR the customer answered NOT_SURE to
+   * "does this property have street frontage on more than one side" (in which case NO edge is
+   * individually confirmed, but the front-line role is equally unresolved - we cannot rule out an
+   * as-yet-unconfirmed additional street existing). distanceToFrontLotLineFt remains a KNOWN
+   * measurement (the customer's own front pick), but the CONCLUSION built on it is uncertain, since
+   * current code's through-lot/Director-determination provisions mean the true code-defined front
+   * line is not necessarily the customer's pick. evaluateSideFrontSetback must reflect this as
+   * REQUIRES_VERIFICATION for the front finding specifically, never silently downgrade the known
+   * distance itself. */
+  frontRoleEvidenceGapReason?: string;
+  /** Maintenance correction (2026-09-17, founder correction after reviewer escalation) - set
+   * whenever rearAlsoFacesStreet is true (the customer confirmed their rear line also faces a
+   * street, so whether it's genuinely an ordinary rear line or a through-lot/Director-determined
+   * front line is unresolved), OR the customer answered NOT_SURE (rear could secretly be a second
+   * street too - not ruled out). distanceToRearLotLineFt remains a KNOWN measurement; only the
+   * CONCLUSION built on it is uncertain. Deliberately independent of setbackEvidenceGapReason,
+   * which covers the unrelated INSUFFICIENT-parcel-shape case. */
+  rearRoleEvidenceGapReason?: string;
+  /** Maintenance correction (2026-09-17, founder correction after reviewer escalation) - set ONLY
+   * when the customer answered NOT_SURE: none of the side-candidate edges can be confidently
+   * treated as ordinary (non-street-facing) side lines, since the customer has not confirmed
+   * whether any of them face an additional street. distanceToSideLotLineFt remains a KNOWN
+   * measurement (computed the same as it would be for NO); only the CONCLUSION is uncertain. Never
+   * set for YES - there, only the SPECIFICALLY confirmed edges are excluded/unresolved
+   * (unresolvedStreetFrontageDistancesFt), and every other side edge stays confidently ordinary
+   * (the customer affirmatively did not mark it as street-facing). */
+  sideRoleEvidenceGapReason?: string;
+  /** Maintenance correction (2026-09-15, RC-4) - the real, distinct reason distanceToDwellingFt
+   * is unavailable (no selection made, a stale/unmatched selection, or unavailable
+   * building-outline data), threaded into the DWELLING_SEPARATION finding instead of a generic
+   * "not available." Deliberately independent of setbackEvidenceGapReason - dwelling separation
+   * no longer depends on lot-line roles at all (postgis-adapter.ts's computeSetbackDistances now
+   * computes the footprint regardless), so its own gap always has a genuinely different cause. */
+  dwellingSeparationEvidenceGapReason?: string;
+  /** Unit 6B additions (functional-design/domain-entities.md §2) - permit-requirement/
+   * lot-coverage evaluation-time inputs, carried through unchanged from ShedProjectConfiguration. */
+  foundationType?: FoundationType;
+  attachment?: ShedAttachment;
+  intendedUse?: ShedIntendedUse;
+  roofOverhang?: RoofOverhang;
+  structuralSpanInfo?: StructuralSpanInfo;
+  utilityIntent?: UtilityIntent;
+  /** Unit 6B - whether the shed's already-computed placement falls inside a required setback,
+   * feeding P2b's location-sensitive height determination (evaluate.ts's
+   * evaluateAccessoryHeightLimit). Server-derived from the existing setback-distance computation,
+   * never client-supplied - undefined means the setback-location fact itself is unresolved. */
+  isInRequiredSetback?: boolean;
 }
 
 /** Unit 4 (domain-entities.md) - shares every setback/height field with ShedProjectDetails
@@ -58,6 +153,23 @@ export interface GarageProjectDetails {
   distanceToSideLotLineFt?: number;
   distanceToFrontLotLineFt?: number;
   spatialEvidenceQuality?: EvidenceQuality;
+  /** Same maintenance correction as ShedProjectDetails - see that field's docstring. */
+  setbackEvidenceGapReason?: string;
+  /** Same as ShedProjectDetails - see that field's docstring. */
+  sideEdgeDistancesFt?: Record<string, number>;
+  /** Same as ShedProjectDetails - see that field's docstring. */
+  unresolvedStreetFrontageDistancesFt?: Record<string, number>;
+  /** Same as ShedProjectDetails - see that field's docstring. */
+  streetFrontageHeuristics?: Record<
+    string,
+    { frontEdgeRef: string; edgeRef: string; azimuthFrontDeg: number; azimuthEdgeDeg: number; angleFromParallelDeg: number; possibleThroughLot: boolean; evidenceQuality: "INFERRED" }
+  >;
+  /** Same as ShedProjectDetails - see that field's docstring. */
+  frontRoleEvidenceGapReason?: string;
+  /** Same as ShedProjectDetails - see that field's docstring. */
+  rearRoleEvidenceGapReason?: string;
+  /** Same as ShedProjectDetails - see that field's docstring. */
+  sideRoleEvidenceGapReason?: string;
 }
 
 export type ProjectDetails = ShedProjectDetails | GarageProjectDetails;
@@ -149,4 +261,156 @@ export interface EvaluationOutcome {
    * show NoActiveRuleCoverageNotice rather than presenting an empty findings array as a clean
    * screening result - the distinct failure mode this unit introduces. */
   uncoveredConstraintTypes: string[];
+  /** Unit 6B addition - shed-only, undefined for garage. Present on the outcome only once EVERY
+   * constituent rule this finding depends on is ACTIVE (business-logic-model.md Flow 3,
+   * code-generation-plan.md §4.14 - a partial-activation aggregate is never shown, so a
+   * customer-visible REQUIRES_VERIFICATION inside it can never be a governance artifact, only a
+   * genuine evidence gap). P2b's own height Finding is NOT part of this - see
+   * accessoryHeightLimitFinding below. */
+  permitRequirement?: PermitRequirementFinding;
+  /** Unit 6B addition - the standalone P2b zoning-height finding (domain-entities.md §3a note) -
+   * an ordinary Finding, never nested inside permitRequirement, never implied by
+   * permitRequirement.buildingPermit === LIKELY_EXEMPT (BR-U6B-9). */
+  accessoryHeightLimitFinding?: Finding;
+  /** Unit 6B addition - shed-only, undefined for garage, and undefined until every constituent
+   * C1a/c/d(/b/e where relevant) rule this result depends on is ACTIVE. */
+  shedLotCoverage?: ShedLotCoverageResult;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Unit 6B — Shed permit-requirement determination (functional-design/domain-entities.md §3a).
+// ---------------------------------------------------------------------------------------------
+
+export const BuildingPermitStatus = {
+  LIKELY_EXEMPT: "LIKELY_EXEMPT",
+  REQUIRED: "REQUIRED",
+  REQUIRES_VERIFICATION: "REQUIRES_VERIFICATION",
+} as const;
+export type BuildingPermitStatus = (typeof BuildingPermitStatus)[keyof typeof BuildingPermitStatus];
+
+export const PermitReviewPath = {
+  /** Only ever paired with buildingPermit === LIKELY_EXEMPT. */
+  NONE: "NONE",
+  STFI_LIKELY: "STFI_LIKELY",
+  FULL_REVIEW_LIKELY: "FULL_REVIEW_LIKELY",
+  REQUIRES_VERIFICATION: "REQUIRES_VERIFICATION",
+} as const;
+export type PermitReviewPath = (typeof PermitReviewPath)[keyof typeof PermitReviewPath];
+
+/** P2b is deliberately excluded - a separate, location-sensitive zoning Finding
+ * (EvaluationOutcome.accessoryHeightLimitFinding), never part of this criterion set. P3b is also
+ * deliberately excluded - an independent reviewPath disqualifier consulted directly in
+ * deriveBuildingPermitState, not folded into any one criterion (2026-09-15 correction). */
+export const PermitCriterionId = {
+  ROOF_AREA: "ROOF_AREA", // P1
+  STORY_HEIGHT: "STORY_HEIGHT", // P2a only
+  FOUNDATION: "FOUNDATION", // P3a
+  ATTACHMENT: "ATTACHMENT", // P4
+  USE: "USE", // P5
+  ECA: "ECA", // P6
+  SIZE_SPAN: "SIZE_SPAN", // P7a + P7b combined
+} as const;
+export type PermitCriterionId = (typeof PermitCriterionId)[keyof typeof PermitCriterionId];
+
+export const PermitCriterionStatus = {
+  MET: "MET",
+  NOT_MET: "NOT_MET",
+  REQUIRES_VERIFICATION: "REQUIRES_VERIFICATION",
+  NOT_APPLICABLE: "NOT_APPLICABLE",
+} as const;
+export type PermitCriterionStatus = (typeof PermitCriterionStatus)[keyof typeof PermitCriterionStatus];
+
+export interface PermitCriterionResult {
+  criterionId: PermitCriterionId;
+  /** USE (P5) never produces NOT_MET (BR-U6B-10) - enforced by the evaluator, not the type. */
+  status: PermitCriterionStatus;
+  explanationBasis: string;
+}
+
+export interface TradePermitDisclosure {
+  trade: "ELECTRICAL" | "PLUMBING" | "MECHANICAL";
+  explanationBasis: string;
+}
+
+export interface PermitRequirementFinding {
+  buildingPermit: BuildingPermitStatus;
+  reviewPath: PermitReviewPath;
+  criteria: PermitCriterionResult[];
+  tradePermitDisclosures: TradePermitDisclosure[];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Unit 6B — P2b: location-sensitive accessory-structure zoning height limit
+// (functional-design/domain-entities.md §3a note, corrected 2026-09-15).
+// ---------------------------------------------------------------------------------------------
+
+export type AccessoryStructureHeightLimit =
+  | { basis: "IN_REQUIRED_SETBACK"; limitFt: 12; roofMayNotExceedLimit: true }
+  | { basis: "OUTSIDE_REQUIRED_SETBACK"; limitFt: 32; citation: "SMC 23.44.070" }
+  | { basis: "REQUIRES_VERIFICATION"; reason: string };
+
+// ---------------------------------------------------------------------------------------------
+// Unit 6B — Estimated lot-coverage analysis (functional-design/domain-entities.md §3b/§3c,
+// bounded CASE A/B/C model per the 2026-09-15 founder decision).
+// ---------------------------------------------------------------------------------------------
+
+export const CoverageExcludedEcaCategory = {
+  RIPARIAN_CORRIDOR: "RIPARIAN_CORRIDOR",
+  WETLAND_AND_BUFFER: "WETLAND_AND_BUFFER",
+  SUBMERGED_LAND_OR_SHORELINE_SETBACK: "SUBMERGED_LAND_OR_SHORELINE_SETBACK",
+  STEEP_SLOPE_NON_DISTURBANCE_AREA: "STEEP_SLOPE_NON_DISTURBANCE_AREA",
+} as const;
+export type CoverageExcludedEcaCategory = (typeof CoverageExcludedEcaCategory)[keyof typeof CoverageExcludedEcaCategory];
+
+export type EcaLotAreaAdjustment =
+  | { status: "NOT_APPLICABLE"; reason: string }
+  | { status: "REQUIRES_VERIFICATION"; intersectingCategories: CoverageExcludedEcaCategory[]; reason: string }
+  | {
+      status: "ESTABLISHED";
+      excludedAreaSqFt: number;
+      minimumCoverageFloor: { status: "NOT_APPLICABLE" } | { status: "KNOWN"; floorSqFt: 625 } | { status: "REQUIRES_VERIFICATION"; reason: string };
+      basis: string;
+    };
+
+/** functional-design/domain-entities.md §3c - the two known, code-given allowance ceilings (C1a
+ * 50% base, C1c/C1d 60% potential) plus the C1e floor/Director-alternative facts that feed
+ * evaluateShedLotCoverage's CASE A/B/C banding. Computed server-side, never client-supplied. */
+export interface LotCoverageAllowanceFacts {
+  /** parcelAreaSqFt, less any ESTABLISHED C1b exclusion; raw parcelAreaSqFt when ecaAdjustment is
+   * NOT_APPLICABLE. */
+  adjustedLotAreaSqFt: number;
+  /** Present only when ecaAdjustment.status === "ESTABLISHED" with a KNOWN minimumCoverageFloor
+   * (C1e's 625 sq ft floor) - never fabricated when C1b doesn't apply. */
+  c1eFloorSqFt?: 625;
+  /** True when ecaAdjustment.status === "ESTABLISHED" and minimumCoverageFloor.status ===
+   * "REQUIRES_VERIFICATION" - a Director-approved alternative (C1e, T2) MAY set a higher floor. */
+  c1eDirectorAlternativeRelevant: boolean;
+}
+
+export interface ShedLotCoverageFacts {
+  parcelAreaSqFt: number;
+  existingMappedCoverageSqFt: number;
+  proposedShedFootprintSqFt: number;
+  ecaAdjustment: EcaLotAreaAdjustment;
+  allowanceFacts: LotCoverageAllowanceFacts;
+}
+
+export type ShedLotCoverageResult =
+  | { status: "WITHIN_STANDARD_ALLOWANCE"; estimatedCoverageSqFt: number; baseAllowanceSqFt: number; facts: ShedLotCoverageFacts }
+  | {
+      status: "REQUIRES_VERIFICATION";
+      reason: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE";
+      estimatedCoverageSqFt: number;
+      baseAllowanceSqFt: number;
+      potentialSpecialAllowanceSqFt: number;
+      facts: ShedLotCoverageFacts;
+    }
+  | { status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE"; estimatedCoverageSqFt: number; potentialSpecialAllowanceSqFt: number; facts: ShedLotCoverageFacts }
+  | {
+      status: "REQUIRES_VERIFICATION";
+      reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE";
+      estimatedCoverageSqFt: number;
+      potentialSpecialAllowanceSqFt: number;
+      facts: ShedLotCoverageFacts;
+    }
+  | { status: "REQUIRES_VERIFICATION"; reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED"; estimatedCoverageSqFt: number; facts: ShedLotCoverageFacts };

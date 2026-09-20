@@ -22,9 +22,9 @@
 
 import { useEffect, useState } from "react";
 import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection, type ExistingStructureDisplay, type DwellingSelection } from "../components/ParcelPlacementMap.js";
-import { checkPlacementCompleteness } from "../components/parcel-placement-helpers.js";
+import { checkPlacementCompleteness, toPersistedLotLineRoleAssignment } from "../components/parcel-placement-helpers.js";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
-import { DistanceInputMode, LotLineRoleStatus, ProjectType } from "../../src/screening-request/types.js";
+import { DistanceInputMode, LotLineRoleStatus, MultipleFrontageAnswer, ProjectType } from "../../src/screening-request/types.js";
 import { ParcelResolutionStatus, type CandidateParcel, type ClarificationReason } from "../../src/parcel-resolution/types.js";
 import { confirmCandidate } from "../../src/parcel-resolution/resolve.js";
 import { Card } from "../components/ui/Card.js";
@@ -147,6 +147,17 @@ export default function ConfigurePage() {
     hasPlacement: placement !== null,
     hasBuildingsToAskAbout: projectType === ProjectType.SHED && existingStructures.length > 0,
     dwellingAnswered: dwellingSelection !== null,
+    // Maintenance correction (2026-09-15, founder direction) - both derive directly from the same
+    // lotLineSelection object ParcelPlacementMap already reports upward (it owns the tri-state
+    // question's interaction and state, same as it owns front/rear) - no separate page-level state.
+    multipleFrontageAnswered: lotLineSelection?.multipleFrontageAnswer !== undefined,
+    // Maintenance correction (2026-09-17, founder-directed through-lot fix) - rearAlsoFacesStreet
+    // alone (the customer's own rear line also facing a street) is a complete answer too, not just
+    // streetFrontageEdgeRefs - see LotLineRoleAssignmentSchema's matching superRefine.
+    needsStreetFrontageEdges:
+      lotLineSelection?.multipleFrontageAnswer === MultipleFrontageAnswer.YES &&
+      (lotLineSelection.streetFrontageEdgeRefs ?? []).length === 0 &&
+      lotLineSelection.rearAlsoFacesStreet !== true,
   });
 
   /** Shared by both the algorithmically-CONFIRMED path and the user-confirmation path below -
@@ -227,7 +238,7 @@ export default function ConfigurePage() {
         ...dimensions,
         ...(projectType === ProjectType.GARAGE ? { existingStructuresFootprintSqFt, stackedDwellingUnits } : {}),
         proposedPlacement: placement,
-        lotLineRoleAssignment: { ...lotLineSelection, method: "USER_INDICATED" },
+        lotLineRoleAssignment: { ...toPersistedLotLineRoleAssignment(lotLineSelection), method: "USER_INDICATED" },
         distanceInputMode: DistanceInputMode.MAP_PLACEMENT,
         // Building intelligence v1 - shed-only (mirrors distanceToDwellingFt's own shed-only
         // scope). Omitted entirely when the user was never shown a dwelling-confirmation prompt at
@@ -543,7 +554,9 @@ export default function ConfigurePage() {
           </div>
           {lotLineSelection?.status === LotLineRoleStatus.INSUFFICIENT && (
             <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Lot-line roles could not be determined for this parcel shape - setback findings depending on them will show as REQUIRES VERIFICATION rather than a guess.
+              {lotLineSelection.frontEdgeRef && lotLineSelection.rearEdgeRef
+                ? "Your selected front and rear lines are highlighted above, but they share a corner. Front and rear can't be adjacent - please choose two lines that don't touch, so the system can identify the side lines."
+                : "Lot-line roles could not be determined for this parcel shape - setback findings depending on them will show as REQUIRES VERIFICATION rather than a guess."}
             </p>
           )}
           {serverErrors.length > 0 && (
@@ -622,8 +635,14 @@ export default function ConfigurePage() {
                   selectedDwellingOutlineId={dwellingSelection?.status === "SELECTED" ? dwellingSelection.outlineId : undefined}
                   frontEdgeRef={lotLineSelection?.frontEdgeRef}
                   rearEdgeRef={lotLineSelection?.rearEdgeRef}
+                  streetFrontageEdgeRefs={lotLineSelection?.streetFrontageEdgeRefs}
                 />
               </div>
+            )}
+            {lotLineSelection?.status === LotLineRoleStatus.INSUFFICIENT && lotLineSelection.frontEdgeRef && lotLineSelection.rearEdgeRef && (
+              <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Your selected front and rear lines are shown above, but they share a corner. Front and rear can&apos;t be adjacent, so setback findings for the sides will show as REQUIRES VERIFICATION in your report rather than a guess. Go back to Placement and choose two lines that don&apos;t touch.
+              </p>
             )}
             <div className="mt-6 flex gap-2">
               <Button variant="secondary" onClick={goToPreviousStep}>

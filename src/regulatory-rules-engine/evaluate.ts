@@ -8,6 +8,7 @@
 
 import type { PropertyContext } from "../property-intelligence/types.js";
 import { AvailabilityState, getFact } from "../property-intelligence/types.js";
+import { MappedIntersectionResult } from "../spatial-analysis/types.js";
 import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
 import { EvidenceQuality, LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { InferencePolicy, RegulatoryRule } from "../regulatory-rule-governance/types.js";
@@ -17,8 +18,27 @@ import {
   EvaluationStatus,
   FindingClassification,
   GENERAL_LOCATION_ONLY_SETBACK_POLICY_SUBJECT,
+  BuildingPermitStatus,
+  PermitReviewPath,
+  PermitCriterionId,
+  PermitCriterionStatus,
 } from "./types.js";
-import type { EvaluationOutcome, Finding, GarageProjectDetails, LotCoverageFacts, ProjectDetails, ShedProjectDetails } from "./types.js";
+import type {
+  EvaluationOutcome,
+  Finding,
+  GarageProjectDetails,
+  LotCoverageFacts,
+  ProjectDetails,
+  ShedProjectDetails,
+  PermitCriterionResult,
+  PermitRequirementFinding,
+  TradePermitDisclosure,
+  AccessoryStructureHeightLimit,
+  EcaLotAreaAdjustment,
+  CoverageExcludedEcaCategory,
+  ShedLotCoverageFacts,
+  ShedLotCoverageResult,
+} from "./types.js";
 
 export interface RearSetbackRuleSpec {
   ruleType: "REAR_SETBACK";
@@ -48,6 +68,94 @@ export interface LotCoverageRuleSpec {
   ruleType: "LOT_COVERAGE";
 }
 
+/**
+ * Unit 6B - the 19 founder-confirmed governance rule types (code-generation-plan.md §5.1). Unlike
+ * every ruleType above, none of these is dispatched through evaluateRule's per-rule switch: each
+ * customer-facing Unit 6B result (PermitRequirementFinding, the standalone P2b Finding,
+ * ShedLotCoverageResult) is an AGGREGATE that correlates several governance rows' ACTIVE status
+ * at once (code-generation-plan.md §4.14 - never partially), which the one-rule-in/one-Finding-out
+ * evaluateRule model cannot express. These string constants exist so evaluateProject's shed
+ * branch (which checks ACTIVE status directly against `activeRules`) and the governance fixtures/
+ * tests (regulatory-rule-governance) share one literal source of truth instead of duplicating
+ * string literals that could silently drift apart.
+ */
+export const ShedPermitRuleType = {
+  ROOF_AREA: "SHED_PERMIT_P1_ROOF_AREA",
+  STORY_HEIGHT: "SHED_PERMIT_P2A_STORY_HEIGHT",
+  ACCESSORY_HEIGHT_LIMIT_IN_SETBACK: "SHED_PERMIT_P2B1_ACCESSORY_HEIGHT_LIMIT_IN_SETBACK",
+  ACCESSORY_HEIGHT_LIMIT_OUTSIDE_SETBACK: "SHED_PERMIT_P2B2_ACCESSORY_HEIGHT_LIMIT_OUTSIDE_SETBACK",
+  FOUNDATION_EXEMPTION: "SHED_PERMIT_P3A_FOUNDATION_EXEMPTION",
+  FOUNDATION_STFI_DISQUALIFIER: "SHED_PERMIT_P3B_FOUNDATION_STFI_DISQUALIFIER",
+  ATTACHMENT: "SHED_PERMIT_P4_ATTACHMENT",
+  USE: "SHED_PERMIT_P5_USE",
+  ECA_CRITERION: "SHED_PERMIT_P6_ECA_CRITERION",
+  SIZE_SPAN_FOOTPRINT: "SHED_PERMIT_P7A_SIZE_SPAN_FOOTPRINT",
+  SIZE_SPAN_STRUCTURAL: "SHED_PERMIT_P7B_SIZE_SPAN_STRUCTURAL",
+  EXEMPTION_NOT_ZONING_COMPLIANCE: "SHED_PERMIT_P9_EXEMPTION_NOT_ZONING_COMPLIANCE",
+} as const;
+export type ShedPermitRuleType = (typeof ShedPermitRuleType)[keyof typeof ShedPermitRuleType];
+
+export const ShedLotCoverageRuleType = {
+  BASE_MAXIMUM: "SHED_LOT_COVERAGE_C1A_BASE_MAXIMUM",
+  ECA_LOT_AREA_EXCLUSION: "SHED_LOT_COVERAGE_C1B_ECA_LOT_AREA_EXCLUSION",
+  TRANSIT_BONUS: "SHED_LOT_COVERAGE_C1C_TRANSIT_BONUS",
+  STACKED_BONUS: "SHED_LOT_COVERAGE_C1D_STACKED_BONUS",
+  MINIMUM_FLOOR: "SHED_LOT_COVERAGE_C1E_MINIMUM_FLOOR",
+  DIRECTOR_ALTERNATIVE: "SHED_LOT_COVERAGE_C1E_DIRECTOR_ALTERNATIVE",
+  ESTIMATE_CAVEAT: "SHED_LOT_COVERAGE_C2_ESTIMATE_CAVEAT",
+} as const;
+export type ShedLotCoverageRuleType = (typeof ShedLotCoverageRuleType)[keyof typeof ShedLotCoverageRuleType];
+
+/** code-generation-plan.md §4.14 - `permitRequirement` depends on all 9 permit-criterion rows
+ * (P9's framing disclaimer is report-layer-only, BR-U6B-9, and does not gate this computed
+ * result). `accessoryHeightLimitFinding` depends on both P2b rows, since either branch may apply
+ * to a given shed and partial activation must never surface only one branch's worth of rule
+ * coverage. `shedLotCoverage` depends on all 6 "C" rows that feed the CASE A/B/C banding (C2 is
+ * absorbed into the existing-structure-coverage fact's own caveat, never consumed here - see
+ * domain-entities.md §3c). */
+const PERMIT_REQUIREMENT_CONSTITUENT_RULE_TYPES: readonly string[] = [
+  ShedPermitRuleType.ROOF_AREA,
+  ShedPermitRuleType.STORY_HEIGHT,
+  ShedPermitRuleType.FOUNDATION_EXEMPTION,
+  ShedPermitRuleType.FOUNDATION_STFI_DISQUALIFIER,
+  ShedPermitRuleType.ATTACHMENT,
+  ShedPermitRuleType.USE,
+  ShedPermitRuleType.ECA_CRITERION,
+  ShedPermitRuleType.SIZE_SPAN_FOOTPRINT,
+  ShedPermitRuleType.SIZE_SPAN_STRUCTURAL,
+];
+const ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES: readonly string[] = [
+  ShedPermitRuleType.ACCESSORY_HEIGHT_LIMIT_IN_SETBACK,
+  ShedPermitRuleType.ACCESSORY_HEIGHT_LIMIT_OUTSIDE_SETBACK,
+];
+const SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES: readonly string[] = [
+  ShedLotCoverageRuleType.BASE_MAXIMUM,
+  ShedLotCoverageRuleType.ECA_LOT_AREA_EXCLUSION,
+  ShedLotCoverageRuleType.TRANSIT_BONUS,
+  ShedLotCoverageRuleType.STACKED_BONUS,
+  ShedLotCoverageRuleType.MINIMUM_FLOOR,
+  ShedLotCoverageRuleType.DIRECTOR_ALTERNATIVE,
+];
+
+function allRuleTypesActive(activeRules: RegulatoryRule[], requiredRuleTypes: readonly string[]): boolean {
+  const activeRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
+  return requiredRuleTypes.every((rt) => activeRuleTypes.has(rt));
+}
+
+/** Every Unit 6B ruleType is consumed exclusively by the aggregate-computing functions below, via
+ * allRuleTypesActive against the FULL activeRules list - never through evaluateRule's generic
+ * per-rule switch (which has no case for any of them and would otherwise produce a spurious
+ * "not recognized by this evaluator" REQUIRES_VERIFICATION Finding, one per Unit 6B row, the
+ * moment any of them were ever ACTIVE - caught on review, 2026-09-15). evaluateProject's main
+ * per-rule loop filters these out before dispatching. */
+const UNIT_6B_AGGREGATE_ONLY_RULE_TYPES: ReadonlySet<string> = new Set([
+  ...PERMIT_REQUIREMENT_CONSTITUENT_RULE_TYPES,
+  ...ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES,
+  ...SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES,
+  ShedPermitRuleType.EXEMPTION_NOT_ZONING_COMPLIANCE,
+  ShedLotCoverageRuleType.ESTIMATE_CAVEAT,
+]);
+
 /** A rule type whose evaluation is genuinely ambiguous and requires an approved InferencePolicy
  * to resolve (BR-4's governed-inference requirement) - e.g. "which zone applies when the parcel
  * straddles a zoning boundary." Not exercised by the real shed rule set (which has no such
@@ -72,6 +180,15 @@ export interface EvaluateProjectInput {
    * shed evaluations (unused) and safe to omit for garage evaluations too - a LOT_COVERAGE rule
    * evaluated without it simply produces REQUIRES_VERIFICATION rather than throwing. */
   lotCoverageFacts?: LotCoverageFacts;
+  /** Unit 6B - required only when project.projectType === "shed" and every
+   * SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES row is ACTIVE; assembled server-side from the
+   * `existing-structure-coverage`/parcel-area facts and the in-memory proposed footprint, never
+   * client-supplied. `allowanceFacts` is intentionally excluded here - it is a pure derivation
+   * of `ecaAdjustment`/`parcelAreaSqFt` computed by evaluateShedLotCoverage itself, not an
+   * external input (domain-entities.md §3c's Flow 4 pseudocode). Absent/omitted is safe even
+   * when the constituent rules are ACTIVE - shedLotCoverage simply stays undefined rather than
+   * throwing. */
+  shedLotCoverageFacts?: Omit<ShedLotCoverageFacts, "allowanceFacts">;
 }
 
 /** BR-U4-2's exhaustiveness requirement, exercised at a real decision point (not decorative): the
@@ -96,6 +213,24 @@ function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"]):
       throw new Error(`Unhandled ProjectType "${String(exhaustiveCheck)}" in expectedConstraintTypesFor.`);
     }
   }
+}
+
+/** The exact subject prefix evaluateProject's unconditional ECA loop below uses for every
+ * per-hazard Finding it produces. Exported as the single source of truth (maintenance
+ * correction, 2026-09-15) - both ReportView.tsx's rendering and pipeline.ts's Report Explanation
+ * input need to identify these same findings, and must never drift into two independent string
+ * literals. */
+export const CRITICAL_AREA_FINDING_SUBJECT_PREFIX = "Critical area: ";
+
+/** True for any Finding produced by evaluateProject's per-hazard ECA loop. These already have a
+ * correct, dedicated, structurally-precise presentation (the "Mapped Environmental / Site
+ * Constraints" ReportView section, which reads the raw environmental-constraints evidence fact
+ * directly, per-hazard, preserving the KNOWN/REQUIRES_VERIFICATION distinction). Consumers that
+ * narrate findings in free text (ReportView's general Findings/Requires-Verification lists,
+ * pipeline.ts's Report Explanation input) exclude them via this predicate rather than
+ * re-presenting the same 10 findings a second, less precise way. */
+export function isCriticalAreaFinding(subject: string): boolean {
+  return subject.startsWith(CRITICAL_AREA_FINDING_SUBJECT_PREFIX);
 }
 
 function computeUncoveredConstraintTypes(projectType: ProjectDetails["projectType"], activeRules: RegulatoryRule[]): string[] {
@@ -124,12 +259,19 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   const findings: Finding[] = [];
 
   for (const rule of activeRules) {
+    const ruleType = (rule.ruleSpecification as { ruleType?: string }).ruleType;
+    if (ruleType !== undefined && UNIT_6B_AGGREGATE_ONLY_RULE_TYPES.has(ruleType)) {
+      // Consumed exclusively by the shed aggregate-computing functions below via
+      // allRuleTypesActive against the full activeRules list, never by the generic per-rule
+      // switch - see UNIT_6B_AGGREGATE_ONLY_RULE_TYPES's docstring.
+      continue;
+    }
     findings.push(...evaluateRule(rule, input.project, activePolicies, input.lotCoverageFacts));
   }
 
   for (const ecaFinding of input.ecaFindings) {
     const implication = deriveEcaRegulatoryImplication(ecaFinding);
-    const subject = `Critical area: ${ecaFinding.hazardType}`;
+    const subject = `${CRITICAL_AREA_FINDING_SUBJECT_PREFIX}${ecaFinding.hazardType}`;
     const supportingEvidence = [`CriticalAreaFinding(${ecaFinding.hazardType})`];
     switch (implication.classification) {
       case FindingClassification.KNOWN:
@@ -141,11 +283,25 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
     }
   }
 
-  return {
+  const outcome: EvaluationOutcome = {
     status: EvaluationStatus.COMPLETE,
     findings,
     uncoveredConstraintTypes: computeUncoveredConstraintTypes(input.project.projectType, activeRules),
   };
+
+  if (input.project.projectType === "shed") {
+    if (allRuleTypesActive(activeRules, PERMIT_REQUIREMENT_CONSTITUENT_RULE_TYPES)) {
+      outcome.permitRequirement = evaluateShedPermitRequirement(input.project, input.ecaFindings);
+    }
+    if (allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
+      outcome.accessoryHeightLimitFinding = evaluateAccessoryHeightLimit(input.project);
+    }
+    if (input.shedLotCoverageFacts && allRuleTypesActive(activeRules, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
+      outcome.shedLotCoverage = evaluateShedLotCoverage(input.shedLotCoverageFacts);
+    }
+  }
+
+  return outcome;
 }
 
 function evaluateRule(rule: RegulatoryRule, project: ProjectDetails, activePolicies: InferencePolicy[], lotCoverageFacts?: LotCoverageFacts): Finding[] {
@@ -204,7 +360,21 @@ function evaluateRearSetback(
   activePolicies: InferencePolicy[]
 ): Finding {
   if (project.distanceToRearLotLineFt === undefined) {
-    return missingEvidenceFinding(rule.subject, appliedRule, "distanceToRearLotLineFt is not available.");
+    return missingEvidenceFinding(rule.subject, appliedRule, project.setbackEvidenceGapReason ?? "distanceToRearLotLineFt is not available.");
+  }
+  if (project.rearRoleEvidenceGapReason !== undefined) {
+    // Maintenance correction (2026-09-17, founder correction after reviewer escalation) - the
+    // measurement is KNOWN (the customer's own indicated rear line), but the CONCLUSION is not:
+    // it may actually be a through-lot/Director-determined front line, or the customer answered
+    // NOT_SURE about additional street frontage at all. "measurement = KNOWN; applicable
+    // role-dependent regulatory conclusion = REQUIRES_VERIFICATION."
+    return {
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: rule.subject,
+      appliedRule,
+      supportingEvidence: [`distanceToRearLotLineFt=${project.distanceToRearLotLineFt}`],
+      explanationBasis: `The distance to your indicated rear property line is a known ${roundToTenthFt(project.distanceToRearLotLineFt)}ft, but ${project.rearRoleEvidenceGapReason}`,
+    };
   }
   const required = project.alleyAdjacent ? spec.minFtIfAlleyAdjacent : spec.minFt;
   const pass = project.distanceToRearLotLineFt >= required;
@@ -216,7 +386,7 @@ function evaluateRearSetback(
     spatialEvidenceQuality: project.spatialEvidenceQuality,
     activePolicies,
     supportingEvidence: [`distanceToRearLotLineFt=${project.distanceToRearLotLineFt}`, `alleyAdjacent=${project.alleyAdjacent}`],
-    explanationBasis: `Rear setback ${project.distanceToRearLotLineFt}ft ${pass ? "meets" : "does not meet"} the required ${required}ft (${project.alleyAdjacent ? "alley-adjacent" : "standard"}).`,
+    explanationBasis: `Rear setback ${roundToTenthFt(project.distanceToRearLotLineFt)}ft ${pass ? "meets" : "does not meet"} the required ${required}ft (${project.alleyAdjacent ? "alley-adjacent" : "standard"}).`,
   });
 }
 
@@ -250,7 +420,7 @@ function evaluateDwellingSeparation(
   project: ShedProjectDetails
 ): Finding {
   if (project.distanceToDwellingFt === undefined) {
-    return missingEvidenceFinding(rule.subject, appliedRule, "distanceToDwellingFt is not available.");
+    return missingEvidenceFinding(rule.subject, appliedRule, project.dwellingSeparationEvidenceGapReason ?? "distanceToDwellingFt is not available.");
   }
   const pass = project.distanceToDwellingFt >= spec.minFt;
   return {
@@ -259,7 +429,7 @@ function evaluateDwellingSeparation(
     complianceOutcome: pass ? ComplianceOutcome.PASS : ComplianceOutcome.FAIL,
     appliedRule,
     supportingEvidence: [`distanceToDwellingFt=${project.distanceToDwellingFt}`],
-    explanationBasis: `Dwelling separation ${project.distanceToDwellingFt}ft ${pass ? "meets" : "does not meet"} the required ${spec.minFt}ft.`,
+    explanationBasis: `Dwelling separation ${roundToTenthFt(project.distanceToDwellingFt)}ft ${pass ? "meets" : "does not meet"} the required ${spec.minFt}ft.`,
   };
 }
 
@@ -273,7 +443,20 @@ function evaluateSideFrontSetback(
   const findings: Finding[] = [];
 
   if (project.distanceToSideLotLineFt === undefined) {
-    findings.push(missingEvidenceFinding(`${rule.subject} (side)`, appliedRule, "distanceToSideLotLineFt is not available."));
+    findings.push(missingEvidenceFinding(`${rule.subject} (side)`, appliedRule, project.setbackEvidenceGapReason ?? "distanceToSideLotLineFt is not available."));
+  } else if (project.sideRoleEvidenceGapReason !== undefined) {
+    // Maintenance correction (2026-09-17, founder correction after reviewer escalation) - the
+    // customer answered NOT_SURE to "does this property have street frontage on more than one
+    // side" - none of their side-candidate edges can be confidently called ordinary, even though
+    // this particular number is computed the same way it would be for NO. Measurement stays KNOWN;
+    // the conclusion does not.
+    findings.push({
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: `${rule.subject} (side)`,
+      appliedRule,
+      supportingEvidence: [`distanceToSideLotLineFt=${project.distanceToSideLotLineFt}`],
+      explanationBasis: `The distance to your nearest indicated side property line is a known ${roundToTenthFt(project.distanceToSideLotLineFt)}ft, but ${project.sideRoleEvidenceGapReason}`,
+    });
   } else {
     const pass = project.distanceToSideLotLineFt >= spec.sideMinFt;
     findings.push(
@@ -285,13 +468,30 @@ function evaluateSideFrontSetback(
         spatialEvidenceQuality: project.spatialEvidenceQuality,
         activePolicies,
         supportingEvidence: [`distanceToSideLotLineFt=${project.distanceToSideLotLineFt}`],
-        explanationBasis: `Side setback ${project.distanceToSideLotLineFt}ft ${pass ? "meets" : "does not meet"} the ${spec.sideMinFt}ft minimum (no reduced-setback exception applies to accessory structures in the side yard).`,
+        // Maintenance correction (2026-09-17, founder correction after reviewer escalation) - a
+        // confirmed street-facing side line is no longer represented as "included" here (it is
+        // excluded, see the grouped additional-street-frontage finding below) - the prior wording
+        // was stale once that exclusion was introduced.
+        explanationBasis: `Side setback ${roundToTenthFt(project.distanceToSideLotLineFt)}ft ${pass ? "meets" : "does not meet"} the ${spec.sideMinFt}ft minimum (no reduced-setback exception applies to accessory structures in the side yard).`,
       })
     );
   }
 
   if (project.distanceToFrontLotLineFt === undefined) {
-    findings.push(missingEvidenceFinding(`${rule.subject} (front)`, appliedRule, "distanceToFrontLotLineFt is not available."));
+    findings.push(missingEvidenceFinding(`${rule.subject} (front)`, appliedRule, project.setbackEvidenceGapReason ?? "distanceToFrontLotLineFt is not available."));
+  } else if (project.frontRoleEvidenceGapReason !== undefined) {
+    // Maintenance correction (2026-09-17, founder correction after reviewer escalation) - the
+    // measurement is KNOWN (the customer's own indicated front line), but the CONCLUSION is not:
+    // current code's through-lot/Director-determination provisions mean this may not be the
+    // code-defined front line at all. "measurement = KNOWN; applicable role-dependent regulatory
+    // conclusion = REQUIRES_VERIFICATION."
+    findings.push({
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: `${rule.subject} (front)`,
+      appliedRule,
+      supportingEvidence: [`distanceToFrontLotLineFt=${project.distanceToFrontLotLineFt}`],
+      explanationBasis: `The distance to your indicated front property line is a known ${roundToTenthFt(project.distanceToFrontLotLineFt)}ft, but ${project.frontRoleEvidenceGapReason}`,
+    });
   } else {
     const pass = project.distanceToFrontLotLineFt >= spec.frontFt;
     findings.push(
@@ -303,9 +503,38 @@ function evaluateSideFrontSetback(
         spatialEvidenceQuality: project.spatialEvidenceQuality,
         activePolicies,
         supportingEvidence: [`distanceToFrontLotLineFt=${project.distanceToFrontLotLineFt}`],
-        explanationBasis: `Front setback ${project.distanceToFrontLotLineFt}ft ${pass ? "meets" : "does not meet"} the ${spec.frontFt}ft minimum.`,
+        explanationBasis: `Front setback ${roundToTenthFt(project.distanceToFrontLotLineFt)}ft ${pass ? "meets" : "does not meet"} the ${spec.frontFt}ft minimum.`,
       })
     );
+  }
+
+  // Maintenance correction (2026-09-17, founder correction after reviewer escalation
+  // 53f30444-b566-4197-b0dd-e2aff768fa65) - one grouped finding (never one per edge, per founder
+  // direction on the prior tessellated-arc report) for every confirmed-street edge current code
+  // cannot resolve as a through-lot front (SMC 23.44.090.B), a Director-determined corner-lot front
+  // (SMC 23.84A.024), or an ordinary side-street line - that determination needs real STREET
+  // geometry evidence this correction does not add. Uses the closest (minimum) distance among them.
+  // A parcel-edge-azimuth heuristic is included as NON-AUTHORITATIVE diagnostic evidence only - it
+  // never determines the classification itself (the founder's own live-verification run showed why:
+  // two adjacent fragments of ONE curved street corner can be locally near-parallel and falsely
+  // suggest a through lot, despite not being two distinct streets at all).
+  if (project.unresolvedStreetFrontageDistancesFt && Object.keys(project.unresolvedStreetFrontageDistancesFt).length > 0) {
+    const entries = Object.entries(project.unresolvedStreetFrontageDistancesFt);
+    const minDistanceFt = Math.min(...entries.map(([, distanceFt]) => distanceFt));
+    const supportingEvidence = entries.map(([edgeRef, distanceFt]) => `${edgeRef}=${distanceFt}`);
+    for (const [edgeRef, heuristic] of Object.entries(project.streetFrontageHeuristics ?? {})) {
+      supportingEvidence.push(
+        `heuristic(${edgeRef})=azimuthFrontDeg:${heuristic.azimuthFrontDeg},azimuthEdgeDeg:${heuristic.azimuthEdgeDeg},angleFromParallelDeg:${heuristic.angleFromParallelDeg},possibleThroughLot:${heuristic.possibleThroughLot},evidenceQuality:${heuristic.evidenceQuality}`
+      );
+    }
+    findings.push({
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: `${rule.subject} (additional street frontage)`,
+      appliedRule,
+      supportingEvidence,
+      explanationBasis:
+        `This property has additional street frontage (closest measured distance ${roundToTenthFt(minDistanceFt)}ft). Current Seattle code treats this differently depending on the actual relationship between the streets involved: a through lot (streets parallel or within 15 degrees of parallel, SMC 23.44.090.B) requires the front-setback standard here instead of the side standard, while a corner lot's additional frontage is a front-line determination the City's Director of Construction & Inspections makes based on the existing pattern of lots and buildings on the block (SMC 23.84A.024) - neither can be established from this property's own boundary shape alone. This cannot be confirmed pass or fail until that is established.`,
+    });
   }
 
   return findings;
@@ -483,3 +712,506 @@ function missingEvidenceFinding(subject: string, appliedRule: Finding["appliedRu
     explanationBasis: `Cannot evaluate: ${reason}`,
   };
 }
+
+/** Founder-caught presentation gap (2026-09-17) - PostGIS's ST_Distance returns full
+ * floating-point precision (e.g. 43.60679091361771), which every setback/dwelling-separation
+ * explanationBasis string below previously interpolated verbatim into customer-facing prose. The
+ * underlying PASS/FAIL comparison (project.distanceToXFt >= spec.xFt) still uses the full-precision
+ * value, unrounded - only the DISPLAYED text is rounded, to the nearest 0.1ft, never affecting the
+ * actual compliance determination. */
+function roundToTenthFt(distanceFt: number): number {
+  return Math.round(distanceFt * 10) / 10;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Unit 6B — Shed permit-requirement determination (functional-design/business-logic-model.md
+// Flow 2/Flow 3). Each evaluator below is a plain, unconditional, deterministic function (no
+// in-function ACTIVE check - the governing constraint code-generation-plan.md verified before
+// this plan was written) - the sole gate keeping this dormant is evaluateProject's
+// allRuleTypesActive check above, exactly Unit 4's LOT_COVERAGE precedent.
+// ---------------------------------------------------------------------------------------------
+
+function wallFootprintSqFt(project: ShedProjectDetails): number {
+  return project.widthFt * project.depthFt;
+}
+
+/** P1 / ROOF_AREA - SRC R105.2 Item 3.1. */
+function evaluateRoofArea(project: ShedProjectDetails): PermitCriterionResult {
+  const footprint = wallFootprintSqFt(project);
+  if (footprint > 120) {
+    return {
+      criterionId: PermitCriterionId.ROOF_AREA,
+      status: PermitCriterionStatus.NOT_MET,
+      explanationBasis: `Wall footprint ${footprint} sq ft exceeds the 120 sq ft roof-area exemption threshold (SRC R105.2 Item 3.1) - roof area can only be at least as large as the wall footprint, so this criterion is already unsatisfiable regardless of overhang.`,
+    };
+  }
+
+  const overhang = project.roofOverhang;
+  if (!overhang || overhang.extendsBeyondWalls === false) {
+    return {
+      criterionId: PermitCriterionId.ROOF_AREA,
+      status: PermitCriterionStatus.MET,
+      explanationBasis: `Wall footprint ${footprint} sq ft is within the 120 sq ft roof-area exemption threshold (SRC R105.2 Item 3.1), with no roof overhang extending beyond the walls.`,
+    };
+  }
+
+  if (overhang.approxOverhangIn === undefined) {
+    return {
+      criterionId: PermitCriterionId.ROOF_AREA,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: `Wall footprint ${footprint} sq ft is within the 120 sq ft threshold, but the roof overhangs the walls and no approximate overhang measurement was given - the actual projected roof area cannot be confirmed.`,
+    };
+  }
+
+  const overhangFt = overhang.approxOverhangIn / 12;
+  const projectedAreaSqFt = (project.widthFt + 2 * overhangFt) * (project.depthFt + 2 * overhangFt);
+  if (projectedAreaSqFt <= 120) {
+    return {
+      criterionId: PermitCriterionId.ROOF_AREA,
+      status: PermitCriterionStatus.MET,
+      explanationBasis: `Projected roof area (wall footprint plus a ~${overhang.approxOverhangIn}in overhang on each side) is ${projectedAreaSqFt.toFixed(1)} sq ft, within the 120 sq ft threshold (SRC R105.2 Item 3.1).`,
+    };
+  }
+  return {
+    criterionId: PermitCriterionId.ROOF_AREA,
+    status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+    explanationBasis: `Projected roof area (wall footprint plus a ~${overhang.approxOverhangIn}in overhang on each side) is approximately ${projectedAreaSqFt.toFixed(1)} sq ft, over the 120 sq ft threshold - but the overhang figure is approximate, so this cannot be confirmed as a definite failure.`,
+  };
+}
+
+/** P2a / STORY_HEIGHT - always MET; this product's scope is inherently single-story. */
+function evaluateStoryHeight(): PermitCriterionResult {
+  return {
+    criterionId: PermitCriterionId.STORY_HEIGHT,
+    status: PermitCriterionStatus.MET,
+    explanationBasis: "A shed evaluated by this product is inherently single-story.",
+  };
+}
+
+const FOUNDATION_EXEMPTION_MET_TYPES: readonly string[] = ["SLAB_ON_GRADE", "PIER_BLOCKS", "ON_SOIL"];
+const FOUNDATION_EXEMPTION_NOT_MET_TYPES: readonly string[] = ["FROST_FOOTING", "PILES", "WOOD_FOUNDATION"];
+
+/** P3a / FOUNDATION - SRC R105.2 Item 3.2. */
+function evaluateFoundationExemption(project: ShedProjectDetails): PermitCriterionResult {
+  const foundationType = project.foundationType;
+  if (foundationType === undefined) {
+    return {
+      criterionId: PermitCriterionId.FOUNDATION,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: "Foundation type was not provided - cannot confirm whether the shed qualifies for the R105.2 foundation exemption.",
+    };
+  }
+  if (FOUNDATION_EXEMPTION_MET_TYPES.includes(foundationType)) {
+    return {
+      criterionId: PermitCriterionId.FOUNDATION,
+      status: PermitCriterionStatus.MET,
+      explanationBasis: `Foundation type "${foundationType}" qualifies for the R105.2 Item 3.2 foundation exemption.`,
+    };
+  }
+  return {
+    criterionId: PermitCriterionId.FOUNDATION,
+    status: PermitCriterionStatus.NOT_MET,
+    explanationBasis: `Foundation type "${foundationType}" does not qualify for the R105.2 Item 3.2 foundation exemption.`,
+  };
+}
+
+/** P4 / ATTACHMENT. */
+function evaluateAttachment(project: ShedProjectDetails): PermitCriterionResult {
+  if (project.attachment === undefined) {
+    return {
+      criterionId: PermitCriterionId.ATTACHMENT,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: "Attachment status was not provided.",
+    };
+  }
+  if (project.attachment === "DETACHED") {
+    return { criterionId: PermitCriterionId.ATTACHMENT, status: PermitCriterionStatus.MET, explanationBasis: "The structure is detached from any dwelling." };
+  }
+  return {
+    criterionId: PermitCriterionId.ATTACHMENT,
+    status: PermitCriterionStatus.NOT_MET,
+    explanationBasis: "The structure is attached to a dwelling - this is an addition, not a detached shed. See the addition review path rather than the shed exemption criteria.",
+  };
+}
+
+const USE_MET_VALUES: readonly string[] = ["STORAGE", "GREENHOUSE_PLANTS"];
+
+/** P5 / USE - never resolves NOT_MET, by founder instruction (BR-U6B-10). */
+function evaluateUse(project: ShedProjectDetails): PermitCriterionResult {
+  if (project.intendedUse !== undefined && USE_MET_VALUES.includes(project.intendedUse)) {
+    return {
+      criterionId: PermitCriterionId.USE,
+      status: PermitCriterionStatus.MET,
+      explanationBasis: `Intended use "${project.intendedUse}" matches an explicit exempt-use category (storage or growing plants).`,
+    };
+  }
+  return {
+    criterionId: PermitCriterionId.USE,
+    status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+    explanationBasis:
+      project.intendedUse === undefined
+        ? "Intended use was not provided."
+        : `Intended use "${project.intendedUse}" doesn't match the two explicit exempt categories (storage, growing plants) - confirm with SDCI whether it counts as a similar generally-unoccupied use.`,
+  };
+}
+
+/** P6 / ECA - reads the environmental-constraints fact through the existing, unmodified
+ * deriveEcaRegulatoryImplication (BR-4a). Worded around "in or near an ECA," never "confirmed no
+ * ECA" (BR-U6B-2/3) - MET requires every hazard finding to be a confirmed, non-intersecting,
+ * map-dispositive result; any advisory-only hazard (the large majority) always contributes
+ * REQUIRES_VERIFICATION here, by BR-4a's own unmodified design - never silently ignored. */
+function evaluateEcaPermitCriterion(ecaFindings: CriticalAreaFinding[]): PermitCriterionResult {
+  // Fail-closed (caught on review, 2026-09-15): an empty/absent findings array means "no
+  // environmental-constraints data was available for this evaluation," never "confirmed clear
+  // of every hazard." Real production ECA data always carries one element per Seattle hazard
+  // category (domain-entities.md §1a) - a shed evaluation reaching this function with zero
+  // findings reflects an unavailable/SOURCE_ERROR fact, not a genuine clean result. MET requires
+  // actual per-hazard evidence, matching this project's established discipline of never treating
+  // absence of evidence as confirmation.
+  if (ecaFindings.length === 0) {
+    return {
+      criterionId: PermitCriterionId.ECA,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: "No environmental-constraints data was available for this evaluation - cannot confirm the shed's parcel is clear of every mapped hazard category.",
+    };
+  }
+
+  let confirmedIntersection: CriticalAreaFinding | undefined;
+  let requiresVerification: CriticalAreaFinding | undefined;
+
+  for (const finding of ecaFindings) {
+    const implication = deriveEcaRegulatoryImplication(finding);
+    if (implication.classification === FindingClassification.KNOWN && finding.mappedIntersectionResult === MappedIntersectionResult.INTERSECTS) {
+      confirmedIntersection = finding;
+    } else if (implication.classification === FindingClassification.REQUIRES_VERIFICATION) {
+      requiresVerification = requiresVerification ?? finding;
+    }
+  }
+
+  if (confirmedIntersection) {
+    return {
+      criterionId: PermitCriterionId.ECA,
+      status: PermitCriterionStatus.NOT_MET,
+      explanationBasis: `Mapped ${confirmedIntersection.hazardType} data confirms an intersection with this parcel.`,
+    };
+  }
+  if (requiresVerification) {
+    return {
+      criterionId: PermitCriterionId.ECA,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: `${requiresVerification.hazardType} mapping cannot confidently rule out that the shed's parcel is in or near a mapped environmentally critical area.`,
+    };
+  }
+  return {
+    criterionId: PermitCriterionId.ECA,
+    status: PermitCriterionStatus.MET,
+    explanationBasis: "No basis, from available mapped data, to conclude the shed's parcel is in or near a mapped environmentally critical area.",
+  };
+}
+
+/** P7a + P7b combined / SIZE_SPAN. Never inferred from widthFt/depthFt. */
+function evaluateSizeSpan(project: ShedProjectDetails): PermitCriterionResult {
+  const footprint = wallFootprintSqFt(project);
+  if (footprint > 750) {
+    return {
+      criterionId: PermitCriterionId.SIZE_SPAN,
+      status: PermitCriterionStatus.NOT_MET,
+      explanationBasis: `Wall footprint ${footprint} sq ft exceeds the 750 sq ft STFI size threshold (P7a).`,
+    };
+  }
+
+  const span = project.structuralSpanInfo;
+  if (!span) {
+    return {
+      criterionId: PermitCriterionId.SIZE_SPAN,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: `Wall footprint ${footprint} sq ft is within the 750 sq ft threshold (P7a), but structural span information (P7b) was not provided.`,
+    };
+  }
+
+  const spanFt = span.structuralSpanFt;
+  const usesTruss = span.usesManufacturedTruss === true;
+
+  if (spanFt < 14) {
+    return {
+      criterionId: PermitCriterionId.SIZE_SPAN,
+      status: PermitCriterionStatus.MET,
+      explanationBasis: `Structural span ${spanFt}ft is under 14ft and footprint ${footprint} sq ft is within 750 sq ft - both STFI size criteria are met.`,
+    };
+  }
+  if (spanFt === 14) {
+    return {
+      criterionId: PermitCriterionId.SIZE_SPAN,
+      status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+      explanationBasis: `Structural span is exactly 14ft, a boundary the source guidance does not textually reconcile ("less than 14 feet" vs. "more than 14 feet" framings) - cannot confirm STFI eligibility on span alone.`,
+    };
+  }
+  if (spanFt > 14 && spanFt <= 30 && usesTruss) {
+    return {
+      criterionId: PermitCriterionId.SIZE_SPAN,
+      status: PermitCriterionStatus.MET,
+      explanationBasis: `Structural span ${spanFt}ft exceeds 14ft but is within 30ft and uses a manufactured truss - qualifies, and footprint ${footprint} sq ft is within 750 sq ft.`,
+    };
+  }
+  return {
+    criterionId: PermitCriterionId.SIZE_SPAN,
+    status: PermitCriterionStatus.NOT_MET,
+    explanationBasis:
+      spanFt > 30
+        ? `Structural span ${spanFt}ft exceeds 30ft even with a manufactured truss.`
+        : `Structural span ${spanFt}ft exceeds 14ft without a qualifying manufactured truss.`,
+  };
+}
+
+const STFI_DISQUALIFYING_FOUNDATION_TYPES: readonly string[] = ["PILES", "WOOD_FOUNDATION"];
+
+/** P3b - independent of P3a/ECA/SIZE_SPAN (business-logic-model.md Flow 3, corrected on review
+ * 2026-09-15). Not a PermitCriterionId - consulted directly by deriveBuildingPermitState. */
+function foundationStfiDisqualification(foundationType: ShedProjectDetails["foundationType"]): "DISQUALIFIED" | "CLEAR" | "UNKNOWN" {
+  if (foundationType === undefined) return "UNKNOWN";
+  return STFI_DISQUALIFYING_FOUNDATION_TYPES.includes(foundationType) ? "DISQUALIFIED" : "CLEAR";
+}
+
+/** Flow 3's two-dimensional buildingPermit/reviewPath derivation, verbatim. */
+function deriveBuildingPermitState(
+  criteria: PermitCriterionResult[],
+  foundationType: ShedProjectDetails["foundationType"]
+): { buildingPermit: BuildingPermitStatus; reviewPath: PermitReviewPath } {
+  const byId = new Map(criteria.map((c) => [c.criterionId, c.status]));
+  const exemptionCriteriaIds: PermitCriterionId[] = [
+    PermitCriterionId.ROOF_AREA,
+    PermitCriterionId.STORY_HEIGHT,
+    PermitCriterionId.FOUNDATION,
+    PermitCriterionId.ATTACHMENT,
+    PermitCriterionId.USE,
+    PermitCriterionId.ECA,
+  ];
+  const exemptionStatuses = exemptionCriteriaIds.map((id) => byId.get(id));
+
+  let buildingPermit: BuildingPermitStatus;
+  if (exemptionStatuses.every((s) => s === PermitCriterionStatus.MET)) {
+    buildingPermit = BuildingPermitStatus.LIKELY_EXEMPT;
+  } else if (exemptionStatuses.some((s) => s === PermitCriterionStatus.NOT_MET)) {
+    buildingPermit = BuildingPermitStatus.REQUIRED;
+  } else {
+    buildingPermit = BuildingPermitStatus.REQUIRES_VERIFICATION;
+  }
+
+  if (buildingPermit === BuildingPermitStatus.LIKELY_EXEMPT) {
+    return { buildingPermit, reviewPath: PermitReviewPath.NONE };
+  }
+  if (buildingPermit === BuildingPermitStatus.REQUIRES_VERIFICATION) {
+    return { buildingPermit, reviewPath: PermitReviewPath.REQUIRES_VERIFICATION };
+  }
+
+  // buildingPermit === REQUIRED
+  const sizeSpanStatus = byId.get(PermitCriterionId.SIZE_SPAN);
+  const foundationDisqualification = foundationStfiDisqualification(foundationType);
+
+  if (byId.get(PermitCriterionId.ECA) === PermitCriterionStatus.NOT_MET) {
+    return { buildingPermit, reviewPath: PermitReviewPath.FULL_REVIEW_LIKELY };
+  }
+  if (foundationDisqualification === "DISQUALIFIED") {
+    return { buildingPermit, reviewPath: PermitReviewPath.FULL_REVIEW_LIKELY };
+  }
+  if (sizeSpanStatus === PermitCriterionStatus.NOT_MET) {
+    return { buildingPermit, reviewPath: PermitReviewPath.FULL_REVIEW_LIKELY };
+  }
+  if (sizeSpanStatus === PermitCriterionStatus.MET && foundationDisqualification === "CLEAR") {
+    return { buildingPermit, reviewPath: PermitReviewPath.STFI_LIKELY };
+  }
+  return { buildingPermit, reviewPath: PermitReviewPath.REQUIRES_VERIFICATION };
+}
+
+const TRADE_PERMIT_DISCLOSURE_COPY =
+  "Electrical, plumbing, or mechanical work may require separate permits. Permit Preflight's shed building-permit result does not determine those trade permits.";
+
+/** P8 (candidate) - a fixed, non-tiered advisory (BR-U6B-8), entirely independent of
+ * buildingPermit/reviewPath and not gated by any RegulatoryRule ACTIVE check. */
+function buildTradePermitDisclosures(utilityIntent: ShedProjectDetails["utilityIntent"]): TradePermitDisclosure[] {
+  const disclosures: TradePermitDisclosure[] = [];
+  if (utilityIntent?.electrical) disclosures.push({ trade: "ELECTRICAL", explanationBasis: TRADE_PERMIT_DISCLOSURE_COPY });
+  if (utilityIntent?.plumbing) disclosures.push({ trade: "PLUMBING", explanationBasis: TRADE_PERMIT_DISCLOSURE_COPY });
+  if (utilityIntent?.mechanical) disclosures.push({ trade: "MECHANICAL", explanationBasis: TRADE_PERMIT_DISCLOSURE_COPY });
+  return disclosures;
+}
+
+function evaluateShedPermitRequirement(project: ShedProjectDetails, ecaFindings: CriticalAreaFinding[]): PermitRequirementFinding {
+  const criteria: PermitCriterionResult[] = [
+    evaluateRoofArea(project),
+    evaluateStoryHeight(),
+    evaluateFoundationExemption(project),
+    evaluateAttachment(project),
+    evaluateUse(project),
+    evaluateEcaPermitCriterion(ecaFindings),
+    evaluateSizeSpan(project),
+  ];
+  const { buildingPermit, reviewPath } = deriveBuildingPermitState(criteria, project.foundationType);
+  return {
+    buildingPermit,
+    reviewPath,
+    criteria,
+    tradePermitDisclosures: buildTradePermitDisclosures(project.utilityIntent),
+  };
+}
+
+/** P2b - a separate, ordinary, location-sensitive zoning Finding, never nested inside
+ * PermitRequirementFinding and never implied by buildingPermit === LIKELY_EXEMPT (BR-U6B-9). */
+function evaluateAccessoryHeightLimit(project: ShedProjectDetails): Finding {
+  const subject = "Accessory structure height limit";
+  let limit: AccessoryStructureHeightLimit;
+  if (project.isInRequiredSetback === undefined) {
+    limit = { basis: "REQUIRES_VERIFICATION", reason: "Whether the shed's proposed placement falls inside a required setback is unresolved." };
+  } else if (project.isInRequiredSetback) {
+    limit = { basis: "IN_REQUIRED_SETBACK", limitFt: 12, roofMayNotExceedLimit: true };
+  } else {
+    limit = { basis: "OUTSIDE_REQUIRED_SETBACK", limitFt: 32, citation: "SMC 23.44.070" };
+  }
+
+  if (limit.basis === "REQUIRES_VERIFICATION") {
+    return {
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject,
+      supportingEvidence: [],
+      explanationBasis: limit.reason,
+    };
+  }
+
+  const pass = project.heightFt <= limit.limitFt;
+  const supportingEvidence = [`heightFt=${project.heightFt}`, `basis=${limit.basis}`, `limitFt=${limit.limitFt}`];
+  if (pass) {
+    return {
+      classification: FindingClassification.KNOWN,
+      subject,
+      complianceOutcome: ComplianceOutcome.PASS,
+      supportingEvidence,
+      explanationBasis: `Height ${project.heightFt}ft meets the ${limit.limitFt}ft limit that applies (${limit.basis === "IN_REQUIRED_SETBACK" ? "shed is in a required setback, SMC 23.44.070" : "shed is outside every required setback, SMC 23.44.070"}).`,
+    };
+  }
+  return {
+    classification: FindingClassification.REQUIRES_VERIFICATION,
+    subject,
+    supportingEvidence,
+    explanationBasis: `Height ${project.heightFt}ft exceeds the ${limit.limitFt}ft limit that applies (SMC 23.44.070), but that section carries its own roof/height exceptions not enumerated here - cannot be confirmed as a definite failure without resolving whether an exception applies.`,
+  };
+}
+
+const ECA_HAZARD_TYPE_TO_COVERAGE_EXCLUDED_CATEGORY: Record<string, CoverageExcludedEcaCategory> = {
+  riparian_corridor: "RIPARIAN_CORRIDOR",
+  wetland: "WETLAND_AND_BUFFER",
+  wetland_buffer: "WETLAND_AND_BUFFER",
+  shoreline_setback: "SUBMERGED_LAND_OR_SHORELINE_SETBACK",
+  submerged_land: "SUBMERGED_LAND_OR_SHORELINE_SETBACK",
+  steep_slope: "STEEP_SLOPE_NON_DISTURBANCE_AREA",
+};
+
+/** C1b/C1e - only the 4 SMC 23.44.080.B-named categories ever participate (BR-U6B-12). No
+ * excluded-area geometry computation is wired for shed in this pass (item 26's data-source gap),
+ * so ESTABLISHED is not reachable from this function today - it exists on the type for a future
+ * pass that supplies precomputed excluded-area geometry, exactly Unit 4's LOT_COVERAGE
+ * precedent (always REQUIRES_VERIFICATION when relevant, never fabricated). */
+function evaluateEcaLotAreaAdjustment(ecaFindings: CriticalAreaFinding[]): EcaLotAreaAdjustment {
+  const intersectingCategories = new Set<CoverageExcludedEcaCategory>();
+  for (const finding of ecaFindings) {
+    const category = ECA_HAZARD_TYPE_TO_COVERAGE_EXCLUDED_CATEGORY[finding.hazardType];
+    if (category && finding.mappedIntersectionResult !== MappedIntersectionResult.NO_INTERSECTION) {
+      intersectingCategories.add(category);
+    }
+  }
+
+  if (intersectingCategories.size === 0) {
+    return {
+      status: "NOT_APPLICABLE",
+      reason: "No mapped riparian corridor, wetland/buffer, submerged-land/shoreline-setback, or steep-slope non-disturbance area intersects this parcel.",
+    };
+  }
+  return {
+    status: "REQUIRES_VERIFICATION",
+    intersectingCategories: Array.from(intersectingCategories),
+    reason:
+      "A SMC 23.44.080.B-named lot-area-exclusion category intersects this parcel, but the exact excluded-area geometry needed to adjust the lot-coverage denominator is not established by this evaluation.",
+  };
+}
+
+/** Flow 4 - the CASE A/B/C banding between the base (C1a, 50%) and potential special (C1c/C1d,
+ * 60%) allowances, including the asymmetric fail-closed override for an unresolved C1b
+ * denominator. `allowanceFacts` is computed here, not supplied by the caller - a pure derivation
+ * of `ecaAdjustment`/`parcelAreaSqFt` (domain-entities.md §3c). */
+function evaluateShedLotCoverage(input: Omit<ShedLotCoverageFacts, "allowanceFacts">): ShedLotCoverageResult {
+  const { ecaAdjustment, parcelAreaSqFt, existingMappedCoverageSqFt, proposedShedFootprintSqFt } = input;
+
+  let adjustedLotAreaSqFt = parcelAreaSqFt;
+  let c1eFloorSqFt: 625 | undefined;
+  let c1eDirectorAlternativeRelevant = false;
+
+  if (ecaAdjustment.status === "ESTABLISHED") {
+    adjustedLotAreaSqFt = parcelAreaSqFt - ecaAdjustment.excludedAreaSqFt;
+    if (ecaAdjustment.minimumCoverageFloor.status === "KNOWN") {
+      c1eFloorSqFt = 625;
+    }
+    c1eDirectorAlternativeRelevant = ecaAdjustment.minimumCoverageFloor.status === "REQUIRES_VERIFICATION";
+  }
+
+  const facts: ShedLotCoverageFacts = {
+    ...input,
+    allowanceFacts: { adjustedLotAreaSqFt, c1eFloorSqFt, c1eDirectorAlternativeRelevant },
+  };
+
+  const baseAllowanceSqFt = Math.max(adjustedLotAreaSqFt * 0.5, c1eFloorSqFt ?? 0);
+  const potentialSpecialAllowanceSqFt = Math.max(adjustedLotAreaSqFt * 0.6, c1eFloorSqFt ?? 0);
+  const estimatedCoverageSqFt = existingMappedCoverageSqFt + proposedShedFootprintSqFt;
+
+  if (ecaAdjustment.status === "REQUIRES_VERIFICATION") {
+    const optimisticPotentialSpecialAllowanceSqFt = Math.max(parcelAreaSqFt * 0.6, 0);
+    if (estimatedCoverageSqFt > optimisticPotentialSpecialAllowanceSqFt) {
+      return {
+        status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE",
+        estimatedCoverageSqFt,
+        potentialSpecialAllowanceSqFt: optimisticPotentialSpecialAllowanceSqFt,
+        facts,
+      };
+    }
+    return { status: "REQUIRES_VERIFICATION", reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED", estimatedCoverageSqFt, facts };
+  }
+
+  if (estimatedCoverageSqFt <= baseAllowanceSqFt) {
+    return { status: "WITHIN_STANDARD_ALLOWANCE", estimatedCoverageSqFt, baseAllowanceSqFt, facts };
+  }
+  if (estimatedCoverageSqFt <= potentialSpecialAllowanceSqFt) {
+    return {
+      status: "REQUIRES_VERIFICATION",
+      reason: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE",
+      estimatedCoverageSqFt,
+      baseAllowanceSqFt,
+      potentialSpecialAllowanceSqFt,
+      facts,
+    };
+  }
+  if (c1eDirectorAlternativeRelevant) {
+    return {
+      status: "REQUIRES_VERIFICATION",
+      reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE",
+      estimatedCoverageSqFt,
+      potentialSpecialAllowanceSqFt,
+      facts,
+    };
+  }
+  return { status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE", estimatedCoverageSqFt, potentialSpecialAllowanceSqFt, facts };
+}
+
+export {
+  evaluateRoofArea,
+  evaluateStoryHeight,
+  evaluateFoundationExemption,
+  evaluateAttachment,
+  evaluateUse,
+  evaluateEcaPermitCriterion,
+  evaluateSizeSpan,
+  foundationStfiDisqualification,
+  deriveBuildingPermitState,
+  buildTradePermitDisclosures,
+  evaluateShedPermitRequirement,
+  evaluateAccessoryHeightLimit,
+  evaluateEcaLotAreaAdjustment,
+  evaluateShedLotCoverage,
+};

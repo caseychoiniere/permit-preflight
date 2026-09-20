@@ -13,6 +13,7 @@ const validConfig = {
     frontEdgeRef: "edge-0",
     rearEdgeRef: "edge-2",
     sideEdgeRefs: ["edge-1", "edge-3"],
+    multipleFrontageAnswer: "NO" as const,
     method: "USER_INDICATED" as const,
   },
   distanceInputMode: "MAP_PLACEMENT" as const,

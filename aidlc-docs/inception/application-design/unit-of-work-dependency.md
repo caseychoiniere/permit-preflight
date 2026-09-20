@@ -86,8 +86,14 @@ Unit 2B (Commercial Payment & Fulfillment)  <-- IN PROGRESS (authorized 2026-08-
 Unit 3 (Minimum Paid-Product Operations)  <-- operational gate, still binding
    |
    v
-Unit 4 -> Unit 5 -> Unit 6 -> Unit 7 -> Unit 8 -> Unit 9 -> Unit 10 -> Unit 11
+Unit 4 -> Unit 5 -> Unit 6 -> Unit 6B -> Unit 7 -> Unit 8 -> Unit 9 -> Unit 10 -> Unit 11
 ```
+
+*(Unit 6B — Shed Report Value Expansion — inserted 2026-09-10 between Unit 6 and Unit 7. It has
+exactly the same hard dependency as the project-type units: Unit 2B + Unit 3's operational gate,
+plus Unit 6 by sequence. It deepens the existing shed report before horizontal expansion to Units
+7–11 and has no new hard technical dependency on any of them. Existing units are not renumbered.
+See `unit-of-work.md` and `aidlc-docs/decisions/2026-09-10-unit-6b-shed-report-value-expansion.md`.)*
 
 *(Unit 0C may still be conducted at any point, in parallel, at the founder's discretion — it no
 longer sits on this critical path.)*
@@ -106,6 +112,7 @@ flowchart TD
     U4["Unit 4<br/>Detached Garages"]
     U5["Unit 5<br/>Vacant-Land Screening"]
     U6["Unit 6<br/>Optional Accounts"]
+    U6B["Unit 6B<br/>Shed Report Value Expansion<br/>added 2026-09-10"]
     U7["Unit 7<br/>Fences"]
     U8["Unit 8<br/>Decks"]
     U9["Unit 9<br/>Retaining Walls<br/>plus deferred ADM-9"]
@@ -121,6 +128,8 @@ flowchart TD
     U3 -->|operational gate| U4
     U3 -->|operational gate| U5
     U3 -->|operational gate| U6
+    U3 -->|operational gate| U6B
+    U6 -.->|sequenced after| U6B
     U3 -->|operational gate| U7
     U3 -->|operational gate| U8
     U3 -->|operational gate| U9
@@ -137,6 +146,7 @@ flowchart TD
     style U4 fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
     style U5 fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
     style U6 fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
+    style U6B fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
     style U7 fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
     style U8 fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
     style U9 fill:#BDBDBD,stroke:#424242,stroke-width:2px,stroke-dasharray: 5 5,color:#000
@@ -151,12 +161,13 @@ Unit 0B --[Technical GO]--> Unit 1 (COMPLETE)
 Unit 0B -.-> Unit 0C (DEFERRED - optional, non-blocking, does not sit on this critical path)
 Unit 1 --> Unit 2 (COMPLETE - report generation/presentation, no live payment)
 Unit 2 --[Technical GO alone, founder decision 2026-08-24]--> Unit 2B (AUTHORIZED, IN PROGRESS)
-Unit 2B --> Unit 3 --[operational gate]--> Units 4,5,6,7,8,9,10,11
+Unit 2B --> Unit 3 --[operational gate]--> Units 4,5,6,6B,7,8,9,10,11
+Unit 6 -.[sequenced after].-> Unit 6B (Shed Report Value Expansion, added 2026-09-10, between Unit 6 and Unit 7)
 
 Green = complete or authorized-and-proceeding (Unit 0B, Unit 1, Unit 2, Unit 2B). Purple = original
 human-in-the-loop gate (Unit 0, historical). Orange dashed = Unit 0C, deferred/optional, no longer
 gating anything. Gray dashed = everything still waiting on Unit 3's operational gate (Unit 3
-through Unit 11).
+through Unit 11, including Unit 6B).
 ```
 
 ## PIVOT / NO-GO Handling (Commercial Track)

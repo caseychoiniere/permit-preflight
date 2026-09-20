@@ -1,37 +1,29 @@
 "use client";
 
 /**
- * Account Access report view (BR-U6-4 Mode B) - reuses GET /api/account/reports/[orderId], whose
- * response shape exactly matches the existing guest GET /api/reports (app/report/page.tsx). This
- * is a new AUTHORIZATION route to the same existing report content, not a new rendering
- * mechanism - deliberately kept minimal (findings + evidence caveats only, no ReportMap/PDF
- * controls) rather than duplicating app/report/page.tsx's full presentational logic; extracting a
- * fully shared rendering component between the guest and account views is a reasonable follow-up,
- * not done in this pass.
+ * Account Access report view (BR-U6-4 Mode B) - Unit 6 Code Generation Part 2 review, correction 1.
+ *
+ * This is a new AUTHORIZATION route to the SAME immutable EvidenceReportArtifact the guest report
+ * (app/report/page.tsx) and post-checkout report (app/checkout/status/page.tsx) render - not a
+ * second rendering mechanism. It reuses the shared ../../../components/ReportView.js verbatim, so
+ * the account view shows exactly the same content (map, findings, requires-verification,
+ * uncovered-constraint notices, vacant-land scenarios, explanation, evidence notes) as the other
+ * two - the approved Code Generation plan's "reuses the existing report view's presentational
+ * logic/components (not a rewrite of app/report/page.tsx)" item, now that ReportView exists (it
+ * was extracted during the validation pause, after Unit 6 Code Generation Part 2 was first
+ * generated).
+ *
+ * This file owns ONLY: the account-session-authorized fetch of GET /api/account/reports/[orderId]
+ * (whose response shape already matches ReportView's Report), NOT_FOUND handling, and passing the
+ * account-authorized PDF route (GET /api/account/reports/[orderId]/pdf) as ReportView's pdfHref.
+ * No guest reportAccessToken is ever involved.
  */
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { FindingClassification, ComplianceOutcome } from "../../../../src/regulatory-rules-engine/types.js";
-import type { ComplianceOutcome as ComplianceOutcomeType, FindingClassification as FindingClassificationType } from "../../../../src/regulatory-rules-engine/types.js";
+import { ReportView, type Report } from "../../../components/ReportView.js";
 import { Container } from "../../../components/ui/Container.js";
 import { Card } from "../../../components/ui/Card.js";
-import { Badge } from "../../../components/ui/Badge.js";
-
-interface Finding {
-  subject: string;
-  classification: FindingClassificationType;
-  complianceOutcome?: ComplianceOutcomeType;
-  explanationBasis: string;
-  supportingEvidence: string[];
-}
-
-interface Report {
-  id: string;
-  findings: Finding[];
-  explanation: { text: string; referencedFindingIds: string[] } | null;
-  generatedAt: string;
-}
 
 export default function AccountReportPage() {
   const params = useParams<{ orderId: string }>();
@@ -69,53 +61,14 @@ export default function AccountReportPage() {
       </Container>
     );
 
-  const knownAndInferred = report.findings.filter((f) => f.classification !== FindingClassification.REQUIRES_VERIFICATION);
-  const requiresVerification = report.findings.filter((f) => f.classification === FindingClassification.REQUIRES_VERIFICATION);
-
   return (
-    <Container>
+    <Container className="max-w-3xl">
       <a href="/account" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
         &larr; Back to your account
       </a>
-      <h1 className="mt-3 text-xl font-semibold text-slate-900">Screening Report</h1>
-      <p className="text-sm text-slate-500">Generated: {new Date(report.generatedAt).toLocaleString()}</p>
-
-      <h2 className="mb-3 mt-6 text-base font-semibold text-slate-900">Findings</h2>
-      <div className="mb-8 flex flex-col gap-3">
-        {knownAndInferred.map((f, i) => (
-          <Card key={i}>
-            <div className="flex flex-wrap items-center gap-2">
-              <strong className="text-sm text-slate-900">{f.subject}</strong>
-              <Badge tone="neutral">{f.classification}</Badge>
-              {f.complianceOutcome && (
-                <Badge tone={f.complianceOutcome === ComplianceOutcome.PASS ? "success" : "danger"}>{f.complianceOutcome}</Badge>
-              )}
-            </div>
-            <p className="mt-2 text-sm text-slate-600">{f.explanationBasis}</p>
-          </Card>
-        ))}
+      <div className="mt-3">
+        <ReportView report={report} pdfHref={`/api/account/reports/${params.orderId}/pdf`} headingLevel="h1" />
       </div>
-
-      {requiresVerification.length > 0 && (
-        <>
-          <h2 className="mb-3 text-base font-semibold text-slate-900">Requires verification</h2>
-          <div className="mb-8 flex flex-col gap-3">
-            {requiresVerification.map((f, i) => (
-              <div key={i} className="rounded-xl border-l-4 border-amber-500 bg-amber-50 p-4">
-                <strong className="text-sm text-slate-900">{f.subject}</strong>
-                <p className="mt-2 text-sm text-amber-900">{f.explanationBasis}</p>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {report.explanation && (
-        <>
-          <h2 className="mb-3 text-base font-semibold text-slate-900">Explanation</h2>
-          <p className="text-sm text-slate-600">{report.explanation.text}</p>
-        </>
-      )}
     </Container>
   );
 }

@@ -547,9 +547,193 @@ than blocking) remains open until re-run locally.
 **Blocked on**: the founder's own local environment (the same one that surfaced the original
 26/26 regression) re-running that same test against this fix.
 
+## 19. Seattle ECA Feature Services — Live Query Behavior Not Yet Verified (Unit 6B research)
+
+**Status: NOT YET VERIFIED.** Unit 6B's research
+(`aidlc-docs/construction/unit-6b-shed-report-value-expansion/research-findings.md`, Track 3)
+identified 12 Seattle ECA feature services on `services.arcgis.com/ZOyb2t4B0UYuYNYH` (the same
+ArcGIS Online org already integrated for Building Outlines). The `Environmentally_Critical_Areas_Steep_Slope`
+service was confirmed live to declare WKID 2926 and support `query`. **Not yet done**: (1) a live
+`query` round-trip against each of the other 11 services (some Seattle GIS endpoints —
+`gisrevprxy.seattle.gov`, `gisdata.seattle.gov` — were observed refusing connections / returning
+500s during the research pass, so per-endpoint reachability from the deployment environment must be
+confirmed); (2) per-layer verification that each declares SRID 2926 on a real 1+-feature response
+(the Building Outlines adapter already does this fail-closed check — the ECA adapter must too);
+(3) per-layer attribute-field and vintage confirmation. **Blocked on**: Unit 6B scope approval,
+then an ECA adapter with real network access.
+
+## 20. Seattle ECA / SMC Buffer Distances and Lot-Coverage Percentage — Code-Text Verification (Unit 6B research)
+
+**Status: NOT YET VERIFIED.** The research pass read SDCI summary pages and the NR Zoning Summary
+(explicitly "for Illustrative Purposes Only") but did not verify against SMC 23.44.080 / 23.44.090
+/ 25.09 code text: (1) the applicable lot-coverage percentage for a given parcel (35% legacy
+Single-Family vs. 50% Neighborhood Residential, and any One-Seattle transition/vesting provisions);
+(2) exact wetland / riparian / steep-slope buffer distances; (3) the accessory-structure-specific
+setback reductions (the "rear 40% of the lot" 1-ft setback, the 40%-of-required-rear-yard coverage
+cap) and whether they survived the rezone unchanged; (4) precisely which projections/features count
+toward lot coverage. These drive the Tier-2 assignments for candidate rules C1–C3, F1, P6
+(`candidate-regulatory-rules.md`). **Blocked on**: direct SMC reading (human/browser — Municode
+blocks programmatic fetch, per every prior unit) during Unit 6B Functional Design / rule drafting.
+
+## 21. Unit 6B Permit-Requirement Rules — Professional Review (Unit 6B research)
+
+**Status: NOT YET DONE.** Candidate rules P1–P9 (permit-requirement determination) were researched
+from primary SDCI sources but carry genuine interpretation risk: "generally unoccupied uses" (P5),
+"in or near an ECA" with SDCI routing discretion (P6), and the STFI-vs-full span determination
+(P7) are Tier-2 by AI suggestion. Per the project's rule-governance model, Tier-2 rules require
+founder verification and, where the founder deems it warranted, escalated-professional review
+before `APPROVED` → `ACTIVE`. This item tracks that obligation; it is **not** a blocker to Unit 6B
+Functional Design.
+
+## 22. Unit 6B Lot-Coverage and Feasible-Placement Rules — Professional Review (Unit 6B research)
+
+**Status: NOT YET DONE.** Candidate rules C1–C3 (lot coverage) and F1 (accessory-structure setback
+profile, only relevant if the deferred Track 4 is later scoped) are Tier-2 by AI suggestion and
+carry the same founder-verification / optional-professional-review obligation as item 21. Also:
+the research finding that aerial building-outline `AREA` **over-counts** code-countable coverage
+(roof edge vs. wall line) is a stated `ESTIMATED`-label rationale that a reviewing professional
+should confirm is a genuinely conservative (capacity-under-stating) direction. Not a blocker to
+Functional Design.
+
+## 23. Unit 6B Candidate Rule P1 — Exact Exemption-Threshold Operator — RESOLVED 2026-09-11
+
+**Status: RESOLVED — CLOSED.** The founder independently reviewed the governing 2021 Seattle
+Residential Code provision directly: **R105.2, Item 3.1** — "The projected roof area does not
+exceed 120 square feet." This confirms `projectedRoofAreaSqFt ≤ 120` (the inclusive operator) and
+resolves the discrepancy between SDCI's "Sheds" page ("120 sq ft or less") and its "Do You Need a
+Permit?" page ("less than 120 sq ft") — R105.2 governs over either informal paraphrase. No
+further verification needed for this specific operator question; `candidate-regulatory-rules.md`
+P1 updated accordingly and marked Tier 1, founder-confirmed.
+
+## 24. Unit 6B Candidate Rule P2b — Detached Accessory-Structure Zoning Height Limit — LOCATION MODEL RESOLVED 2026-09-13; narrow item remains
+
+**Status: LOCATION-SENSITIVE MODEL RESOLVED — narrow subsection detail remains open.** The
+founder independently reviewed Ordinance 127376 / SMC 23.44.070 directly (2026-09-13): the
+general NR-zone structure height limit is **32 feet**; an accessory structure **located in a
+required setback** is limited to **12 feet**, with no portion of its roof permitted to extend
+beyond that limit. This resolves the earlier unreconciled "12 ft (SDCI Sheds page) vs. 15 ft (NR-
+zone summary citing SMC 23.44.046)" discrepancy — both were incomplete paraphrases of a single
+location-conditioned rule, not two competing figures for the same case. P2b is now split into
+P2b-1 (in a required setback → 12 ft) and P2b-2 (outside → 32 ft, subject to 23.44.070's own
+exceptions), both **T1 — FOUNDER-CONFIRMED**
+(`candidate-regulatory-rules.md`/`rule-tier-review.md` updated). **What remains open**: the exact
+current SMC 23.44.070 subsection numbering and the precise wording of its own roof/height-
+exception interaction for setback-located accessory structures has not been independently
+re-verified against the full current statutory text in this session (the founder's citation gives
+the substance, not a subsection-by-subsection read). **Blocked on**: a direct read of the full
+current SMC 23.44.070 text. Does not block Functional Design (the rule's mechanism — a
+location-conditioned plain numeric height check, reading the shed's already-computed setback
+facts — is not in question); blocks P2b's promotion past `SOURCE_VERIFIED`.
+
+## 25. Unit 6B Candidate Rules P3b / P7b — Current Tip 316 Verified 2026-09-13; P7b's boundary-operator gap narrowed and remains
+
+**Status: P3b RESOLVED/CLOSED. P7b's rule text RESOLVED; a narrow boundary-operator item
+remains.** The founder independently confirmed (2026-09-13) that the 04/26/2024-dated SDCI Tip
+316 is still the currently-published/served version, and that its text explicitly lists among
+projects that do not qualify for STFI: all-wood foundations, and foundations using piles
+(including pipe piles and pin piles) — **P3b is now T1 — FOUNDER-CONFIRMED, fully closed**, no
+further action needed. Tip 316 also still provides: detached accessory structures up to 750 sq
+ft, a structural-span criterion around 14 ft, and a manufactured-truss allowance up to a
+separately-stated 30-ft threshold; the SDCI Sheds page's full-review framing states beams
+spanning more than 14 ft trigger the more extensive review path. **P7b is now T1 —
+FOUNDER-CONFIRMED** for its rule text, with the domain model corrected to a numeric
+`structuralSpanFt` + `usesManufacturedTruss` boolean (replacing a categorical enum that could not
+distinguish a 20-ft from a 35-ft manufactured truss). **What remains open (P7b only, narrowed
+scope)**: Tip 316's eligibility bullet reads "less than 14 feet," while the SDCI shed guidance's
+full-review framing reads "more than 14 feet" — these do not textually reconcile at exactly 14.0
+ft. `structuralSpanFt === 14.0` resolves `REQUIRES_VERIFICATION` by design pending this
+reconciliation, rather than a guessed operator. **Blocked on**: locating a single source that
+states the boundary operator unambiguously (or founder confirmation, as with P1's operator).
+Does not block Functional Design; blocks P7b's promotion past `SOURCE_VERIFIED`.
+
+## 26. Unit 6B Candidate Rule C1b — Two Data-Source Gaps — RESEARCHED 2026-09-13, confirmed data-insufficient (not a near-term-closable gap)
+
+**Status: RESEARCHED — both sub-categories confirmed to lack a currently-available deterministic
+data path; not a rule-mechanism ambiguity (that is resolved) and not merely unresearched.** Per
+explicit founder instruction (2026-09-13: "do not defer this until Code Generation... resolve the
+data contract during Functional Design"), both open data-source questions were investigated
+directly against live ArcGIS REST endpoints on the same org (`services.arcgis.com/
+ZOyb2t4B0UYuYNYH`, WKID 2926 confirmed) used by Building Outlines and the other 12 ECA layers:
+
+- **Submerged lands / shoreline-setback**: the founder's proposed candidate,
+  `Shoreline_Environments` (`.../arcgis/rest/services/Shoreline_Environments/FeatureServer/23`),
+  is **confirmed real and live** — polygon geometry, backed by the city's general zoning-overlay
+  table (`DPD.ZONING_OVERLAY_ALL`) filtered to `TYPE = 'SHORELINE'`. Fields: `OVERLAY`,
+  `DESCRIPTION`, `PUBLIC_DESCRIPTION`, `TYPE`, `CHAPTER`, `CHAPTER_LINK`. `DESCRIPTION` carries
+  the shoreline **environment designation** (Urban Harborfront, Urban Maritime, Conservancy
+  Navigation, Conservancy Management, Conservancy Preservation, Conservancy Waterway, Conservancy
+  Recreation) — a zoning/environment-designation attribute, **not** a dedicated submerged-lands
+  field. Treating "Conservancy Navigation" as equivalent to the code's "submerged lands" term
+  would be an **unverified interpretive leap**, not confirmed here. Separately, the actual
+  shoreline-setback *distance* (SMC 23.60.198.B.1) is itself contextual/discretionary — dependent
+  on neighboring residences' locations, with the Director able to reduce a setback exceeding 75
+  ft down to no less than 75 ft — not a single fixed distance that could be offset from the
+  companion `Seattle Shoreline` waterline layer (an 8-ft-contour approximation of mean high
+  water) even if it were. **Conclusion**: no deterministic exclusion geometry is currently
+  establishable for this sub-category; expected to resolve `REQUIRES_VERIFICATION` in
+  essentially every real evaluation — closer in character to C1e's Director-alternative branch
+  (item 27) than to a solvable near-term data gap.
+- **Wetland buffer**: `Environmentally_Critical_Areas_Wetlands` (`ECA - Wetland`, layer 10)
+  carries a numeric `CATEGORY` field but **no habitat-function field**. SMC 25.09.160 Table A
+  sets wetland buffer width as a function of **both** category **and** habitat function (a
+  Category III wetland with low habitat function requires a 60-ft buffer per 25.09.160.B, for
+  example) — with habitat function absent from the dataset, buffer width cannot be
+  deterministically computed from this layer alone. `ST_Buffer(wetlandPolygon, <fixed
+  distance>)` is explicitly not used as a stand-in for the regulatory buffer. This does not limit
+  ECA screening's (P6) ability to report the mapped wetland fact itself — only the
+  lot-coverage-denominator buffer computation is affected.
+
+**No guessed polygon subtraction is built for either sub-category.** `EcaLotAreaAdjustment`
+(domain-entities.md §3b) already resolves `REQUIRES_VERIFICATION` for a named category whenever
+its exclusion geometry cannot be established precisely — both of these sub-categories are
+expected to exercise that branch in essentially every real evaluation. **Blocked on** (should a
+future pass want to close this further): a data source that identifies submerged lands
+specifically (not just shoreline environment designation), a confirmed operational definition of
+the code's "shoreline-setback area" as a computable geometry, and a habitat-function data source
+for mapped wetlands (or a founder decision to adopt a documented conservative default). Does not
+block Functional Design; blocks C1b's full, precise implementation for these two sub-categories
+and their promotion past `SOURCE_VERIFIED`.
+
+## 27. Unit 6B Candidate Rule C1e — Director-Approved Alternative Has No Data Channel
+
+**Status: PERMANENTLY `REQUIRES_VERIFICATION` IN PRACTICE, NOT A VERIFICATION TASK.** SMC
+23.44.080.D's Director-approved-alternative branch (a case-by-case administrative determination
+that may set a minimum-coverage figure greater than the 625 sq ft floor) is genuinely Tier 2 —
+Permit Preflight has no data channel to actual Director approval records for a given parcel and
+is not expected to acquire one. Recorded here for completeness, not as an action item: this
+branch should be expected to resolve `REQUIRES_VERIFICATION` for essentially every real
+evaluation, by design, never guessed as "no Director alternative exists."
+
 ---
 
-*Last updated: 2026-08-27 (Product-Correctness Amendment). Item 18 added - tracks the one open
+*Last updated: 2026-09-13 (founder's second correction round — Functional Design Part 1
+completion). Item 24 (P2b) resolved to a location-sensitive T1 model via the founder's own
+citation of SMC 23.44.070; a narrow subsection/roof-exception detail remains open. Item 25: P3b
+CLOSED (current Tip 316 confirmed); P7b's rule text resolved to T1 with a corrected numeric
+domain model, narrowed to only the exactly-14.0-ft/30-ft boundary-operator question. Item 26: both
+of C1b's data-source gaps directly researched against live ArcGIS endpoints (not deferred) —
+confirmed data-insufficient for now, expected to resolve `REQUIRES_VERIFICATION` in practice
+rather than being a near-term-closable gap. Item 27 and items 1-23 unchanged by this pass.*
+
+*Prior update: 2026-09-11 (founder's independent tier review and current-code correction). Item
+23 (P1's operator) RESOLVED/CLOSED via the founder's own direct citation of SRC R105.2 Item 3.1.
+The former items 24-25 (C1's 60% figure and the ECA-reduction mechanism) are SUPERSEDED - the
+founder's direct citations of SMC 23.44.080.A/B/C/D/F/G resolved both the mechanism ambiguity and
+the 60% figure's existence (now split into C1c/C1d, both founder-confirmed Tier 1 from explicit
+code text). New items 24-27 opened: P2b's 12 ft vs 15 ft height-limit discrepancy; P3b/P7b's
+pending re-verification against the current Tip 316; C1b's two remaining data-source gaps
+(submerged-lands/shoreline dataset, wetland-buffer geometry coverage); and C1e's Director-
+alternative branch (not a verification task - an inherent, permanent REQUIRES_VERIFICATION by
+design). None block Functional Design; all block their respective rule's promotion past
+SOURCE_VERIFIED. Items 1-22 unchanged by this pass.*
+
+*Prior update: 2026-09-10 (Unit 6B research pass). Items 19-22 added - they track external
+verification obligations surfaced by the Unit 6B research (ECA endpoint reachability + per-layer
+CRS, SMC code-text verification for buffer/coverage figures, and Tier-2 professional review for the
+candidate permit/coverage rules). None is a blocker to Unit 6B Functional Design; all are gated on
+Unit 6B scope approval first. Items 1-18 unchanged by this pass - no live credentialed check ran.*
+
+*Prior update: 2026-08-27 (Product-Correctness Amendment). Item 18 added - tracks the one open
 acceptance-testing item the amendment itself could not close in this sandbox. Item 17 added during
 Unit 6 NFR Requirements review correction pass - tracks the new Vercel Firewall rate-limiting rule
 NFR-U6-37's correction introduces as the primary auth-endpoint abuse control, replacing an initial

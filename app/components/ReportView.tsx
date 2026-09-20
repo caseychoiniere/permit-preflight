@@ -11,6 +11,7 @@
 
 import { ReportMap } from "./ReportMap.js";
 import { FindingClassification, ComplianceOutcome } from "../../src/regulatory-rules-engine/types.js";
+import { isCriticalAreaFinding } from "../../src/regulatory-rules-engine/evaluate.js";
 import type { ComplianceOutcome as ComplianceOutcomeType, FindingClassification as FindingClassificationType } from "../../src/regulatory-rules-engine/types.js";
 import { Card } from "./ui/Card.js";
 import { Badge } from "./ui/Badge.js";
@@ -63,6 +64,20 @@ interface VacantLandScenario {
   citations: string[];
 }
 
+/** Unit 6B - mirrors spatial-analysis/types.ts's CriticalAreaFinding shape, duplicated (not
+ * imported) matching this file's existing convention. */
+interface CriticalAreaFindingDisplay {
+  hazardType: string;
+  mappedIntersectionResult: "INTERSECTS" | "NO_INTERSECTION" | "INDETERMINATE";
+  advisoryStatus: "ADVISORY_ONLY" | "MAP_DISPOSITIVE";
+  toleranceBasis: string;
+  layerVintageNote?: string;
+}
+
+function formatHazardType(hazardType: string): string {
+  return hazardType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function renderScenarioFigure(figure: ScenarioFigure): string {
   if (figure.status === "KNOWN") return String(figure.value);
   if (figure.status === "NO_ACTIVE_COVERAGE") return "not yet automatically screenable";
@@ -85,9 +100,21 @@ interface Props {
 
 export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
   const Heading = headingLevel;
-  const knownAndInferred = report.findings.filter((f) => f.classification !== FindingClassification.REQUIRES_VERIFICATION);
-  const requiresVerification = report.findings.filter((f) => f.classification === FindingClassification.REQUIRES_VERIFICATION);
+  // Unit 6B - the per-hazard "Critical area: X" findings the existing (pre-Unit-6B)
+  // ecaFindings-derivation loop in evaluate.ts already produces are redirected entirely to the
+  // dedicated "Mapped Environmental / Site Constraints" section below (BR-U6B-4's grouped
+  // presentation), never duplicated as a dozen individual cards in the general Findings/Requires
+  // Verification lists - the raw fact remains fully present in report.evidence either way.
+  // Maintenance correction (2026-09-15) - reuses evaluate.ts's own isCriticalAreaFinding rather
+  // than a second, independently-drifting "Critical area: " string check.
+  const knownAndInferred = report.findings.filter((f) => f.classification !== FindingClassification.REQUIRES_VERIFICATION && !isCriticalAreaFinding(f.subject));
+  const requiresVerification = report.findings.filter((f) => f.classification === FindingClassification.REQUIRES_VERIFICATION && !isCriticalAreaFinding(f.subject));
   const caveats = report.evidence.map((e) => e.provenance.qualityCaveat).filter((c): c is string => Boolean(c));
+  // Unit 6B - present once seattle-eca.ts's retriever is wired into the shed pipeline; undefined
+  // for garage/vacant-land reports and for any report generated before this fact existed.
+  const environmentalConstraints = report.evidence.find((e) => e.factType === "environmental-constraints")?.value as CriticalAreaFindingDisplay[] | undefined;
+  const notableEcaFindings = (environmentalConstraints ?? []).filter((f) => f.mappedIntersectionResult !== "NO_INTERSECTION");
+  const cleanEcaFindings = (environmentalConstraints ?? []).filter((f) => f.mappedIntersectionResult === "NO_INTERSECTION");
   // Unit 4 (business-rules.md BR-U4-5) - constraint types with zero ACTIVE rule coverage for this
   // project type, persisted at generation time as part of the immutable snapshot (never
   // recomputed at view time). Empty for shed today. Rendered as NoActiveRuleCoverageNotice,
@@ -177,6 +204,45 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
                 </p>
               </div>
             ))}
+          </div>
+        </>
+      )}
+
+      {environmentalConstraints && environmentalConstraints.length > 0 && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">Mapped Environmental / Site Constraints</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            {notableEcaFindings.map((f, i) => (
+              <div
+                key={i}
+                role="note"
+                className={`rounded-xl border-l-4 p-4 ${
+                  f.mappedIntersectionResult === "INTERSECTS" && f.advisoryStatus === "MAP_DISPOSITIVE"
+                    ? "border-red-500 bg-red-50"
+                    : "border-amber-500 bg-amber-50"
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-sm text-slate-900">{formatHazardType(f.hazardType)}</strong>
+                  <Badge tone={f.mappedIntersectionResult === "INTERSECTS" ? "danger" : "warning"}>
+                    {f.mappedIntersectionResult === "INTERSECTS" ? "MAPPED INTERSECTION" : "INDETERMINATE"}
+                  </Badge>
+                  {f.advisoryStatus === "ADVISORY_ONLY" && <Badge tone="neutral">ADVISORY MAP DATA</Badge>}
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  {f.advisoryStatus === "ADVISORY_ONLY"
+                    ? "This map layer is advisory-only - authoritative confirmation from SDCI is still required before treating this as a confirmed condition."
+                    : "This is a map-dispositive layer - the mapped result may be relied on as evidence, subject to the source's own vintage and tolerance."}
+                </p>
+              </div>
+            ))}
+            {cleanEcaFindings.length > 0 && (
+              <Card>
+                <p className="text-sm text-slate-600">
+                  No mapped {cleanEcaFindings.map((f) => formatHazardType(f.hazardType).toLowerCase()).join(", ")} conditions detected on this parcel.
+                </p>
+              </Card>
+            )}
           </div>
         </>
       )}

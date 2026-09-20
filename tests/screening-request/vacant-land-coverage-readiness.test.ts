@@ -42,13 +42,13 @@ describe("Unit 5 - Persistence-Write Activation Gate (NFR Design, corrected orde
 describe("Unit 5 - checkReadiness branches on workflowType before ever reading projectType", () => {
   it("a VACANT_LAND request with VALID validationState is ready, regardless of projectType (which is null for this workflow)", async () => {
     const neverUsedDb = {} as Parameters<typeof checkReadiness>[0];
-    const result = await checkReadiness(neverUsedDb, { workflowType: WorkflowType.VACANT_LAND, projectType: null, validationState: "VALID" }, []);
+    const result = await checkReadiness(neverUsedDb, { workflowType: WorkflowType.VACANT_LAND, projectType: null, validationState: "VALID", confirmedParcelId: "test-parcel" }, []);
     expect(result).toEqual({ ready: true });
   });
 
   it("an unrecognized workflowType is rejected with a clear reason", async () => {
     const neverUsedDb = {} as Parameters<typeof checkReadiness>[0];
-    const result = await checkReadiness(neverUsedDb, { workflowType: "SOMETHING_ELSE", projectType: null, validationState: "VALID" }, []);
+    const result = await checkReadiness(neverUsedDb, { workflowType: "SOMETHING_ELSE", projectType: null, validationState: "VALID", confirmedParcelId: "test-parcel" }, []);
     expect(result.ready).toBe(false);
   });
 });

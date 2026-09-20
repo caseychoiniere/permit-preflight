@@ -24,7 +24,7 @@ import { z } from "zod";
 import { validateAtBoundary } from "../shared/validation.js";
 import type { CandidateParcel } from "../parcel-resolution/types.js";
 import type { Polygon } from "../spatial-analysis/types.js";
-import { EvidenceQuality } from "./types.js";
+import { EvidenceQuality, SourceRecordNotFoundError } from "./types.js";
 import type { FactRetriever } from "./assemble.js";
 
 const PARCEL_POLYGON_BASE_URL = "https://gismaps.kingcounty.gov/arcgis/rest/services/Property/KingCo_Parcels/MapServer/0";
@@ -79,6 +79,19 @@ export async function fetchParcelBoundaryPolygon(parcelId: string): Promise<Poly
     throw new Error(`King County parcel-polygon response failed validation: ${validated.issues.join("; ")}`);
   }
 
+  // Maintenance correction (2026-09-15): checked BEFORE the SRID check, matching
+  // seattle-building-outlines.ts's own established precedent - a genuine zero-feature response
+  // may omit `spatialReference` entirely (nothing to verify the CRS of), and must never be
+  // misclassified as a CRS-mismatch failure. A zero-match or unusable-geometry result for THIS
+  // SPECIFIC PIN is not a source/transport failure at all - thrown as SourceRecordNotFoundError,
+  // never a plain Error, so assemblePropertyContext can record AvailabilityState.UNAVAILABLE (a
+  // legitimate per-parcel absence) rather than SOURCE_ERROR (a source-health signal) - see
+  // property-intelligence/types.ts's docstring on that error class for the full reasoning.
+  const feature = validated.data.features[0];
+  if (!feature) {
+    throw new SourceRecordNotFoundError(`No parcel boundary found for PIN "${parcelId}".`);
+  }
+
   const returnedWkid = validated.data.spatialReference?.latestWkid ?? validated.data.spatialReference?.wkid;
   if (returnedWkid !== srid) {
     throw new Error(
@@ -87,19 +100,49 @@ export async function fetchParcelBoundaryPolygon(parcelId: string): Promise<Poly
     );
   }
 
-  const feature = validated.data.features[0];
-  if (!feature) {
-    throw new Error(`No parcel boundary found for PIN "${parcelId}".`);
-  }
+  // Maintenance correction (2026-09-15, caught on review): a valid closed Esri ring needs at
+  // least 4 raw coordinate entries (3 distinct vertices + the repeated closing point) - matching
+  // seattle-building-outlines.ts's own identical check exactly (this module had incorrectly used
+  // `< 3`, which could pass a genuinely degenerate 2-distinct-point "ring" through). The closing
+  // duplicate is verified, never assumed, before being dropped - an Esri ring that isn't actually
+  // closed is untrustworthy data for this specific record, not a shape this module should guess
+  // at completing. After dropping the verified duplicate, consecutive repeated points are
+  // collapsed and the remaining ring must have both >= 3 distinct vertices and non-zero area
+  // (the shoelace formula) - a ring that is fully closed/well-formed but degenerate (e.g. every
+  // vertex collinear or coincident) still cannot be used as a real shed/garage/setback boundary.
   const ring = feature.geometry.rings[0];
-  if (!ring || ring.length < 3) {
-    throw new Error(`Parcel boundary for PIN "${parcelId}" did not return a usable ring.`);
+  if (!ring || ring.length < 4 || !isClosedRing(ring)) {
+    throw new SourceRecordNotFoundError(`Parcel boundary for PIN "${parcelId}" did not return a usable (closed) ring.`);
   }
-
-  // Esri rings repeat the first point as the last point (closed ring) - drop the duplicate to
-  // match this codebase's Polygon convention (first/last implicitly connected, not repeated).
-  const points = ring.slice(0, -1).map(([x, y]) => ({ x, y }));
+  const rawPoints = ring.slice(0, -1).map(([x, y]) => ({ x, y }));
+  const points = dedupeConsecutivePoints(rawPoints);
+  if (points.length < 3 || shoelaceAreaAbs(points) === 0) {
+    throw new SourceRecordNotFoundError(`Parcel boundary for PIN "${parcelId}" did not return a usable (non-degenerate) ring.`);
+  }
   return { units: "FEET", points, srid };
+}
+
+function isClosedRing(ring: readonly (readonly number[])[]): boolean {
+  const first = ring[0]!;
+  const last = ring[ring.length - 1]!;
+  return first[0] === last[0] && first[1] === last[1];
+}
+
+function dedupeConsecutivePoints(points: { x: number; y: number }[]): { x: number; y: number }[] {
+  return points.filter((p, i) => i === 0 || p.x !== points[i - 1]!.x || p.y !== points[i - 1]!.y);
+}
+
+/** Twice the signed polygon area (shoelace formula), absolute value - zero exactly when every
+ * point is collinear (including the fully-coincident case). Pure geometry, no PostGIS round trip
+ * needed for this narrow validity check on raw, not-yet-persisted coordinates. */
+function shoelaceAreaAbs(points: { x: number; y: number }[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i]!;
+    const p2 = points[(i + 1) % points.length]!;
+    sum += p1.x * p2.y - p2.x * p1.y;
+  }
+  return Math.abs(sum) / 2;
 }
 
 export function createKingCountyParcelGeometryRetriever(): FactRetriever<Polygon> {

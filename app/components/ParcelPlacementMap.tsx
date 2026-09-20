@@ -72,10 +72,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
-import { edgeRefsForPolygon } from "../../src/spatial-analysis/lot-line-roles.js";
-import { LotLineRoleStatus } from "../../src/screening-request/types.js";
+import { edgeRefsForPolygon, applyMultipleFrontageAnswer } from "../../src/spatial-analysis/lot-line-roles.js";
+import { LotLineRoleStatus, MultipleFrontageAnswer } from "../../src/screening-request/types.js";
 import { Button } from "./ui/Button.js";
-import { detectRearEdge, suggestLargestStructure, resolveBuildingVisualState, shedFootprintGeoJson } from "./parcel-placement-helpers.js";
+import { detectRearEdge, suggestLargestStructure, resolveBuildingVisualState, shedFootprintGeoJson, deriveLotLineSelectionForDisplay } from "./parcel-placement-helpers.js";
 
 export interface PlacementSelection {
   anchor: GeographicPoint;
@@ -87,6 +87,15 @@ export interface LotLineSelection {
   frontEdgeRef?: string;
   rearEdgeRef?: string;
   sideEdgeRefs?: string[];
+  /** Maintenance correction (2026-09-15, founder direction) - see LotLineRoleAssignment's own
+   * docstring (screening-request/types.ts) for the full contract. Required (no default) before
+   * the Placement step's "Next" becomes enabled once front/rear are resolved - see
+   * checkPlacementCompleteness. */
+  multipleFrontageAnswer?: MultipleFrontageAnswer;
+  streetFrontageEdgeRefs?: string[];
+  /** Maintenance correction (2026-09-17, founder-directed through-lot fix) - see
+   * LotLineRoleAssignment's own docstring (screening-request/types.ts) for the full contract. */
+  rearAlsoFacesStreet?: boolean;
 }
 
 /** Building intelligence v1 - one existing building footprint, already reduced to display-only
@@ -149,6 +158,14 @@ const MAPTILER_STYLE_URL = process.env.NEXT_PUBLIC_MAPTILER_KEY
 
 const FRONT_COLOR = "#16a34a"; // green
 const REAR_COLOR = "#dc2626"; // red
+// Maintenance correction (2026-09-15, founder direction) - a corner lot's additional street-facing
+// edge(s), visually distinct from ordinary sides (DEFAULT_EDGE_COLOR), front/rear, and every other
+// color already in use in this file. Deliberately not amber/orange - that family is both already
+// claimed (FOOTPRINT_COLOR) and specifically forbidden here by
+// tests/components/parcel-placement-helpers.test.ts's own source-level regression guard, which
+// checks for the removed suggested-building highlight's old hex value for an unrelated historical
+// reason.
+const STREET_FRONTAGE_COLOR = "#0891b2"; // cyan
 const DEFAULT_EDGE_COLOR = "#2563eb"; // blue - matches the existing parcel-boundary color
 const FOOTPRINT_COLOR = "#ea580c"; // orange - visually distinct from the parcel boundary/edges
 // Color semantics correction (2026-08-30, real-browser-testing follow-up): a SUGGESTED-but-
@@ -168,22 +185,33 @@ function buildingColorExpression(selectedOutlineId: string | null): maplibregl.E
 }
 
 /** Same expression, reused for both the edge-line layer's paint and the label layer's text color -
- * keeps the map highlight and the on-map badges visually consistent. */
-function edgeColorExpression(frontEdgeRef: string | null, rearEdgeRef: string | null): maplibregl.ExpressionSpecification {
+ * keeps the map highlight and the on-map badges visually consistent. Maintenance correction
+ * (2026-09-15, founder direction) - a confirmed street-frontage edge gets its own distinct color,
+ * checked after front/rear (an edge is always front OR rear OR street-frontage OR ordinary, never
+ * more than one - front/rear can never be street-frontage edges since streetFrontageEdgeRefs is
+ * always a subset of sideEdgeRefs, which already excludes front/rear). */
+function edgeColorExpression(frontEdgeRef: string | null, rearEdgeRef: string | null, streetFrontageEdgeRefs: string[]): maplibregl.ExpressionSpecification {
   return [
     "case",
     ["==", ["get", "edgeRef"], frontEdgeRef ?? ""],
     FRONT_COLOR,
     ["==", ["get", "edgeRef"], rearEdgeRef ?? ""],
     REAR_COLOR,
+    ["in", ["get", "edgeRef"], ["literal", streetFrontageEdgeRefs]],
+    STREET_FRONTAGE_COLOR,
     DEFAULT_EDGE_COLOR,
   ];
 }
 
-function edgeWidthExpression(frontEdgeRef: string | null, rearEdgeRef: string | null): maplibregl.ExpressionSpecification {
+function edgeWidthExpression(frontEdgeRef: string | null, rearEdgeRef: string | null, streetFrontageEdgeRefs: string[]): maplibregl.ExpressionSpecification {
   return [
     "case",
-    ["any", ["==", ["get", "edgeRef"], frontEdgeRef ?? ""], ["==", ["get", "edgeRef"], rearEdgeRef ?? ""]],
+    [
+      "any",
+      ["==", ["get", "edgeRef"], frontEdgeRef ?? ""],
+      ["==", ["get", "edgeRef"], rearEdgeRef ?? ""],
+      ["in", ["get", "edgeRef"], ["literal", streetFrontageEdgeRefs]],
+    ],
     6,
     4,
   ];
@@ -345,12 +373,30 @@ export function ParcelPlacementMap({
   const [orientationDeg, setOrientationDeg] = useState(initialPlacement?.orientationDeg ?? 0);
   const [frontEdgeRef, setFrontEdgeRef] = useState<string | null>(initialLotLineSelection?.frontEdgeRef ?? null);
   const [rearEdgeRef, setRearEdgeRef] = useState<string | null>(initialLotLineSelection?.rearEdgeRef ?? null);
+  // Maintenance correction (2026-09-15, founder direction) - the required tri-state "does this
+  // property have street frontage on more than one side?" question, and the resulting set of
+  // confirmed street-facing edges (never limited to exactly one). null = unanswered - never
+  // defaulted, so checkPlacementCompleteness (configure/page.tsx) can correctly keep Next disabled
+  // until the customer actually answers.
+  const [multipleFrontageAnswer, setMultipleFrontageAnswer] = useState<MultipleFrontageAnswer | null>(initialLotLineSelection?.multipleFrontageAnswer ?? null);
+  const [streetFrontageEdgeRefs, setStreetFrontageEdgeRefs] = useState<string[]>(initialLotLineSelection?.streetFrontageEdgeRefs ?? []);
+  // Maintenance correction (2026-09-17, founder-directed through-lot fix) - a separate, minimal
+  // signal from streetFrontageEdgeRefs: whether the customer's OWN rear pick ALSO faces a street
+  // (the ordinary way a real through lot presents - the customer typically clicks their far/
+  // opposite edge as "rear," not as an "additional side street," so the street-facing multi-select
+  // picker above - which structurally excludes front/rear - can never capture this fact). See
+  // LotLineRoleAssignment's own docstring for why this stays a separate field rather than folding
+  // rearEdgeRef into streetFrontageEdgeRefs.
+  const [rearAlsoFacesStreet, setRearAlsoFacesStreet] = useState<boolean>(initialLotLineSelection?.rearAlsoFacesStreet ?? false);
   // Interaction pass (2026-08-30, real-browser-testing follow-up): "Set front"/"Set rear" are now
   // always-visible, independent, single-shot actions (no more "Edit lot lines" mode-toggle/"Done"
   // step, and no more "picking front auto-advances to rear" chaining) - selectingRole is simply
   // "which one is the NEXT click for," starting at null (nothing pending) regardless of whether an
   // initial selection was seeded, since the user can always just press one of the two buttons.
-  const [selectingRole, setSelectingRole] = useState<"front" | "rear" | null>(null);
+  // "streetFrontage" (2026-09-15) is a MULTI-select mode, unlike front/rear - a tap toggles that
+  // edge in/out of streetFrontageEdgeRefs and stays in picking mode (an explicit "Done" button
+  // exits it), since the customer may need to mark more than one edge.
+  const [selectingRole, setSelectingRole] = useState<"front" | "rear" | "streetFrontage" | null>(null);
   // Mirror refs for state read inside the STABLE MapLibre click handlers registered once when the
   // map is created (see the boundaryPolygonWgs84-keyed effect below) - a plain closure over this
   // state there would go stale after the first change, since that effect does not re-run on every
@@ -358,6 +404,7 @@ export function ParcelPlacementMap({
   const selectingRoleRef = useRef(selectingRole);
   const frontEdgeRefRef = useRef(frontEdgeRef);
   const rearEdgeRefRef = useRef(rearEdgeRef);
+  const streetFrontageEdgeRefsRef = useRef(streetFrontageEdgeRefs);
 
   // Building intelligence v1 - dwellingSelection.outlineId is Seattle Building Outlines 2023's own
   // internal id (never shown to the user - see buildingLabel below); null means "not yet answered."
@@ -399,6 +446,51 @@ export function ParcelPlacementMap({
   }, [rearEdgeRef]);
 
   useEffect(() => {
+    streetFrontageEdgeRefsRef.current = streetFrontageEdgeRefs;
+  }, [streetFrontageEdgeRefs]);
+
+  // Reviewer-caught gap (2026-09-15, decision 266339d9-3f11-44c0-b90d-314e9208654a) - re-picking
+  // front or rear changes the entire side-candidate set (sideEdgeRefs), which can silently
+  // invalidate a previously-given multiple-frontage answer: applyMultipleFrontageAnswer would
+  // then fail a stale YES closed to NOT_SURE, but WITHOUT this reset, the radio buttons below would
+  // keep showing "Yes" selected while the parent actually receives NOT_SURE - a real, visible
+  // mismatch between what the customer sees and what gets reported/persisted. Resetting to
+  // unanswered instead forces an explicit re-confirmation, matching this correction's own "no
+  // silent default, ever" principle.
+  //
+  // Maintenance correction (2026-09-18, founder-directed bug fix) - the original guard here was a
+  // ref-based "skip exactly the first effect run" flag (`skippedFirstFrontRearReset`), meant to
+  // avoid wiping a value legitimately seeded from `initialLotLineSelection` on mount (e.g.
+  // returning to Placement via "Previous," which fully unmounts and remounts this component - see
+  // configure/page.tsx's `step === "PLACEMENT" && ...` conditional render). That guard is broken
+  // under React Strict Mode (`next.config.mjs`'s `reactStrictMode: true`, dev-only): Strict Mode
+  // deliberately invokes a component's mount-time effects TWICE to surface exactly this class of
+  // bug, reusing the SAME ref between both invocations - the first invocation correctly skipped
+  // and flipped the ref to `true`, but the immediate second invocation then saw the ref already
+  // `true` and cleared the just-restored answer, live-verified as a real, reproducible defect (the
+  // "Before continuing: answer whether this property has street frontage..." gate reappeared after
+  // a Previous -> Placement round trip, even though front/rear themselves stayed correctly
+  // restored). Fixed by comparing against the ACTUAL prior value instead of a boolean "have I run"
+  // flag: the ref is seeded from `frontEdgeRef`/`rearEdgeRef` at declaration time (already correct
+  // on mount, restored or not), so a same-value effect invocation is always a true no-op -
+  // idempotent by construction, safe under any number of duplicate invocations, and still clears
+  // exactly once on a genuine front/rear change.
+  const prevFrontEdgeRefForReset = useRef(frontEdgeRef);
+  const prevRearEdgeRefForReset = useRef(rearEdgeRef);
+  useEffect(() => {
+    if (frontEdgeRef === prevFrontEdgeRefForReset.current && rearEdgeRef === prevRearEdgeRefForReset.current) {
+      return;
+    }
+    prevFrontEdgeRefForReset.current = frontEdgeRef;
+    prevRearEdgeRefForReset.current = rearEdgeRef;
+    setMultipleFrontageAnswer(null);
+    setStreetFrontageEdgeRefs([]);
+    setRearAlsoFacesStreet(false);
+    setSelectingRole((prev) => (prev === "streetFrontage" ? null : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frontEdgeRef, rearEdgeRef]);
+
+  useEffect(() => {
     if (!anchor) return;
     onPlacementChange({ anchor, orientationDeg });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -406,22 +498,32 @@ export function ParcelPlacementMap({
 
   useEffect(() => {
     if (!frontEdgeRef || !rearEdgeRef) return;
-    if (frontEdgeRef === rearEdgeRef) {
-      onLotLineRolesChange({ status: LotLineRoleStatus.INSUFFICIENT });
-      return;
-    }
-    const n = boundaryPolygon.points.length;
-    const frontIdx = Number(frontEdgeRef.split("-")[1]);
-    const rearIdx = Number(rearEdgeRef.split("-")[1]);
-    const isOpposite = n === 4 && Math.abs(frontIdx - rearIdx) === 2;
-    if (!isOpposite) {
-      onLotLineRolesChange({ status: LotLineRoleStatus.INSUFFICIENT });
-      return;
-    }
-    const sideEdgeRefs = edgeRefs.filter((r) => r !== frontEdgeRef && r !== rearEdgeRef);
-    onLotLineRolesChange({ status: LotLineRoleStatus.ASSIGNED, frontEdgeRef, rearEdgeRef, sideEdgeRefs });
+    // Maintenance correction (2026-09-15) - this used to reimplement BR-U2-9's "opposite edges of
+    // a quadrilateral" rule inline (a second, unsynchronized copy of deriveLotLineRoleAssignment's
+    // own logic in lot-line-roles.ts), and its INSUFFICIENT result dropped frontEdgeRef/rearEdgeRef
+    // entirely. That meant the Review step (app/configure/page.tsx's SUMMARY step, reading
+    // lotLineSelection.frontEdgeRef/.rearEdgeRef) had nothing to render whenever a shape couldn't
+    // be resolved - the user's own deliberate front/rear picks silently vanished after Placement,
+    // and the fallback messaging read as if nothing had been picked at all.
+    // deriveLotLineSelectionForDisplay (parcel-placement-helpers.ts, unit-tested there) is now the
+    // single, pure place this decision is made: it delegates the actual role math to the shared
+    // deriveLotLineRoleAssignment (removing the duplicate rule) and attaches the raw picks to the
+    // INSUFFICIENT case too, so Review can honestly show what the customer chose - still
+    // INSUFFICIENT, still no side resolution, BR-U2-9 unchanged.
+    // Maintenance correction (2026-09-15, founder direction) - layers the required tri-state
+    // multiple-frontage answer on top of the front/rear-derived base assignment via the shared,
+    // tested applyMultipleFrontageAnswer (lot-line-roles.ts). Reported to the parent even before
+    // the frontage question is answered (multipleFrontageAnswer still null) - the base
+    // ASSIGNED/INSUFFICIENT status and front/rear/sideEdgeRefs are already meaningful on their own,
+    // and checkPlacementCompleteness (configure/page.tsx) independently gates "Next" on
+    // multipleFrontageAnswer actually being set, so nothing here needs to withhold the update.
+    const base = deriveLotLineSelectionForDisplay(boundaryPolygon, frontEdgeRef, rearEdgeRef);
+    const withFrontage = multipleFrontageAnswer
+      ? applyMultipleFrontageAnswer(base, multipleFrontageAnswer, streetFrontageEdgeRefsRef.current, rearAlsoFacesStreet)
+      : base;
+    onLotLineRolesChange(withFrontage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frontEdgeRef, rearEdgeRef]);
+  }, [frontEdgeRef, rearEdgeRef, multipleFrontageAnswer, streetFrontageEdgeRefs, rearAlsoFacesStreet]);
 
   /** Shared by both the on-map edge click and the badge-button click (either input method selects
    * the same edge). Only assigns a role while one is actively being picked (selectingRole !== null,
@@ -437,6 +539,18 @@ export function ParcelPlacementMap({
     } else if (selectingRoleRef.current === "rear") {
       setRearEdgeRef(ref);
       setSelectingRole(null);
+    } else if (selectingRoleRef.current === "streetFrontage") {
+      // Front/rear can never also be a street-frontage edge - a stray tap on one of them while
+      // picking is a no-op rather than something applyMultipleFrontageAnswer would later reject
+      // wholesale (it fails the entire YES answer closed to NOT_SURE if any ref isn't a genuine
+      // side candidate - correct, but avoidable here with this small guard).
+      if (ref === frontEdgeRefRef.current || ref === rearEdgeRefRef.current) return;
+      // Maintenance correction (2026-09-15, founder direction) - unlike front/rear, this is a
+      // MULTI-select toggle: a tap adds the edge if absent, removes it if already selected, and
+      // stays in picking mode either way (an explicit "Done" button below exits it) - the customer
+      // may need to mark more than one street-facing edge, and must be able to correct a mis-tap
+      // without restarting.
+      setStreetFrontageEdgeRefs((prev) => (prev.includes(ref) ? prev.filter((r) => r !== ref) : [...prev, ref]));
     }
   }
 
@@ -514,7 +628,7 @@ export function ParcelPlacementMap({
         // "Previous" step-navigation button bringing the user back to an already-answered
         // PLACEMENT step). The paint-sync effect below still takes over for every live change
         // after this initial paint.
-        paint: { "line-color": edgeColorExpression(frontEdgeRef, rearEdgeRef), "line-width": edgeWidthExpression(frontEdgeRef, rearEdgeRef) },
+        paint: { "line-color": edgeColorExpression(frontEdgeRef, rearEdgeRef, streetFrontageEdgeRefs), "line-width": edgeWidthExpression(frontEdgeRef, rearEdgeRef, streetFrontageEdgeRefs) },
       });
 
       map.addLayer({ id: "parcel-boundary-line", type: "line", source: "parcel-boundary", paint: { "line-color": "#2563eb", "line-width": 1 } });
@@ -717,9 +831,9 @@ export function ParcelPlacementMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.getLayer("parcel-edge-lines")) return;
-    map.setPaintProperty("parcel-edge-lines", "line-color", edgeColorExpression(frontEdgeRef, rearEdgeRef));
-    map.setPaintProperty("parcel-edge-lines", "line-width", edgeWidthExpression(frontEdgeRef, rearEdgeRef));
-  }, [frontEdgeRef, rearEdgeRef]);
+    map.setPaintProperty("parcel-edge-lines", "line-color", edgeColorExpression(frontEdgeRef, rearEdgeRef, streetFrontageEdgeRefs));
+    map.setPaintProperty("parcel-edge-lines", "line-width", edgeWidthExpression(frontEdgeRef, rearEdgeRef, streetFrontageEdgeRefs));
+  }, [frontEdgeRef, rearEdgeRef, streetFrontageEdgeRefs]);
 
   // Keeps the existing-building highlight in sync with the current dwelling selection - same
   // "re-apply the paint expression on every change" convention as the edge highlight above. The
@@ -757,23 +871,35 @@ export function ParcelPlacementMap({
         <p role="status" className="mb-3 text-sm text-slate-600">
           {selectingRole === "front" && "Tap the parcel edge that is the FRONT lot line (facing the street) - either on the map or below."}
           {selectingRole === "rear" && "Tap the parcel edge that is the REAR lot line."}
+          {selectingRole === "streetFrontage" && "Tap each parcel edge that faces an additional street - tap a highlighted edge again to remove it, then press Done."}
         </p>
         <div className="relative h-[400px] w-full overflow-hidden rounded-xl border border-slate-200 shadow-sm">
           <div ref={mapContainerRef} className="h-full w-full" role="application" aria-label="Parcel map for shed placement" />
           {labelPositions
-            .filter((m) => selectingRole !== null || m.edgeRef === frontEdgeRef || m.edgeRef === rearEdgeRef)
+            .filter((m) => selectingRole !== null || m.edgeRef === frontEdgeRef || m.edgeRef === rearEdgeRef || streetFrontageEdgeRefs.includes(m.edgeRef))
             .map((m) => {
               const isFront = m.edgeRef === frontEdgeRef;
               const isRear = m.edgeRef === rearEdgeRef;
+              const isStreetFrontage = streetFrontageEdgeRefs.includes(m.edgeRef);
               const editable = selectingRole !== null;
-              const text = isFront ? "FRONT" : isRear ? "REAR" : "";
-              const toneClass = isFront ? "bg-emerald-600" : isRear ? "bg-red-600" : "bg-indigo-600";
+              const text = isFront ? "FRONT" : isRear ? "REAR" : isStreetFrontage ? "ST" : "";
+              const toneClass = isFront ? "bg-emerald-600" : isRear ? "bg-red-600" : isStreetFrontage ? "bg-cyan-600" : "bg-indigo-600";
               return (
                 <button
                   key={m.edgeRef}
                   type="button"
                   disabled={!editable}
-                  aria-label={editable ? `Set this parcel edge as the ${selectingRole} lot line` : isFront ? "Front lot line" : "Rear lot line"}
+                  aria-label={
+                    editable
+                      ? selectingRole === "streetFrontage"
+                        ? `${isStreetFrontage ? "Remove" : "Add"} this parcel edge as an additional street-facing line`
+                        : `Set this parcel edge as the ${selectingRole} lot line`
+                      : isFront
+                        ? "Front lot line"
+                        : isRear
+                          ? "Rear lot line"
+                          : "Additional street-facing lot line"
+                  }
                   onClick={() => editable && selectEdge(m.edgeRef)}
                   style={{ left: m.x, top: m.y }}
                   className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white font-bold text-white shadow-md ${toneClass} ${
@@ -846,6 +972,80 @@ export function ParcelPlacementMap({
             </Button>
           </div>
         </fieldset>
+        {/* Maintenance correction (2026-09-15, founder direction) - required tri-state question,
+         * only shown once front/rear are both resolved (nothing to classify the remaining edges
+         * against before then). No default answer - Next stays disabled (checkPlacementCompleteness,
+         * configure/page.tsx) until the customer picks one of the three options explicitly. */}
+        {frontEdgeRef && rearEdgeRef && (
+          <fieldset className="rounded-lg border border-slate-200 p-4">
+            <legend className="px-1 text-sm font-semibold text-slate-900">Street frontage</legend>
+            <p role="status" className="text-sm text-slate-600">Does this property have street frontage on more than one side?</p>
+            <div className="mt-3 space-y-2">
+              {(
+                [
+                  [MultipleFrontageAnswer.YES, "Yes"],
+                  [MultipleFrontageAnswer.NO, "No"],
+                  [MultipleFrontageAnswer.NOT_SURE, "Not sure"],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="multipleFrontageAnswer"
+                    checked={multipleFrontageAnswer === value}
+                    onChange={() => {
+                      setMultipleFrontageAnswer(value);
+                      if (value !== MultipleFrontageAnswer.YES) {
+                        setStreetFrontageEdgeRefs([]);
+                        setRearAlsoFacesStreet(false);
+                        setSelectingRole((prev) => (prev === "streetFrontage" ? null : prev));
+                      }
+                    }}
+                    className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {multipleFrontageAnswer === MultipleFrontageAnswer.YES && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <p role="status" className="text-sm text-slate-600">
+                  {selectingRole === "streetFrontage"
+                    ? "Tap each additional street-facing line on the map, then press Done."
+                    : streetFrontageEdgeRefs.length > 0
+                      ? `${streetFrontageEdgeRefs.length} street-facing line${streetFrontageEdgeRefs.length > 1 ? "s" : ""} selected (highlighted above).`
+                      : "Select the additional street-facing line(s) on the map."}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectingRole === "streetFrontage" ? (
+                    <Button variant="primary" onClick={() => setSelectingRole(null)}>
+                      Done
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" onClick={() => setSelectingRole("streetFrontage")}>
+                      {streetFrontageEdgeRefs.length > 0 ? "Edit street-facing line(s)" : "Set street-facing side"}
+                    </Button>
+                  )}
+                </div>
+                {/* Maintenance correction (2026-09-17, founder-directed through-lot fix) - the
+                 * street-facing picker above structurally excludes the rear edge (it's already
+                 * uniquely identified, not a multi-select side candidate), so a genuine through
+                 * lot - where the customer's OWN rear pick is the second street - has no way to be
+                 * captured without this. Kept as its own checkbox rather than folded into the
+                 * picker, since rear is a single known edge, not one more side to multi-select. */}
+                <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={rearAlsoFacesStreet}
+                    onChange={(e) => setRearAlsoFacesStreet(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>My rear property line (marked REAR above) also faces a street, not an alley or another property.</span>
+                </label>
+              </div>
+            )}
+          </fieldset>
+        )}
         {/* Building intelligence v1 - only rendered when there's something to ask about (never a
          * dead-end prompt when existingStructures is empty, e.g. a vacant lot or no data). Never
          * exposes outlineId/coordinates/SRID/classification terminology - "Building N" and plain

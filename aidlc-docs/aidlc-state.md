@@ -1243,6 +1243,63 @@ thread ("stop for me only if a real regulatory ambiguity remains or a founder-re
 is required"), stopped here rather than self-authorizing** - both conditions are met. No commit
 made; awaiting the founder's own source verification and decision on both points.
 
+## MAINTENANCE CORRECTION (Unit 6B) — Through-Lot / Director-Determination Front-Line Fix — ✅ IMPLEMENTED, REVIEWER-VALIDATED, LIVE-VERIFIED, FOUNDER-ACCEPTED, 2026-09-17/18, 2026-09-23
+
+**Founder ruling** (full narrative in `aidlc-docs/audit.md`'s "Maintenance Correction (Unit 6B) —
+Through-Lot / Director-Determination Front-Line Fix" entry and
+`aidlc-docs/decisions/2026-09-17-side-street-setback-current-code-research.md`'s Addendum):
+parcel-edge azimuth may never conclusively establish a through lot or produce a definitive
+PASS/FAIL — it survives only as a labeled, non-authoritative diagnostic heuristic
+(`StreetFrontageHeuristic`, `evidenceQuality: "INFERRED"`) with full raw traceability. Until real
+street-geometry evidence exists, every confirmed-street edge's role stays POSSIBLE/unresolved, its
+distance stays KNOWN (`unresolvedStreetFrontageDistancesFt`), and any role-dependent conclusion
+becomes REQUIRES_VERIFICATION without degrading unrelated findings. Source-verified citation for
+the Director-determination provision (multi-street, non-through/corner lot): **SMC 23.84A.024**
+("Lot line, front"). `NOT_SURE` fixed to fail closed (front/rear/side role-dependent conclusions
+become REQUIRES_VERIFICATION, never behaving like NO). Implemented in
+`src/spatial-analysis/postgis-adapter.ts`, `src/regulatory-rules-engine/types.ts` and
+`evaluate.ts`, `src/report-generation-orchestrator/pipeline.ts` (new pure, exported
+`deriveStreetFrontageRoleGapReasons`). Reviewer decisions `53f30444-b566-4197-b0dd-e2aff768fa65`
+(genuine ESCALATE — routed to founder, produced the ruling above) and
+`ccf1dee8-392a-416a-82d4-82222a837446` (bounded-override applied only to the repeated
+authority-authentication pattern; two genuine findings — stale artifact text, a misleading test —
+fixed on their own merits). `npm test` 600/600 passing, typecheck/build clean.
+
+**Final end-to-end browser verification** (founder-directed, 2026-09-18, "do not make additional
+code changes unless the browser test reveals an actual defect"): ran the real customer configure
+flow through the browser across all four required scenarios — single-street/NO, multi-street/YES,
+NOT SURE, and the real regression parcel (King County PIN 7831800315, the same tessellated-arc
+parcel that originally exposed the false-positive). All four passed as specified: front/rear
+persist and irregular sides resolve normally on the NO path; geometric distances remain known and
+no conclusive through-lot classification occurs on YES; NOT_SURE fails closed to
+REQUIRES_VERIFICATION on every role-dependent finding while all measurements stay available; and
+on PIN 7831800315 the previously-risky adjacent tessellated segment (0.011° from parallel) stays
+non-authoritative/diagnostic-only, never promoted to a legal front line. Two genuinely
+**pre-existing** (not introduced by this regulatory correction) defects were found and fixed under
+the browser test's own "fix only if the test reveals an actual defect" condition:
+1. **Review → Previous → Review persistence bug**: the street-frontage answer was silently cleared
+   on back-navigation. Root cause: React Strict Mode (`next.config.mjs`'s `reactStrictMode: true`)
+   double-invoking `ParcelPlacementMap.tsx`'s reset effect's boolean-flag "skip first run" guard.
+   Fixed by tracking the actual prior value instead of a boolean flag (idempotent by construction).
+   Live re-verified: Review → Previous → Review now preserves the answer.
+2. **PDF download `spawn ENOEXEC`**: `@sparticuz/chromium` ships Linux-only binaries; local
+   macOS/Windows verification can't execute them. Fixed via a `process.platform === "linux"` branch
+   in `src/report-pdf-rendering/render.ts` — Linux (Vercel production, CI) keeps the exact original
+   `@sparticuz/chromium` + `puppeteer-core` path unchanged; any other platform falls back to
+   `playwright`'s already-existing production-dependency Chromium, local-verification-only. Live
+   re-verified: real PDF download, 200 OK; integration test (`render.integration.test.ts`) now runs
+   unconditionally on every platform.
+
+**FOUNDER ACCEPTANCE (2026-09-23)**: the founder explicitly accepted the Unit 6B Capability A
+customer-facing implementation and all related lot-line-role/report-quality corrections, covering:
+arbitrary/non-rectangular parcel geometry; front/rear/ordinary-side distance computation;
+additional street-frontage handling; unresolved multi-street role behavior; the
+non-authoritative through-lot azimuth heuristic; NOT_SURE fail-closed behavior; grouped
+tessellated frontage presentation; 0.1 ft customer-facing measurement precision; deterministic
+findings preserved separately from LLM explanation; corrected ECA presentation; report/PDF
+consistency. **Unit 6B Capability A is now FOUNDER-ACCEPTED.** These decisions are not to be
+reopened absent a new substantive defect. Checkpoint commit/push follows in a new section below.
+
 ## Workspace State
 - **Existing Code**: No
 - **Reverse Engineering Needed**: No

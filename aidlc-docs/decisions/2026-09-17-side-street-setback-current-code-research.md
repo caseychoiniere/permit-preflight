@@ -204,3 +204,242 @@ lot/multiple side-line segments a genuinely open question, not resolved by this 
 is a **pre-existing gap** (predates this correction, affects ordinary side edges exactly as much as
 street-frontage ones) and is disclosed here rather than silently fixed — it is out of scope for this
 SIDE_STREET-specific correction and awaits its own dedicated research/decision.
+
+## Addendum (2026-09-23) — Unit 6B Capability B: P2b "required setback" bounded research check
+
+**Founder-directed, 2026-09-23**, in response to a Capability B (shed permit determination) code
+generation plan whose §2 proposed leaving `isInRequiredSetback` (P2b's accessory-structure
+height-limit input) permanently `undefined`, reasoning that Unit 1's existing `REAR_SETBACK`/
+`SIDE_FRONT_SETBACK_STANDARD` rule specs represent a different figure than SMC 23.44.070's
+"required setback" reference, and that the correct general figure was unsourced. The founder
+directed a bounded current-code research check — specifically flagging that the plan's reference
+to superseded "SMC 23.44.014" should be checked against current SMC 23.44.070/23.44.090 — before
+accepting or rejecting that premise.
+
+**Sources consulted (current, authoritative, fetched live 2026-09-23)**:
+1. **SMC 23.44.070 ("Structure height")** — full current text, Municode Library,
+   `https://library.municode.com/wa/seattle/codes/municipal_code?nodeId=TIT23LAUSCO_SUBTITLE_IIILAUSRE_CH23.44NERE_23.44.070STHELI`
+   (chapter-level fetch; section confirmed present verbatim). Cites `(Ord. 127376, § 31, 2025.)`.
+2. **SMC 23.44.090 ("Setbacks")** — full current text (subsections A–K), same fetch, same
+   ordinance citation. Table A and every subsection reconfirmed, superseding the prior 2026-09-17
+   pass's partial reading (that pass only quoted Table A and the through-lot/definitions context;
+   this pass reads subsections D–K in full for the first time).
+
+**The current Chapter 23.44 section sequence is .010/.020/.030/.040/.050/.060/.070/.080/.090/
+.100/... — there is no "23.44.014" anywhere in the current chapter.** The original Unit 1
+citation ("rear setback = 5 ft in this zone," `aidlc-docs/inception/requirements/research-findings.md`
+line 53) predates Ordinance 127376's 2025 renumbering/rewrite and is confirmed **superseded** —
+current law expresses these same figures through 23.44.090 (and, for the REAR figure specifically,
+through 23.44.090.I.2, not Table A's general row — see below). This is a citation-currency
+correction to the research record, not a change to any numeric threshold this tool already
+enforces.
+
+### Answering the founder's six questions
+
+**Q1 — Does current 23.44.070 make the 12-ft limit depend on whether the structure is in a
+"required setback" established under current 23.44.090? YES, verbatim**:
+
+> 23.44.070.A.3: "The height limit for accessory structures that are located in required setbacks
+> is 12 feet, except as follows: [roof exceptions in .a/.b]."
+
+23.44.070 does not cite a section number for "required setbacks," but 23.44.090 ("Setbacks") is
+the only section in Chapter 23.44 that defines required setbacks at all (23.44.080 is lot
+coverage; 23.44.100 is inter-structure separation, a distinct concept) — unambiguous.
+
+**Q2 — Are the required-setback boundaries derivable from current Table A for 23.44.090, not
+superseded 23.44.014? YES, for FRONT and SIDE — with one real, previously-undisclosed nuance for
+REAR**, found by reading subsections D–K in full (not done in the 2026-09-17 pass):
+
+Subsection **I.2** ("Other enclosed structures allowed in setbacks") is the specific provision
+that lets a non-dwelling accessory structure (a shed) be built **inside** the required rear
+setback at all: *"Enclosed structures that are not dwelling units are allowed in the rear setback
+provided that: (a) They are not located within 5 feet of a rear lot line that is not an alley lot
+line; (b) They are not more than 12 feet in height; and (c) They are separated from a dwelling
+unit by at least 3 feet, eave to eave."* **This is where this codebase's existing ACTIVE
+`REAR_SETBACK` rule's numbers (`minFt: 5`, `minFtIfAlleyAdjacent: 0`) actually come from** — not
+Table A's general Rear row (15 ft for 1-2 units / 10 ft for 3+ units, non-alley). Table A's Rear
+row and subsection I.2's 5-ft figure are two **different** numbers for two different questions:
+Table A's row is the boundary of the required-setback zone itself (the thing 23.44.070.A.3's
+height provision cares about); subsection I.2's 5-ft figure is how close an enclosed accessory
+structure may sit to the rear lot line, a *smaller* distance specifically because I.2 is an
+exception letting the shed sit *inside* that same required-setback zone. **A shed satisfying this
+codebase's existing rear-setback check (≥5 ft from a non-alley rear line) is, by the very
+structure of subsection I.2, almost always still located inside the Table-A-defined required rear
+setback** (since I.2 exists precisely to permit that placement) **unless** the shed is far enough
+back to clear Table A's own larger boundary (15 ft / 10 ft / 5 ft depending on unit count and
+FTSA) — a real, previously-undisclosed distinction between "meets the shed's own required
+distance from the line" and "is outside the required-setback zone entirely."
+
+By contrast, **FRONT and SIDE have no equivalent accessory-specific reduced-distance exception**
+in subsections D–K for an ordinary shed (subsection G's front-setback allowance is
+garage/carport-specific, with its own area/width limits, not a general shed exception; sheds are
+not addressed for the front setback at all, meaning a shed must meet the *same* front setback as
+a primary structure). This codebase's existing ACTIVE `SIDE_FRONT_SETBACK_STANDARD` rule
+(`frontFt: 15`, `sideAverageFt: 5`, `sideMinFt: 3`) **already matches Table A's general Front (1-2
+unit) and Side ("all other lots") rows exactly** — confirmed by direct comparison, not assumed.
+So for FRONT and SIDE, this codebase's existing distance-vs-threshold comparison **is already the
+same comparison 23.44.070.A.3's "required setback" needs** — no separate/different figure exists.
+
+**Q3 — What property facts determine the applicable front/rear/side setback for a normal shed
+parcel?**
+- **Front**: dwelling-unit count on the lot (1–2 units → 15 ft; 3+ units, or any nonresidential
+  structure per Table A's footnote 1, → 10 ft). A Queen Anne Boulevard frontage exception exists
+  (footnote 2) — not relevant to an ordinary parcel, not modeled, not blocking.
+- **Rear**: dwelling-unit count (1–2 units, non-alley → 15 ft; 3+ units, non-alley → 10 ft),
+  **and** lot area + frequent-transit-service-area (FTSA) status jointly (<5,000 sq ft **and**
+  within an FTSA → 5 ft, overriding the unit-count rows), **and** alley adjacency (abutting an
+  alley → 0 ft, i.e. no rear setback required at all).
+- **Side**: lot area + FTSA status jointly (<5,000 sq ft **and** within an FTSA → 3 ft flat; every
+  other lot → 5 ft average / 3 ft minimum).
+
+**Q4 — Which facts do we already have?** Verified by direct grep, not assumed:
+- `alleyAdjacent` — **YES**, already collected (`dimensions.alleyAdjacent`, already feeds the
+  existing `REAR_SETBACK` rule).
+- Lot area — **YES**, already computed (`computeParcelAreaSqFt`/`rawParcelAreaSqFt`, already used
+  for garage lot coverage).
+- Front/rear/side lot-line roles, and through-lot/multi-street unresolved-role conditions —
+  **YES**, already fully resolved by this session's own prior correction
+  (`distanceToFrontLotLineFt`/`distanceToRearLotLineFt`/`distanceToSideLotLineFt`,
+  `frontRoleEvidenceGapReason`/`rearRoleEvidenceGapReason`/`sideRoleEvidenceGapReason`,
+  `unresolvedStreetFrontageDistancesFt`).
+
+**Q5 — Which facts are genuinely missing?** Verified absent by direct grep across `src`/`app`,
+not assumed:
+- **Dwelling-unit count on the existing lot.** No such fact exists anywhere in Property
+  Intelligence or the shed/garage screening-request schema today (`vacant-land-density.ts`'s
+  dwelling-unit concept is for a *proposed new* Vacant Land development, a structurally different
+  question — not reusable here).
+- **Frequent-transit-service-area (FTSA) status.** Confirmed genuinely absent — this codebase's
+  own existing code already discloses this gap in a different context:
+  `pipeline.ts`'s Unit 5 lot-coverage narration states verbatim *"no transit-service-area data
+  source is integrated"* (line ~838), and `evaluate-vacant-land.ts`'s `TRANSIT_BONUS` scenario
+  exists only as a named, not-yet-data-backed scenario. No adapter, fact, or GIS integration for
+  FTSA exists anywhere in this codebase for any unit.
+
+**Q6 — Can `isInRequiredSetback` be computed deterministically for a meaningful subset of
+properties now? Proposed: YES, via a bounded-band technique — not yet implemented, presented here
+for founder confirmation before any code is written**, per the founder's explicit "do not
+implement yet" instruction:
+
+For each of front/rear/side independently, Table A's *possible* thresholds (given the genuinely
+missing unit-count/FTSA facts) form a small, fully-enumerable set per boundary type:
+- Front: {10, 15} ft.
+- Rear (non-alley): {5, 10, 15} ft; alley → 0 ft (**known** via `alleyAdjacent`, not ambiguous).
+- Side: the 3 ft absolute minimum is common to **both** possible rows (FTSA-3ft-flat and
+  all-other-lots-5avg/3min) — only the *average* component differs, and this codebase does not
+  compute the average component today for any side edge (the 2026-09-17 research's own disclosed,
+  pre-existing "genuinely open item"), so a point-distance comparison has effectively one
+  operative floor here, not two.
+
+**Proposed rule, mirroring this unit's own already-founder-approved Flow-4 Case A/B/C
+banding technique** (bounded reasoning between a known floor and a known ceiling, rather than
+guessing a missing fact): for a boundary whose exact applicable figure is unresolved (unit count
+or FTSA unknown), compare the shed's known distance against the **smallest** possible threshold
+and the **largest** possible threshold for that boundary type:
+- `distance < min(possible thresholds)` → definitely **inside** every possible required setback →
+  `isInRequiredSetback = true` for that boundary, regardless of which threshold actually applies.
+- `distance ≥ max(possible thresholds)` → definitely **outside** every possible required setback →
+  `isInRequiredSetback = false` for that boundary.
+- Otherwise (distance falls in the ambiguous band between the smallest and largest possible
+  thresholds) → **REQUIRES_VERIFICATION** for that boundary specifically — never guessed.
+- Alley-adjacent rear → deterministically 0 ft required setback (known fact, not banded) → that
+  boundary is never "inside a required setback."
+- **`isInRequiredSetback` (the single boolean `evaluateAccessoryHeightLimit` needs) = `true` if
+  ANY resolved boundary is `true`; `false` only if EVERY boundary is definitively resolved `false`;
+  otherwise unresolved/`REQUIRES_VERIFICATION`** — mirroring this project's existing "any confirmed
+  hazard/condition is dispositive, all-clear requires every check to resolve clean" pattern used
+  elsewhere (e.g. the ECA permit criterion, BR-U6B-3).
+- **REAR's boundary uses Table A's general row (5/10/15 ft), never the codebase's existing 5-ft
+  `REAR_SETBACK.minFt`** — reusing the existing rule's own 5 ft figure directly would be
+  systematically wrong per Q2's finding above (it is the *shed's own* reduced distance, not the
+  required-setback zone's boundary); the smallest-possible-threshold in the banded comparison
+  happens to also be 5 ft here, which is a coincidence of Table A's own small-lot/FTSA row, not a
+  reuse of the existing rule spec.
+
+This is a genuine, disclosed methodological proposal — RULE TIER stays Tier 1 (23.44.070/090 are
+fully deterministic code text; nothing about them is discretionary), while the **specific
+per-property fact** (unit count, FTSA) stays an evidence gap exactly per this project's own
+governing BR-U6B-14 principle, never conflated with a tier question. **Not implemented. Awaiting
+founder confirmation of this bounded-band technique** before any code is written.
+
+### Correction (2026-09-23, same day) — founder-approved with required corrections
+
+**Founder decision: APPROVE the bounded-band approach in principle, with required corrections.**
+The per-boundary model above is retained (three-state `DEFINITELY_INSIDE` /
+`DEFINITELY_OUTSIDE` / `REQUIRES_VERIFICATION` per boundary, aggregated as: **any boundary
+definitely inside → `true`; every relevant boundary definitely outside AND all applicable
+additional-setback conditions ruled out → `false`; otherwise → `undefined`/
+`REQUIRES_VERIFICATION`**), but three parts of the original proposal text above are corrected as
+follows.
+
+> **SUPERSEDED**: the Q6 "Side" band's statement that *"a point-distance comparison has
+> effectively one operative floor here, not two"* and the proposed rule that collapsed the Side
+> analysis to only the shared 3 ft floor. **This understated the Side band and is corrected below.**
+
+**1. FRONT band (approved, with a Queen Anne Boulevard guard)**: `distance < 10` → definitely
+inside; `distance ≥ 15` → definitely outside the **base** Table-A front setback, but Table A for
+23.44.090 carries a special exception (footnote 2) for lots abutting the **Queen Anne Boulevard**
+landmark right-of-way (front setback becomes 20 ft, or the average of abutting lots' front
+setbacks, or a slope-adjusted figure — whichever is least). **Checked**: no street-name or
+address evidence is persisted anywhere in this codebase past initial parcel *resolution* —
+`CandidateParcel.canonicalAddress` (`src/parcel-resolution/types.ts`) is used transiently during
+address-matching (`resolve.ts`) and is never written to `screeningRequests` or any other
+persisted table (confirmed: no `address` column exists anywhere in `src/db/schema.ts`). **There
+is therefore no way to rule the Queen Anne Boulevard exception in or out today** — per the
+founder's own instruction, this is not built as a new adapter; instead, whenever the front band
+would otherwise resolve `distance ≥ 15` → definitely outside, it is downgraded to
+`REQUIRES_VERIFICATION` (reason: "special Queen Anne Boulevard frontage unresolved (no
+street-name evidence available)"). In practice this means the front boundary's OUTSIDE branch is
+never reachable with today's evidence — an honest, disclosed consequence of a genuine data gap,
+not a defect. `10 ≤ distance < 15` remains `REQUIRES_VERIFICATION` (dwelling-unit count unknown),
+unchanged from the original proposal.
+
+**2. REAR band (approved as proposed)**: `distance < 5` → definitely inside; `5 ≤ distance < 15`
+→ `REQUIRES_VERIFICATION` (unit count/FTSA unknown); `distance ≥ 15` → definitely outside the
+base Table-A rear setback, **subject to the same Chapter 23.53 guard as every boundary (§3
+below)**. Continues to distinguish Table A's rear row from 23.44.090.I.2's separate 5 ft
+accessory-placement exception (Q2 above) — `REAR_SETBACK.minFt` is never reused as the
+required-setback boundary. **Alley-abutting rear**: Table A states no ordinary rear setback is
+required, but per the founder's instruction this does NOT by itself resolve the rear boundary to
+definitely-outside — it is routed through the same Chapter 23.53 guard as any other
+definitely-outside candidate.
+
+**3. SIDE band — corrected, no longer collapsed to the 3 ft floor**: `minimum applicable side
+distance < 3` → definitely inside (both possible Table-A side rows share this floor); **every**
+applicable side distance `≥ 5` → definitely outside the base side setback (5 ft is the "all other
+lots" row's average anchor — the safe upper extremum, not asserted as a precise average
+computation, which remains the disclosed, separately-open NR-averaging-methodology gap); `3 ≤
+minimum distance < 5` → `REQUIRES_VERIFICATION` (FTSA status unknown, and/or the open averaging
+methodology). A side distance of exactly 3–5 ft is **never** claimed as definitely outside merely
+because it clears the 3 ft absolute floor — the corrected treatment the founder required.
+
+**4. Chapter 23.53 additional-setback guard (new)**: 23.44.090.C states additional structure
+setbacks may be required to satisfy Chapter 23.53 (streets, alleys, easements). **Checked**: no
+fact, adapter, or column anywhere in Property Intelligence, Spatial Analysis, or the persisted
+schema models street/right-of-way width, improvement status, or dedication requirements (grepped
+for "right of way," "rightOfWay," "streetWidth," "23.53," "unopened" across `src/property-
+intelligence` and `src/spatial-analysis` — zero matches). **This guard can never be satisfied
+with today's evidence** — per the founder's explicit "smallest safe evidence guard" instruction,
+this means a base-band **definitely-outside** result on ANY boundary is currently always
+downgraded to `REQUIRES_VERIFICATION` (reason: "additional Chapter 23.53 setback applicability
+unresolved"), while a base-band **definitely-inside** result remains fully dispositive (`true`)
+without needing this guard at all — the guard only ever blocks the OUTSIDE→`false` direction, per
+the founder's explicit instruction, never the INSIDE→`true` direction. **Practical consequence,
+stated plainly**: with today's evidence, `isInRequiredSetback` can resolve `true` (some boundary
+definitely inside) or `REQUIRES_VERIFICATION`, but **not yet `false`** for any real property — the
+aggregation logic itself (every relevant boundary definitely outside → `false`) is implemented
+correctly, it simply has no reachable evidence today. **Correction (2026-09-23, Capability B plan
+resubmission, decision `3fdb3357-510f-49d0-baa2-7dd20dabae9f`)**: an earlier version of this text
+claimed the `false` path "activates automatically" once future evidence is sourced — overstated.
+The pipeline derivation function's own input surface must first be **extended** with new
+parameters (dwelling-unit count, FTSA status, street-name/address data, Chapter 23.53/right-of-way
+status) before either guard could ever resolve; supplying new data alone, without also changing
+that function's signature and the two guard conditions, would not activate anything. This remains
+Tier 1 throughout — deterministic code text, gated on evidence quality, never a tier question
+(BR-U6B-14) — but reaching `false` in practice requires both new evidence AND a future code change
+to consume it, not evidence alone.
+
+No numeric threshold above is invented — every figure (10/15 front, 5/10/15 rear, 3/5 side, and
+the guard conditions) is drawn directly from the current Table A/subsection text already quoted
+in this document. **Still not implemented as of this correction** — implementation proceeds now
+under Unit 6B Capability B's Code Generation plan, which this correction updates.

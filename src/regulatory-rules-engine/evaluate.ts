@@ -1061,7 +1061,16 @@ function evaluateAccessoryHeightLimit(project: ShedProjectDetails): Finding {
   const subject = "Accessory structure height limit";
   let limit: AccessoryStructureHeightLimit;
   if (project.isInRequiredSetback === undefined) {
-    limit = { basis: "REQUIRES_VERIFICATION", reason: "Whether the shed's proposed placement falls inside a required setback is unresolved." };
+    // Founder-directed bounded-band derivation (2026-09-23) - cite the specific evidence gap(s)
+    // pipeline.ts's deriveIsInRequiredSetback identified, never a generic "unavailable" message
+    // when a specific cause is known (aidlc-docs/decisions/2026-09-17-side-street-setback-current
+    // -code-research.md's "Correction (2026-09-23, same day)" section).
+    const reasons = project.requiredSetbackEvidenceGapReasons;
+    const reason =
+      reasons && reasons.length > 0
+        ? `Whether the shed's proposed placement falls inside a required setback is unresolved: ${reasons.join("; ")}.`
+        : "Whether the shed's proposed placement falls inside a required setback is unresolved.";
+    limit = { basis: "REQUIRES_VERIFICATION", reason };
   } else if (project.isInRequiredSetback) {
     limit = { basis: "IN_REQUIRED_SETBACK", limitFt: 12, roofMayNotExceedLimit: true };
   } else {

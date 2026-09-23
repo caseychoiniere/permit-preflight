@@ -135,8 +135,22 @@ export interface ShedProjectDetails {
   /** Unit 6B - whether the shed's already-computed placement falls inside a required setback,
    * feeding P2b's location-sensitive height determination (evaluate.ts's
    * evaluateAccessoryHeightLimit). Server-derived from the existing setback-distance computation,
-   * never client-supplied - undefined means the setback-location fact itself is unresolved. */
+   * never client-supplied - undefined means the setback-location fact itself is unresolved.
+   * Founder-approved bounded-band derivation (aidlc-docs/decisions/2026-09-17-side-street-setback
+   * -current-code-research.md's "Correction (2026-09-23, same day)" section, 2026-09-23) -
+   * pipeline.ts's deriveIsInRequiredSetback computes this from SMC 23.44.090 Table A's per-boundary
+   * thresholds against the shed's already-known front/rear/side distances, never from
+   * REAR_SETBACK/SIDE_FRONT_SETBACK_STANDARD's own ACTIVE rule minimums (23.44.090.I.2's distinct
+   * accessory-placement exception, a different figure - see that same research addendum). */
   isInRequiredSetback?: boolean;
+  /** Unit 6B - the specific reason(s) isInRequiredSetback is undefined, when it is, so
+   * evaluateAccessoryHeightLimit's REQUIRES_VERIFICATION finding can cite the real evidence gap
+   * (dwelling-unit count, frequent-transit-service-area status, an unresolved lot-line role, the
+   * unresolvable Chapter 23.53 additional-setback guard, or the unresolvable Queen Anne Boulevard
+   * special-frontage guard) instead of a generic "unavailable" message. Always populated when
+   * isInRequiredSetback is undefined; empty/absent only when isInRequiredSetback is itself
+   * defined. */
+  requiredSetbackEvidenceGapReasons?: string[];
 }
 
 /** Unit 4 (domain-entities.md) - shares every setback/height field with ShedProjectDetails

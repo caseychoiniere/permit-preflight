@@ -1300,6 +1300,133 @@ findings preserved separately from LLM explanation; corrected ECA presentation; 
 consistency. **Unit 6B Capability A is now FOUNDER-ACCEPTED.** These decisions are not to be
 reopened absent a new substantive defect. Checkpoint commit/push follows in a new section below.
 
+## UNIT 6B CAPABILITY B (Shed Permit Determination) — Code Generation Plan APPROVED (founder-directed research + bounded override), IMPLEMENTATION PROCEEDING, 2026-09-23
+
+**Founder directed (2026-09-23)**: proceed with Capability B (shed permit determination — the
+`buildingPermit`/`reviewPath` two-dimensional model plus P2b's standalone accessory-height
+finding) next; do not start Capability C; do not activate any of the 19 TRIAGED rules.
+Verified by direct inspection before planning: domain types, Zod schema, and every evaluator
+(`evaluateShedPermitRequirement`, `evaluateAccessoryHeightLimit`, and constituents) already exist
+and are already unit-tested (50+23 tests) from a prior pass; nothing downstream (intake UI,
+pipeline, report/PDF) wires them — this is the exact scope of the plan
+(`aidlc-docs/construction/unit-6b-shed-report-value-expansion/code-generation-plan-capability-b.md`).
+
+**Plan gate, 3 cycles**: `UNIT-6B-CAPABILITY-B-SHED-PERMIT-DETERMINATION:code-generation-plan`
+v1→v2→v3. v1 ESCALATE (`3ad7b6b8-7ccf-4e6d-84e6-f3d993057ccb`) correctly caught 2 genuine MAJOR
+engineering findings (structural-span client-side trigger too broad; PDF missing trade
+disclosures/disclaimer/footer — both fixed) and correctly identified that my own proposed
+`isInRequiredSetback` scoping decision (leave permanently `undefined`) was itself a
+founder-reserved regulatory/scope call, not mine to decide — routed to the founder per the
+reviewer's own CRITICAL finding.
+
+**Founder-directed bounded current-code research check** (not self-authorized): live Municode
+fetch of the full current SMC 23.44.070 ("Structure height") and the full current SMC 23.44.090
+("Setbacks," subsections A–K, not just Table A as the 2026-09-17 pass had read) — full findings in
+`aidlc-docs/decisions/2026-09-17-side-street-setback-current-code-research.md`'s "Addendum
+(2026-09-23)" and "Correction (2026-09-23, same day)" sections. Key findings: the plan's
+"SMC 23.44.014" citation was a stale pre-Ordinance-127376 citation (confirmed: no such section
+exists in the current chapter); for FRONT and SIDE, this codebase's existing ACTIVE
+`SIDE_FRONT_SETBACK_STANDARD` rule already matches Table A's general figures exactly; for REAR,
+the existing `REAR_SETBACK.minFt=5` is actually sourced from 23.44.090.I.2's distinct
+accessory-structure placement exception, not Table A's general Rear row — a genuinely different
+figure, confirming the original concern was right for REAR specifically. Dwelling-unit count and
+frequent-transit-service-area (FTSA) status are confirmed genuinely absent from this codebase for
+any unit (verified by grep, including this codebase's own existing disclosure in `pipeline.ts`:
+"no transit-service-area data source is integrated").
+
+**Founder decision**: APPROVED a bounded-band per-boundary derivation (front/rear/side, each
+`DEFINITELY_INSIDE`/`DEFINITELY_OUTSIDE`/`REQUIRES_VERIFICATION`, aggregated as any-inside→`true`,
+every-relevant-boundary-outside→`false`, otherwise→`REQUIRES_VERIFICATION` with specific reasons),
+with required corrections: the Side band must not collapse to only the shared 3ft floor (corrected
+to a proper 3–5ft band); a Chapter 23.53 additional-setback guard (verified: no right-of-way/
+street-width fact exists anywhere in this codebase, so this guard can never currently be
+satisfied, meaning a `DEFINITELY_OUTSIDE` conclusion is presently unreachable for any boundary —
+an honest, disclosed consequence, not a defect); a Queen Anne Boulevard special-frontage guard for
+FRONT specifically (verified: no street-name/address evidence is persisted anywhere past initial
+parcel resolution). Every numeric threshold is drawn directly from Table A/subsection text already
+quoted with citations — none invented. Remains Tier 1 throughout (BR-U6B-14).
+
+**Plan gate v2/v3**: v2 ESCALATE (`3fdb3357-510f-49d0-baa2-7dd20dabae9f`) correctly caught 2
+further genuine MAJOR findings — my own "activates automatically once future evidence exists"
+claim was overstated (the derivation function's input surface must itself be extended, not just
+fed new data — corrected in both the plan and research doc); the structural-span client-side
+trigger still didn't address BR-U6B-7's ECA-disqualifier step, which is genuinely infeasible
+client-side (verified: `seattle-eca.ts` is only invoked from the paid post-checkout pipeline, never
+during the free `configure` wizard — gating on it would require new mid-wizard server
+infrastructure, out of scope; documented as an accepted, harmless-over-ask-only limitation). Both
+fixed on their own merits. v3 (`17332ae3-ef0a-4dc6-b02a-2bf1ffb260e7`) downgraded both to INFO
+(confirming the fixes) and ESCALATEd solely on the same already-litigated "founder authorization
+cannot be authenticated from the packet" pattern this session established and the founder's own
+2026-09-15 standing bounded-override authorization already covers — **all three of the override's
+conditions are met** (identical known limitation; no substantive blocking finding, both remaining
+findings are INFO; no new founder-reserved decision, the exact design being escalated on is the
+one the founder gave directly, by name, in this conversation) — **applied per the founder's own
+explicit instruction in this exact task's message ("If ESCALATE only because it cannot
+authenticate this founder decision, apply the existing bounded override")**. Plan gate is
+**APPROVED by bounded override, proceeding to implementation.** All reviewer decision IDs
+(`3ad7b6b8`, `3fdb3357`, `17332ae3`) remain unaltered in `.ai/reviewer/decisions.jsonl`.
+
+### Implementation COMPLETE, live-verified, 2026-09-23 — awaiting founder review
+
+Built exactly the plan's scope: `ShedProjectDetails.requiredSetbackEvidenceGapReasons` (new,
+additive field) + `evaluateAccessoryHeightLimit` now cites specific evidence gaps
+(`src/regulatory-rules-engine/types.ts`/`evaluate.ts`); `deriveIsInRequiredSetback` (new pure,
+exported function implementing §2's approved design exactly) + full Capability B field wiring in
+the shed `project = {...}` construction site + `accessoryHeightLimitFinding` folded into persisted
+findings + `shed-permit-requirement` evidence entry, gated correctly behind the untouched
+`evaluateProject` ACTIVE gate (`src/report-generation-orchestrator/pipeline.ts`); the full
+always-asked/progressive shed-permit intake UI, including the corrected client-side structural-span
+trigger, in `app/configure/page.tsx`; a new "Building permit" report section
+(`app/components/ReportView.tsx`) and matching PDF block (`src/report-pdf-rendering/render.ts`),
+both dormant-by-construction until the evidence entry exists. No `approve()`/`activate()` call
+anywhere; Capability C untouched; P8 not reintroduced as tiered.
+
+**Verification**: `npm test` 624/624 (+24 new: `deriveIsInRequiredSetback` incl. a hard-invariant
+"false is unreachable with today's inputs" test, `evaluateAccessoryHeightLimit` gap-reason
+passthrough, PDF Building-permit block, `ShedProjectConfigurationSchema` intake round-trip);
+`tsc --noEmit` clean; `npm run build` clean (44 routes, confirms `evaluate.ts`'s pure functions
+bundle safely into the client component). Live-verified with a real DB connection: (1)
+`pipeline.integration.test.ts` 3/3 passing (real end-to-end report generation, zero regressions);
+(2) real dev server + real Seattle parcel (3216 Fuhrman Ave E, PIN 1959703080) through the actual
+`configure` wizard — every new field rendered, progressive disclosure toggled correctly live in
+both directions (structural-span question appeared the instant a client-knowable criterion went
+`NOT_MET`, disappeared the instant the foundation became an STFI disqualifier; roof-overhang
+question disappeared once footprint exceeded 120 sq ft), zero console errors, zero server
+validation errors reaching Review; (3) queried the real database row directly and confirmed
+`foundationType`/`attachment`/`intendedUse`/`utilityIntent` persisted exactly as entered.
+
+**Known, disclosed gaps** (not fixed in this pass, recorded honestly rather than silently):
+`outcome.permitRequirement`/`accessoryHeightLimitFinding` stay correctly dormant in every
+environment (all 19 governance rows remain TRIAGED) — so the "Building permit" report section and
+PDF block cannot yet be observed on any real generated report; no automated test exists for the
+`ReportView` React component (no component-test infrastructure exists anywhere in this codebase);
+back-navigation for the new intake state was not separately automated-tested (uses the same
+plain-`useState` pattern as the pre-existing `dimensions` field, not the async-reset-effect pattern
+that caused September's Strict Mode bug). Full detail, including which plan checkboxes are marked
+done vs. explicitly not-done-and-why, in the plan document itself.
+
+### FOUNDER ACCEPTANCE (2026-09-23) — DORMANT-STATE ACCEPTANCE
+
+The founder personally ran the real browser flow (intake questions, persistence/back-navigation)
+and generated a real report, independently confirming the exact dormant behavior this plan
+predicted: permit-intake answers are collected and persisted; no "Building permit" section
+appears because the 19 constituent Unit 6B rule rows remain TRIAGED rather than ACTIVE;
+`permitRequirement`/`accessoryHeightLimitFinding` are therefore correctly absent from the real
+report; this is expected, not a defect. Founder's own words, recorded verbatim per explicit
+instruction:
+
+> "Unit 6B Capability B implementation accepted by founder in DORMANT state.
+>
+> Intake/customer-flow acceptance: PASSED.
+> Production regulatory activation: NOT AUTHORIZED.
+> Customer-facing Building Permit report-section acceptance: DEFERRED until the rule-activation
+> stage makes the deterministic result observable."
+
+**No rule is to be activated merely to expose the report section.** This acceptance covers the
+intake/customer-flow only; the "Building permit" report section's own customer-facing acceptance
+remains open and reserved for a future, separate rule-activation-stage review. Checkpoint
+commit/push follows in a new section below.
+
 ## Workspace State
 - **Existing Code**: No
 - **Reverse Engineering Needed**: No

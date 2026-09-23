@@ -205,6 +205,98 @@ export function deriveStreetFrontageRoleGapReasons(ctx: StreetFrontageRoleGapCon
   return reasons;
 }
 
+/**
+ * Unit 6B Capability B - P2b's `isInRequiredSetback` bounded-band derivation (founder-directed
+ * current-code research + founder-approved corrected design, 2026-09-23 - full citations and
+ * reasoning in `aidlc-docs/decisions/2026-09-17-side-street-setback-current-code-research.md`'s
+ * "Correction (2026-09-23, same day)" section). Every threshold below is drawn directly from
+ * Table A for SMC 23.44.090's quoted text - none invented. `REAR_SETBACK`/
+ * `SIDE_FRONT_SETBACK_STANDARD`'s own ACTIVE rule minimums are deliberately never reused here -
+ * `REAR_SETBACK.minFt` in particular is sourced from 23.44.090.I.2's distinct accessory-structure
+ * placement exception, a different figure than Table A's general Rear-row boundary this function
+ * needs.
+ *
+ * Two guards (Chapter 23.53 additional-setback applicability; the Queen Anne Boulevard special-
+ * frontage exception) can never currently be satisfied - no right-of-way/street-width fact exists
+ * anywhere in this codebase, and no street-name/address evidence survives past initial parcel
+ * resolution - so a `DEFINITELY_OUTSIDE` boundary conclusion is unreachable with today's inputs.
+ * This is an honest, disclosed consequence of a genuine evidence gap, not a defect: extending this
+ * function's own inputs (dwelling-unit count, frequent-transit-service-area status, street-name/
+ * address data, right-of-way data) is real future work, not a zero-code-change activation.
+ */
+type BoundaryRequiredSetbackStatus = { status: "DEFINITELY_INSIDE" } | { status: "DEFINITELY_OUTSIDE" } | { status: "REQUIRES_VERIFICATION"; reasons: string[] };
+
+function evaluateFrontRequiredSetbackBand(distanceToFrontLotLineFt: number | undefined, frontRoleEvidenceGapReason: string | undefined): BoundaryRequiredSetbackStatus {
+  if (distanceToFrontLotLineFt === undefined || frontRoleEvidenceGapReason !== undefined) {
+    return { status: "REQUIRES_VERIFICATION", reasons: ["front lot-line regulatory role unresolved"] };
+  }
+  if (distanceToFrontLotLineFt < 10) return { status: "DEFINITELY_INSIDE" };
+  if (distanceToFrontLotLineFt >= 15) {
+    // Queen Anne Boulevard guard - Table A for 23.44.090's front-setback footnote 2. Never
+    // ruled out: no street-name/address evidence is persisted anywhere past initial parcel
+    // resolution in this codebase.
+    return { status: "REQUIRES_VERIFICATION", reasons: ["special Queen Anne Boulevard frontage unresolved (no street-name evidence available)"] };
+  }
+  return { status: "REQUIRES_VERIFICATION", reasons: ["dwelling-unit count needed to select the 10ft vs 15ft front setback"] };
+}
+
+function evaluateRearRequiredSetbackBand(
+  distanceToRearLotLineFt: number | undefined,
+  rearRoleEvidenceGapReason: string | undefined
+): BoundaryRequiredSetbackStatus {
+  if (distanceToRearLotLineFt === undefined || rearRoleEvidenceGapReason !== undefined) {
+    return { status: "REQUIRES_VERIFICATION", reasons: ["rear lot-line regulatory role unresolved"] };
+  }
+  if (distanceToRearLotLineFt < 5) return { status: "DEFINITELY_INSIDE" };
+  // Chapter 23.53 guard applies whether the rear line is alley-abutting (Table A's own rear
+  // setback drops to 0, but 23.44.090.C reserves additional Chapter 23.53 setbacks that this
+  // codebase has no evidence to rule out) or the distance already clears Table A's largest
+  // possible non-alley figure (15ft) - never DEFINITELY_OUTSIDE either way with today's evidence.
+  return { status: "REQUIRES_VERIFICATION", reasons: ["additional Chapter 23.53 setback applicability unresolved"] };
+}
+
+function evaluateSideRequiredSetbackBand(distanceToSideLotLineFt: number | undefined, sideRoleEvidenceGapReason: string | undefined): BoundaryRequiredSetbackStatus {
+  if (distanceToSideLotLineFt === undefined || sideRoleEvidenceGapReason !== undefined) {
+    return { status: "REQUIRES_VERIFICATION", reasons: ["side lot-line regulatory role unresolved"] };
+  }
+  if (distanceToSideLotLineFt < 3) return { status: "DEFINITELY_INSIDE" };
+  if (distanceToSideLotLineFt >= 5) {
+    return { status: "REQUIRES_VERIFICATION", reasons: ["additional Chapter 23.53 setback applicability unresolved"] };
+  }
+  return { status: "REQUIRES_VERIFICATION", reasons: ["side distance falls in the unresolved 3-5ft band pending frequent-transit-service-area status"] };
+}
+
+export interface RequiredSetbackDerivationContext {
+  distanceToFrontLotLineFt: number | undefined;
+  distanceToRearLotLineFt: number | undefined;
+  distanceToSideLotLineFt: number | undefined;
+  frontRoleEvidenceGapReason: string | undefined;
+  rearRoleEvidenceGapReason: string | undefined;
+  sideRoleEvidenceGapReason: string | undefined;
+}
+
+export interface RequiredSetbackDerivationResult {
+  isInRequiredSetback: boolean | undefined;
+  requiredSetbackEvidenceGapReasons: string[] | undefined;
+}
+
+export function deriveIsInRequiredSetback(ctx: RequiredSetbackDerivationContext): RequiredSetbackDerivationResult {
+  const boundaries = [
+    evaluateFrontRequiredSetbackBand(ctx.distanceToFrontLotLineFt, ctx.frontRoleEvidenceGapReason),
+    evaluateRearRequiredSetbackBand(ctx.distanceToRearLotLineFt, ctx.rearRoleEvidenceGapReason),
+    evaluateSideRequiredSetbackBand(ctx.distanceToSideLotLineFt, ctx.sideRoleEvidenceGapReason),
+  ];
+
+  if (boundaries.some((b) => b.status === "DEFINITELY_INSIDE")) {
+    return { isInRequiredSetback: true, requiredSetbackEvidenceGapReasons: undefined };
+  }
+  if (boundaries.every((b) => b.status === "DEFINITELY_OUTSIDE")) {
+    return { isInRequiredSetback: false, requiredSetbackEvidenceGapReasons: undefined };
+  }
+  const reasons = boundaries.flatMap((b) => (b.status === "REQUIRES_VERIFICATION" ? b.reasons : []));
+  return { isInRequiredSetback: undefined, requiredSetbackEvidenceGapReasons: reasons };
+}
+
 /** Runs the full pipeline for one claimed (IN_PROGRESS) job. Never throws for an ordinary
  * degradation (e.g. missing evidence, unavailable explanation) - only for a genuinely
  * unrecoverable error, which the caller (the poller) turns into markJobFailed. */
@@ -541,6 +633,20 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
       }
 
+      // Unit 6B Capability B - the bounded-band isInRequiredSetback derivation (founder-approved
+      // 2026-09-23, see deriveIsInRequiredSetback's own docstring for full citations). Computed
+      // from the exact same role/distance facts gathered above for the existing setback findings -
+      // no new fetch, no new geometry engine.
+      const shedDetailsForPermit = snapshot.projectDetails as ShedProjectConfiguration;
+      const requiredSetback = deriveIsInRequiredSetback({
+        distanceToFrontLotLineFt,
+        distanceToRearLotLineFt,
+        distanceToSideLotLineFt,
+        frontRoleEvidenceGapReason,
+        rearRoleEvidenceGapReason,
+        sideRoleEvidenceGapReason,
+      });
+
       project = {
         projectType: "shed",
         widthFt: snapshot.projectDetails.widthFt,
@@ -560,6 +666,16 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         rearRoleEvidenceGapReason,
         sideRoleEvidenceGapReason,
         dwellingSeparationEvidenceGapReason: dwellingEvidenceGapReason,
+        // Unit 6B Capability B - straight passthrough from the already-validated intake schema
+        // (ShedProjectConfigurationSchema already covers every one of these fields).
+        foundationType: shedDetailsForPermit.foundationType,
+        attachment: shedDetailsForPermit.attachment,
+        intendedUse: shedDetailsForPermit.intendedUse,
+        roofOverhang: shedDetailsForPermit.roofOverhang,
+        structuralSpanInfo: shedDetailsForPermit.structuralSpanInfo,
+        utilityIntent: shedDetailsForPermit.utilityIntent,
+        isInRequiredSetback: requiredSetback.isInRequiredSetback,
+        requiredSetbackEvidenceGapReasons: requiredSetback.requiredSetbackEvidenceGapReasons,
       };
     }
 
@@ -627,8 +743,20 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       });
     }
 
+    // Unit 6B Capability B - accessoryHeightLimitFinding (P2b) is an ordinary Finding (domain-
+    // entities.md §3a note: "a separate, ordinary, location-sensitive zoning Finding, never nested
+    // inside PermitRequirementFinding"), so it is folded into the same findings array every other
+    // setback/dwelling-separation finding already flows through - no new rendering path needed, it
+    // renders via ReportView's existing generic Findings/Requires-Verification lists exactly like
+    // those. `outcome.permitRequirement` (the buildingPermit/reviewPath aggregate) is deliberately
+    // NEVER folded in here - it reaches the persisted artifact only via the `evidence` entry below,
+    // never via `findings`, so it structurally cannot reach Report Explanation's LLM input (which
+    // reads only `findings`) - the LLM cannot narrate, reinterpret, or override buildingPermit/
+    // reviewPath by construction, not by a runtime guard.
+    const findingsToPersist = outcome.accessoryHeightLimitFinding ? [...outcome.findings, outcome.accessoryHeightLimitFinding] : outcome.findings;
+
     // Report Explanation (AI, optional) - never fails the job on unavailability (BR-U2-8).
-    const findingsForExplanation = selectFindingsForExplanation(outcome.findings);
+    const findingsForExplanation = selectFindingsForExplanation(findingsToPersist);
     const explanationResult = deps.generateExplanation
       ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(findingsForExplanation))
       : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
@@ -661,13 +789,19 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // constraint type rather than presenting an empty findings array as a clean screening
       // result.
       { factType: "uncovered-constraint-types", value: outcome.uncoveredConstraintTypes, provenance: {} },
+      // Unit 6B Capability B - the PermitRequirementFinding aggregate (buildingPermit/reviewPath),
+      // present only once evaluateProject's own ACTIVE-gate (allRuleTypesActive against every
+      // constituent ShedPermitRuleType row) is satisfied - dormant in production today (all 19
+      // rows TRIAGED). Matches this pipeline's established convention for a structured, non-
+      // Finding aggregate result (same pattern as uncovered-constraint-types above).
+      ...(outcome.permitRequirement ? [{ factType: "shed-permit-requirement", value: outcome.permitRequirement, provenance: {} }] : []),
     ];
 
     const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>
       createEvidenceReportArtifact(db, {
         screeningRequestId: screeningRequest.id,
         reportGenerationJobId: job.id,
-        findings: outcome.findings,
+        findings: findingsToPersist,
         evidence,
         explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
         ruleVersionsUsed: activeRuleRows.map((r) => r.id),

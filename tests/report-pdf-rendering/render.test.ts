@@ -52,3 +52,57 @@ describe("renderReportHtml (pure, deterministic)", () => {
     expect(renderReportHtml.length).toBe(1);
   });
 });
+
+describe("renderReportHtml - Unit 6B Capability B Building permit block (report/PDF consistency)", () => {
+  const permitEvidenceEntry = {
+    factType: "shed-permit-requirement",
+    value: {
+      buildingPermit: "REQUIRED",
+      reviewPath: "STFI_LIKELY",
+      criteria: [{ criterionId: "ROOF_AREA", status: "NOT_MET", explanationBasis: "Wall footprint 200 sq ft exceeds 120." }],
+      tradePermitDisclosures: [{ trade: "ELECTRICAL", explanationBasis: "Electrical work may require a separate permit." }],
+    },
+    provenance: {},
+  };
+
+  it("renders the headline, criteria checklist, and trade disclosures when the evidence entry is present", () => {
+    const html = renderReportHtml(fakeArtifact({ evidence: [permitEvidenceEntry] }));
+    expect(html).toContain("Likely required - simple review (STFI)");
+    expect(html).toContain("Wall footprint 200 sq ft exceeds 120.");
+    expect(html).toContain("Electrical work may require a separate permit.");
+    expect(html).toContain("SDCI makes the final determination.");
+  });
+
+  it("renders the BR-U6B-9 exemption disclaimer only when buildingPermit is LIKELY_EXEMPT", () => {
+    const exempt = renderReportHtml(
+      fakeArtifact({
+        evidence: [{ ...permitEvidenceEntry, value: { ...permitEvidenceEntry.value, buildingPermit: "LIKELY_EXEMPT", reviewPath: "NONE" } }],
+      })
+    );
+    expect(exempt).toContain("does not waive setback");
+
+    const required = renderReportHtml(fakeArtifact({ evidence: [permitEvidenceEntry] }));
+    expect(required).not.toContain("does not waive setback");
+  });
+
+  it("renders nothing for the Building permit section when the evidence entry is absent - correct dormancy, no broken/empty heading", () => {
+    const html = renderReportHtml(fakeArtifact({ evidence: [] }));
+    expect(html).not.toContain("Building permit");
+    expect(html).not.toContain("SDCI makes the final determination.");
+  });
+
+  it("escapes HTML in permit criteria/trade-disclosure text, matching the existing findings escaping invariant", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [
+          {
+            ...permitEvidenceEntry,
+            value: { ...permitEvidenceEntry.value, criteria: [{ criterionId: "USE", status: "REQUIRES_VERIFICATION", explanationBasis: "<script>alert(1)</script>" }] },
+          },
+        ],
+      })
+    );
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+});

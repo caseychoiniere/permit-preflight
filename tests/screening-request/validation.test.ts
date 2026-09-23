@@ -220,4 +220,51 @@ describe("ShedProjectConfiguration boundary validation (PC-2, NFR-U2-4)", () => 
       expect(result.outcome).toBe("INVALID");
     });
   });
+
+  describe("Unit 6B Capability B intake fields (foundationType/attachment/intendedUse/roofOverhang/structuralSpanInfo/utilityIntent)", () => {
+    it("accepts every field populated - all optional fields round-trip through validation unchanged", () => {
+      const result = validateAtBoundary(ShedProjectConfigurationSchema, {
+        ...validConfig,
+        foundationType: "PILES",
+        attachment: "ATTACHED",
+        intendedUse: "GREENHOUSE_PLANTS",
+        roofOverhang: { extendsBeyondWalls: true, approxOverhangIn: 6 },
+        structuralSpanInfo: { structuralSpanFt: 12, usesManufacturedTruss: true },
+        utilityIntent: { electrical: true, plumbing: false, mechanical: true },
+      });
+      expect(result.outcome).toBe("VALID");
+      if (result.outcome === "VALID") {
+        expect(result.data.foundationType).toBe("PILES");
+        expect(result.data.attachment).toBe("ATTACHED");
+        expect(result.data.intendedUse).toBe("GREENHOUSE_PLANTS");
+        expect(result.data.roofOverhang).toEqual({ extendsBeyondWalls: true, approxOverhangIn: 6 });
+        expect(result.data.structuralSpanInfo).toEqual({ structuralSpanFt: 12, usesManufacturedTruss: true });
+        expect(result.data.utilityIntent).toEqual({ electrical: true, plumbing: false, mechanical: true });
+      }
+    });
+
+    it("accepts every field entirely absent - undefined stays undefined, never coerced to a default", () => {
+      const result = validateAtBoundary(ShedProjectConfigurationSchema, validConfig);
+      expect(result.outcome).toBe("VALID");
+      if (result.outcome === "VALID") {
+        expect(result.data.foundationType).toBeUndefined();
+        expect(result.data.attachment).toBeUndefined();
+        expect(result.data.intendedUse).toBeUndefined();
+        expect(result.data.roofOverhang).toBeUndefined();
+        expect(result.data.structuralSpanInfo).toBeUndefined();
+        expect(result.data.utilityIntent).toBeUndefined();
+      }
+    });
+
+    it("accepts roofOverhang with extendsBeyondWalls=true and approxOverhangIn omitted - matches the 'Yes, but not sure how far' case (REQUIRES_VERIFICATION at evaluation, never a guess)", () => {
+      const result = validateAtBoundary(ShedProjectConfigurationSchema, { ...validConfig, roofOverhang: { extendsBeyondWalls: true } });
+      expect(result.outcome).toBe("VALID");
+    });
+
+    it("rejects an unrecognized foundationType/attachment/intendedUse value - never silently accepted", () => {
+      expect(validateAtBoundary(ShedProjectConfigurationSchema, { ...validConfig, foundationType: "CONCRETE_BASEMENT" }).outcome).toBe("INVALID");
+      expect(validateAtBoundary(ShedProjectConfigurationSchema, { ...validConfig, attachment: "SEMI_DETACHED" }).outcome).toBe("INVALID");
+      expect(validateAtBoundary(ShedProjectConfigurationSchema, { ...validConfig, intendedUse: "GARAGE" }).outcome).toBe("INVALID");
+    });
+  });
 });

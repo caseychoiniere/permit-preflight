@@ -74,6 +74,41 @@ interface CriticalAreaFindingDisplay {
   layerVintageNote?: string;
 }
 
+/** Unit 6B Capability B - mirrors regulatory-rules-engine/types.ts's PermitRequirementFinding
+ * shape, duplicated (not imported) matching this file's existing convention. */
+interface PermitCriterionResultDisplay {
+  criterionId: string;
+  status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION" | "NOT_APPLICABLE";
+  explanationBasis: string;
+}
+interface TradePermitDisclosureDisplay {
+  trade: "ELECTRICAL" | "PLUMBING" | "MECHANICAL";
+  explanationBasis: string;
+}
+interface PermitRequirementFindingDisplay {
+  buildingPermit: "LIKELY_EXEMPT" | "REQUIRED" | "REQUIRES_VERIFICATION";
+  reviewPath: "NONE" | "STFI_LIKELY" | "FULL_REVIEW_LIKELY" | "REQUIRES_VERIFICATION";
+  criteria: PermitCriterionResultDisplay[];
+  tradePermitDisclosures: TradePermitDisclosureDisplay[];
+}
+
+/** frontend-components.md §2's exact 5-row headline table - shared with render.ts's PDF template
+ * so the two never drift (that module duplicates this one small function rather than importing
+ * from app/, matching this project's existing src/<->app boundary). */
+function permitHeadline(buildingPermit: PermitRequirementFindingDisplay["buildingPermit"], reviewPath: PermitRequirementFindingDisplay["reviewPath"]): string {
+  if (buildingPermit === "REQUIRES_VERIFICATION") return "Requires verification";
+  if (buildingPermit === "LIKELY_EXEMPT") return "Likely not required";
+  if (reviewPath === "STFI_LIKELY") return "Likely required — simple review (STFI)";
+  if (reviewPath === "FULL_REVIEW_LIKELY") return "Likely required — full review";
+  return "Permit likely required — review path needs verification";
+}
+
+function permitCriterionIcon(status: PermitCriterionResultDisplay["status"]): string {
+  if (status === "MET") return "✓";
+  if (status === "NOT_MET") return "✗";
+  return "⚠";
+}
+
 function formatHazardType(hazardType: string): string {
   return hazardType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -123,6 +158,10 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
   const uncoveredConstraintTypes = (report.evidence.find((e) => e.factType === "uncovered-constraint-types")?.value as string[] | undefined) ?? [];
   // Unit 5 - present only for a VACANT_LAND report's evidence array; undefined for shed/garage.
   const vacantLandScenarios = report.evidence.find((e) => e.factType === "vacant-land-scenarios")?.value as VacantLandScenario[] | undefined;
+  // Unit 6B Capability B - present only once every constituent ShedPermitRuleType row is ACTIVE
+  // (evaluateProject's own dormancy gate, untouched here) - undefined for garage/vacant-land and
+  // for any shed report generated while the 19 Unit 6B rows remain TRIAGED (production today).
+  const permitRequirement = report.evidence.find((e) => e.factType === "shed-permit-requirement")?.value as PermitRequirementFindingDisplay | undefined;
 
   return (
     <div>
@@ -160,6 +199,41 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
           </Card>
         ))}
       </div>
+
+      {permitRequirement && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">Building permit</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="text-sm text-slate-900">{permitHeadline(permitRequirement.buildingPermit, permitRequirement.reviewPath)}</strong>
+              </div>
+              <ul className="mt-3 flex flex-col gap-1">
+                {permitRequirement.criteria.map((c, i) => (
+                  <li key={i} className="text-sm text-slate-600">
+                    {permitCriterionIcon(c.status)} {c.explanationBasis}
+                  </li>
+                ))}
+              </ul>
+              {permitRequirement.tradePermitDisclosures.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {permitRequirement.tradePermitDisclosures.map((d, i) => (
+                    <p key={i} className="text-sm text-amber-900">
+                      ⚠ {d.explanationBasis}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {permitRequirement.buildingPermit === "LIKELY_EXEMPT" && (
+                <p className="mt-3 text-sm text-slate-500">
+                  A building-permit exemption does not waive setback, lot-coverage, height, or rear-yard-coverage compliance.
+                </p>
+              )}
+              <p className="mt-3 text-xs text-slate-400">SDCI makes the final determination.</p>
+            </Card>
+          </div>
+        </>
+      )}
 
       {vacantLandScenarios && vacantLandScenarios.length > 0 && (
         <>

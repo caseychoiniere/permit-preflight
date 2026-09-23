@@ -267,6 +267,18 @@ describe("P2b (evaluateAccessoryHeightLimit) - location-sensitive, never an unco
     const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 10 }));
     expect(finding.classification).toBe("REQUIRES_VERIFICATION");
   });
+  it("cites the specific requiredSetbackEvidenceGapReasons when present (2026-09-23 correction) - never the generic fallback when a specific cause is known", () => {
+    const finding = evaluateAccessoryHeightLimit(
+      baseProject({ heightFt: 10, requiredSetbackEvidenceGapReasons: ["dwelling-unit count needed to select the 10ft vs 15ft front setback"] })
+    );
+    expect(finding.classification).toBe("REQUIRES_VERIFICATION");
+    expect(finding.explanationBasis).toContain("dwelling-unit count needed to select the 10ft vs 15ft front setback");
+  });
+  it("falls back to the generic explanation when isInRequiredSetback is undefined but no specific reasons were supplied", () => {
+    const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 10, requiredSetbackEvidenceGapReasons: [] }));
+    expect(finding.classification).toBe("REQUIRES_VERIFICATION");
+    expect(finding.explanationBasis).toBe("Whether the shed's proposed placement falls inside a required setback is unresolved.");
+  });
 });
 
 describe("P8 (buildTradePermitDisclosures) - non-tiered advisory, independent of buildingPermit/reviewPath", () => {

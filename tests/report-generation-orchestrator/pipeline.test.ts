@@ -10,6 +10,8 @@ import {
   deriveDwellingSeparationEvidenceGapReason,
   selectDwellingSeparationEvidenceGapCase,
   deriveStreetFrontageRoleGapReasons,
+  deriveIsInRequiredSetback,
+  type RequiredSetbackDerivationContext,
 } from "../../src/report-generation-orchestrator/pipeline.js";
 import { evaluateProject } from "../../src/regulatory-rules-engine/evaluate.js";
 import { MultipleFrontageAnswer } from "../../src/screening-request/types.js";
@@ -280,6 +282,129 @@ describe(
     it("YES with no unresolved edges at all (customer answered YES but hasn't finished picking edges yet): no gap reasons - matches applyMultipleFrontageAnswer's own 'YES + empty stays YES' in-progress state", () => {
       const reasons = deriveStreetFrontageRoleGapReasons({ multipleFrontageAnswer: MultipleFrontageAnswer.YES, rearAlsoFacesStreet: false, hasUnresolvedStreetFrontage: false });
       expect(reasons).toEqual({});
+    });
+  }
+);
+
+describe(
+  "deriveIsInRequiredSetback (Unit 6B Capability B, founder-approved bounded-band derivation, 2026-09-23 - " +
+    "aidlc-docs/decisions/2026-09-17-side-street-setback-current-code-research.md's 'Correction (2026-09-23, same day)' section)",
+  () => {
+    const resolved: RequiredSetbackDerivationContext = {
+      distanceToFrontLotLineFt: 20,
+      distanceToRearLotLineFt: 20,
+      distanceToSideLotLineFt: 20,
+      frontRoleEvidenceGapReason: undefined,
+      rearRoleEvidenceGapReason: undefined,
+      sideRoleEvidenceGapReason: undefined,
+    };
+
+    it("any boundary DEFINITELY_INSIDE (front < 10ft) resolves true regardless of the other two boundaries", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToFrontLotLineFt: 9 });
+      expect(result.isInRequiredSetback).toBe(true);
+      expect(result.requiredSetbackEvidenceGapReasons).toBeUndefined();
+    });
+
+    it("rear < 5ft resolves DEFINITELY_INSIDE -> true", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToRearLotLineFt: 4 });
+      expect(result.isInRequiredSetback).toBe(true);
+    });
+
+    it("side < 3ft resolves DEFINITELY_INSIDE -> true", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToSideLotLineFt: 2.9 });
+      expect(result.isInRequiredSetback).toBe(true);
+    });
+
+    it("front in the 10-15ft band is REQUIRES_VERIFICATION citing dwelling-unit count, never definitely inside or outside", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToFrontLotLineFt: 12 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("dwelling-unit count")]));
+    });
+
+    it("front >= 15ft is REQUIRES_VERIFICATION citing the Queen Anne Boulevard guard, never DEFINITELY_OUTSIDE - no street-name evidence exists anywhere in this codebase to rule the exception out", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToFrontLotLineFt: 30 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("Queen Anne Boulevard")]));
+    });
+
+    it("rear in the 5-15ft band is REQUIRES_VERIFICATION citing the Chapter 23.53 guard", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToRearLotLineFt: 8 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("Chapter 23.53")]));
+    });
+
+    it("rear >= 15ft is REQUIRES_VERIFICATION citing the Chapter 23.53 guard, never DEFINITELY_OUTSIDE", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToRearLotLineFt: 40 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("Chapter 23.53")]));
+    });
+
+    it("side in the 3-5ft band is REQUIRES_VERIFICATION citing frequent-transit-service-area status - never claimed outside merely for clearing the 3ft floor (the corrected treatment)", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToSideLotLineFt: 4 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("3-5ft band")]));
+    });
+
+    it("side >= 5ft is REQUIRES_VERIFICATION citing the Chapter 23.53 guard, never DEFINITELY_OUTSIDE", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToSideLotLineFt: 9 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("Chapter 23.53")]));
+    });
+
+    it("front role unresolved (frontRoleEvidenceGapReason set) short-circuits that boundary to REQUIRES_VERIFICATION even when the raw distance would otherwise be DEFINITELY_INSIDE", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToFrontLotLineFt: 5, frontRoleEvidenceGapReason: "front role unresolved for this test" });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("front lot-line regulatory role unresolved")]));
+    });
+
+    it("rear distance undefined (evidence never computed) resolves REQUIRES_VERIFICATION citing rear role, not a thrown error or a false DEFINITELY_OUTSIDE", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToRearLotLineFt: undefined });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("rear lot-line regulatory role unresolved")]));
+    });
+
+    it("side role unresolved short-circuits that boundary regardless of distance", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToSideLotLineFt: 1, sideRoleEvidenceGapReason: undefined });
+      // Sanity: with no role gap and distance 1 (< 3), side alone should already resolve true.
+      expect(result.isInRequiredSetback).toBe(true);
+      const withGap = deriveIsInRequiredSetback({ ...resolved, distanceToSideLotLineFt: 1, sideRoleEvidenceGapReason: "side role unresolved for this test" });
+      // Front/rear are both resolved-outside-band (20ft each, Chapter 23.53-guarded), so with the
+      // side boundary itself downgraded to unresolved by the role gap, no boundary is definitely
+      // inside and the aggregate must fall through to REQUIRES_VERIFICATION.
+      expect(withGap.isInRequiredSetback).toBeUndefined();
+      expect(withGap.requiredSetbackEvidenceGapReasons).toEqual(expect.arrayContaining([expect.stringContaining("side lot-line regulatory role unresolved")]));
+    });
+
+    it("[hard invariant] false is not reachable via any combination of today's inputs - the Chapter 23.53 and Queen Anne Boulevard guards always block DEFINITELY_OUTSIDE with currently-available evidence, an honest disclosed consequence per the founder-approved design, not a defect", () => {
+      const candidateDistances = [0, 2, 3, 4, 5, 8, 9, 10, 12, 14, 15, 20, 50, 1000];
+      const roleGapCombinations: (string | undefined)[] = [undefined, "role gap"];
+      for (const front of candidateDistances) {
+        for (const rear of candidateDistances) {
+          for (const side of candidateDistances) {
+            for (const frontGap of roleGapCombinations) {
+              for (const rearGap of roleGapCombinations) {
+                for (const sideGap of roleGapCombinations) {
+                  const result = deriveIsInRequiredSetback({
+                    distanceToFrontLotLineFt: front,
+                    distanceToRearLotLineFt: rear,
+                    distanceToSideLotLineFt: side,
+                    frontRoleEvidenceGapReason: frontGap,
+                    rearRoleEvidenceGapReason: rearGap,
+                    sideRoleEvidenceGapReason: sideGap,
+                  });
+                  expect(result.isInRequiredSetback).not.toBe(false);
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    it("multiple simultaneously-unresolved boundaries aggregate every contributing reason, never just the first one found", () => {
+      const result = deriveIsInRequiredSetback({ ...resolved, distanceToFrontLotLineFt: 12, distanceToRearLotLineFt: 8, distanceToSideLotLineFt: 4 });
+      expect(result.isInRequiredSetback).toBeUndefined();
+      expect(result.requiredSetbackEvidenceGapReasons).toHaveLength(3);
     });
   }
 );

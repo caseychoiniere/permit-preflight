@@ -24,7 +24,9 @@ import { useEffect, useState } from "react";
 import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection, type ExistingStructureDisplay, type DwellingSelection } from "../components/ParcelPlacementMap.js";
 import { checkPlacementCompleteness, toPersistedLotLineRoleAssignment } from "../components/parcel-placement-helpers.js";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
-import { DistanceInputMode, LotLineRoleStatus, MultipleFrontageAnswer, ProjectType } from "../../src/screening-request/types.js";
+import { DistanceInputMode, FoundationType, LotLineRoleStatus, MultipleFrontageAnswer, ProjectType, ShedAttachment, ShedIntendedUse } from "../../src/screening-request/types.js";
+import { evaluateAttachment, evaluateFoundationExemption, evaluateRoofArea, foundationStfiDisqualification } from "../../src/regulatory-rules-engine/evaluate.js";
+import type { ShedProjectDetails } from "../../src/regulatory-rules-engine/types.js";
 import { ParcelResolutionStatus, type CandidateParcel, type ClarificationReason } from "../../src/parcel-resolution/types.js";
 import { confirmCandidate } from "../../src/parcel-resolution/resolve.js";
 import { Card } from "../components/ui/Card.js";
@@ -129,6 +131,22 @@ export default function ConfigurePage() {
   const [existingStructuresValue, setExistingStructuresValue] = useState(0);
   const existingStructuresFootprintSqFt = existingStructuresChoice === "ENTER" ? existingStructuresValue : existingStructuresChoice === "ZERO" ? 0 : undefined;
   const [stackedDwellingUnits, setStackedDwellingUnits] = useState<TriState>(undefined);
+  // Unit 6B Capability B - shed permit-requirement intake (domain-entities.md §2, frontend-
+  // components.md §1). Always-asked: foundationType/attachment/intendedUse. Progressive:
+  // roofOverhang/structuralSpanInfo/utilityIntent - undefined means "not answered," never coerced,
+  // matching every existing shed-intake field's convention above.
+  const [shedPermitIntake, setShedPermitIntake] = useState<{
+    foundationType?: FoundationType;
+    attachment?: ShedAttachment;
+    intendedUse?: ShedIntendedUse;
+    roofOverhangExtendsBeyondWalls?: boolean;
+    roofOverhangApproxIn?: number;
+    structuralSpanFt?: number;
+    usesManufacturedTruss?: boolean;
+    utilityElectrical: boolean;
+    utilityPlumbing: boolean;
+    utilityMechanical: boolean;
+  }>({ utilityElectrical: false, utilityPlumbing: false, utilityMechanical: false });
   const [placement, setPlacement] = useState<PlacementSelection | null>(null);
   const [lotLineSelection, setLotLineSelection] = useState<LotLineSelection | null>(null);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
@@ -159,6 +177,42 @@ export default function ConfigurePage() {
       (lotLineSelection.streetFrontageEdgeRefs ?? []).length === 0 &&
       lotLineSelection.rearAlsoFacesStreet !== true,
   });
+
+  /** Unit 6B Capability B - progressive-disclosure gating, computed client-side purely to decide
+   * which optional questions to show (frontend-components.md §1 / BR-U6B-6/BR-U6B-7). NEVER used
+   * for the actual permit evaluation, which stays exclusively server-side (pipeline.ts) reading
+   * the real ecaFindings this client cannot see. Reuses the same pure evaluators the server uses
+   * (evaluateRoofArea/evaluateFoundationExemption/evaluateAttachment/
+   * foundationStfiDisqualification - no I/O, safe in the client bundle) so this gating can never
+   * silently drift from the real evaluation logic. */
+  const wallFootprintSqFt = dimensions.widthFt * dimensions.depthFt;
+  const showRoofOverhangQuestion = wallFootprintSqFt <= 120;
+  const shedPermitTrialProject: ShedProjectDetails = {
+    projectType: "shed",
+    widthFt: dimensions.widthFt,
+    depthFt: dimensions.depthFt,
+    heightFt: dimensions.heightFt,
+    alleyAdjacent: dimensions.alleyAdjacent,
+    foundationType: shedPermitIntake.foundationType,
+    attachment: shedPermitIntake.attachment,
+    intendedUse: shedPermitIntake.intendedUse,
+    roofOverhang:
+      shedPermitIntake.roofOverhangExtendsBeyondWalls === undefined
+        ? undefined
+        : { extendsBeyondWalls: shedPermitIntake.roofOverhangExtendsBeyondWalls, approxOverhangIn: shedPermitIntake.roofOverhangApproxIn },
+  };
+  // BR-U6B-7 step 1/2: only ask about span once a permit is already trending REQUIRED - i.e. at
+  // least one client-knowable exemption criterion is a CONFIRMED NOT_MET (never merely unanswered
+  // - an unresolved criterion is not itself "trending required"). evaluateUse never produces
+  // NOT_MET (BR-U6B-10) so it cannot itself trigger this and is intentionally not checked here.
+  // ECA (also part of BR-U6B-7 step 2) cannot be checked client-side - no ECA data exists anywhere
+  // during this free intake wizard (only fetched later, server-side, during paid report
+  // generation) - a disclosed, harmless-over-ask-only simplification, never an under-ask.
+  const permitTrendingRequired = [evaluateRoofArea(shedPermitTrialProject), evaluateFoundationExemption(shedPermitTrialProject), evaluateAttachment(shedPermitTrialProject)].some(
+    (r) => r.status === "NOT_MET"
+  );
+  const foundationAlreadyDisqualifiesStfi = foundationStfiDisqualification(shedPermitIntake.foundationType) === "DISQUALIFIED";
+  const showStructuralSpanQuestion = permitTrendingRequired && wallFootprintSqFt <= 750 && !foundationAlreadyDisqualifiesStfi;
 
   /** Shared by both the algorithmically-CONFIRMED path and the user-confirmation path below -
    * neither is a "more trusted" way to reach the TYPE step; both produce a real, identified
@@ -245,6 +299,23 @@ export default function ConfigurePage() {
         // all (existingStructures was empty) - never fabricated as UNKNOWN in that case; the
         // pipeline's own fresh fetch already resolves "nothing to select" the same way either way.
         ...(projectType === ProjectType.SHED && dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
+        // Unit 6B Capability B - shed permit-requirement intake. roofOverhang/structuralSpanInfo
+        // are only sent when their progressive question was actually shown and answered - `undefined`
+        // stays `undefined` (never coerced), matching ShedProjectConfigurationSchema exactly.
+        ...(projectType === ProjectType.SHED
+          ? {
+              foundationType: shedPermitIntake.foundationType,
+              attachment: shedPermitIntake.attachment,
+              intendedUse: shedPermitIntake.intendedUse,
+              ...(shedPermitIntake.roofOverhangExtendsBeyondWalls !== undefined
+                ? { roofOverhang: { extendsBeyondWalls: shedPermitIntake.roofOverhangExtendsBeyondWalls, approxOverhangIn: shedPermitIntake.roofOverhangApproxIn } }
+                : {}),
+              ...(shedPermitIntake.structuralSpanFt !== undefined
+                ? { structuralSpanInfo: { structuralSpanFt: shedPermitIntake.structuralSpanFt, usesManufacturedTruss: shedPermitIntake.usesManufacturedTruss } }
+                : {}),
+              utilityIntent: { electrical: shedPermitIntake.utilityElectrical, plumbing: shedPermitIntake.utilityPlumbing, mechanical: shedPermitIntake.utilityMechanical },
+            }
+          : {}),
       }),
     });
     const result = await res.json();
@@ -424,6 +495,238 @@ export default function ConfigurePage() {
             />
             Rear lot line is alley-adjacent
           </label>
+
+          {projectType === ProjectType.SHED && (
+            <>
+              <fieldset className="mt-6 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">What will the shed sit on?</legend>
+                <div className="mt-3 flex flex-col gap-2">
+                  {(
+                    [
+                      [FoundationType.SLAB_ON_GRADE, "Slab"],
+                      [FoundationType.PIER_BLOCKS, "Pier blocks"],
+                      [FoundationType.ON_SOIL, "On soil"],
+                      [FoundationType.FROST_FOOTING, "A footing that goes below frost line"],
+                      [FoundationType.PILES, "Piles or pin piles"],
+                      [FoundationType.WOOD_FOUNDATION, "A wood foundation"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="foundationType"
+                        checked={shedPermitIntake.foundationType === value}
+                        onChange={() => setShedPermitIntake((s) => ({ ...s, foundationType: value }))}
+                        className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="foundationType"
+                      checked={shedPermitIntake.foundationType === undefined}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, foundationType: undefined }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Not sure yet
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">Will the shed be attached to your house or another building?</legend>
+                <div className="mt-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedAttachment"
+                      checked={shedPermitIntake.attachment === ShedAttachment.DETACHED}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, attachment: ShedAttachment.DETACHED }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Detached
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedAttachment"
+                      checked={shedPermitIntake.attachment === ShedAttachment.ATTACHED}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, attachment: ShedAttachment.ATTACHED }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Attached
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedAttachment"
+                      checked={shedPermitIntake.attachment === undefined}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, attachment: undefined }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Not sure yet
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">What will you mainly use it for?</legend>
+                <div className="mt-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedIntendedUse"
+                      checked={shedPermitIntake.intendedUse === ShedIntendedUse.STORAGE}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, intendedUse: ShedIntendedUse.STORAGE }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Storage
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedIntendedUse"
+                      checked={shedPermitIntake.intendedUse === ShedIntendedUse.GREENHOUSE_PLANTS}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, intendedUse: ShedIntendedUse.GREENHOUSE_PLANTS }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Greenhouse or growing plants
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedIntendedUse"
+                      checked={shedPermitIntake.intendedUse === ShedIntendedUse.OCCUPIABLE}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, intendedUse: ShedIntendedUse.OCCUPIABLE }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Something else
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="shedIntendedUse"
+                      checked={shedPermitIntake.intendedUse === undefined}
+                      onChange={() => setShedPermitIntake((s) => ({ ...s, intendedUse: undefined }))}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Not sure yet
+                  </label>
+                </div>
+              </fieldset>
+
+              {showRoofOverhangQuestion && (
+                <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                  <legend className="px-1 text-sm font-semibold text-slate-900">Does the roof extend beyond the shed&apos;s walls (eaves/overhangs)?</legend>
+                  <div className="mt-3 flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="roofOverhang"
+                        checked={shedPermitIntake.roofOverhangExtendsBeyondWalls === false}
+                        onChange={() => setShedPermitIntake((s) => ({ ...s, roofOverhangExtendsBeyondWalls: false, roofOverhangApproxIn: undefined }))}
+                        className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      No
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="roofOverhang"
+                        checked={shedPermitIntake.roofOverhangExtendsBeyondWalls === true}
+                        onChange={() => setShedPermitIntake((s) => ({ ...s, roofOverhangExtendsBeyondWalls: true }))}
+                        className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      Yes
+                    </label>
+                    {shedPermitIntake.roofOverhangExtendsBeyondWalls === true && (
+                      <label className="ml-6 block text-sm text-slate-700">
+                        Roughly how far, in inches? (Doesn&apos;t need to be exact — optional)
+                        <input
+                          type="number"
+                          min={0}
+                          value={shedPermitIntake.roofOverhangApproxIn ?? ""}
+                          onChange={(e) => setShedPermitIntake((s) => ({ ...s, roofOverhangApproxIn: e.target.value === "" ? undefined : Number(e.target.value) }))}
+                          className="mt-1 block w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </label>
+                    )}
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="radio"
+                        name="roofOverhang"
+                        checked={shedPermitIntake.roofOverhangExtendsBeyondWalls === undefined}
+                        onChange={() => setShedPermitIntake((s) => ({ ...s, roofOverhangExtendsBeyondWalls: undefined, roofOverhangApproxIn: undefined }))}
+                        className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      Not sure
+                    </label>
+                  </div>
+                </fieldset>
+              )}
+
+              {showStructuralSpanQuestion && (
+                <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                  <legend className="px-1 text-sm font-semibold text-slate-900">Roof framing span</legend>
+                  <label className="block text-sm text-slate-700">
+                    About how far does the longest structural beam span, in feet? (Doesn&apos;t need to be exact — roughly the widest unsupported distance the roof framing crosses.)
+                    <input
+                      type="number"
+                      min={0}
+                      value={shedPermitIntake.structuralSpanFt ?? ""}
+                      onChange={(e) => setShedPermitIntake((s) => ({ ...s, structuralSpanFt: e.target.value === "" ? undefined : Number(e.target.value) }))}
+                      className="mt-1 block w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </label>
+                  <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={shedPermitIntake.usesManufacturedTruss ?? false}
+                      onChange={(e) => setShedPermitIntake((s) => ({ ...s, usesManufacturedTruss: e.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Uses a manufactured or engineered roof truss
+                  </label>
+                </fieldset>
+              )}
+
+              <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">Planning to add any of these? (optional)</legend>
+                <p className="text-sm text-slate-500">Helps us flag separate permits you may need.</p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={shedPermitIntake.utilityElectrical}
+                      onChange={(e) => setShedPermitIntake((s) => ({ ...s, utilityElectrical: e.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Electrical
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={shedPermitIntake.utilityPlumbing}
+                      onChange={(e) => setShedPermitIntake((s) => ({ ...s, utilityPlumbing: e.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Plumbing
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={shedPermitIntake.utilityMechanical}
+                      onChange={(e) => setShedPermitIntake((s) => ({ ...s, utilityMechanical: e.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Mechanical/HVAC
+                  </label>
+                </div>
+              </fieldset>
+            </>
+          )}
 
           {projectType === ProjectType.GARAGE && (
             <>

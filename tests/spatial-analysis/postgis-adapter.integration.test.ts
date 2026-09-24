@@ -6,7 +6,13 @@
 
 import { describe, expect, it } from "vitest";
 import { getDb, type Db } from "../../src/db/client.js";
-import { computeDistanceToDwelling, computeSetbackDistances, checkPostgisEnabled, transformPolygonToWgs84 } from "../../src/spatial-analysis/postgis-adapter.js";
+import {
+  computeDistanceToDwelling,
+  computeExistingStructureCoverageSqFt,
+  computeSetbackDistances,
+  checkPostgisEnabled,
+  transformPolygonToWgs84,
+} from "../../src/spatial-analysis/postgis-adapter.js";
 import { deriveLotLineRoleAssignment } from "../../src/spatial-analysis/lot-line-roles.js";
 import { AUTHORITATIVE_PARCEL_SRID } from "../../src/property-intelligence/king-county-parcel-geometry.js";
 import type { Polygon } from "../../src/spatial-analysis/types.js";
@@ -126,7 +132,14 @@ describe.skipIf(!hasDb)("PostGIS CRS transform and setback computation - live in
       { widthFt: 8, depthFt: 10 },
       { status: "INSUFFICIENT", method: "USER_INDICATED" }
     );
-    expect(result).toEqual({ distances: {} });
+    // Pre-existing test staleness, discovered incidentally while live-running this suite for
+    // Unit 6B Capability C (unrelated to that work) - fixed here as a trivial, safe correction.
+    // computeSetbackDistances computes `footprintProjected` unconditionally, independent of
+    // lot-line role assignment status (dwelling separation's own established design - "the
+    // footprint regardless" - see this file's DWELLING_SEPARATION-related tests above); only
+    // `distances` is empty for an INSUFFICIENT assignment, never the whole result.
+    expect(result.distances).toEqual({});
+    expect(result.footprintProjected?.srid).toBe(AUTHORITATIVE_PARCEL_SRID);
   });
 
   it("[hard invariant] a boundary polygon with a missing or incorrect SRID fails closed rather than silently calculating", async () => {
@@ -170,6 +183,54 @@ describe.skipIf(!hasDb)("PostGIS CRS transform and setback computation - live in
       expect(point.lat).toBeGreaterThanOrEqual(-90);
       expect(point.lat).toBeLessThanOrEqual(90);
     }
+  });
+
+  describe("computeExistingStructureCoverageSqFt (Unit 6B Capability C)", () => {
+    // A simple 100x100 ft parcel, SRID 2926 (feet) - synthetic, not a real King County parcel,
+    // since this function's correctness depends only on plane geometry, not real-world location.
+    const parcel: Polygon = {
+      units: "FEET",
+      srid: AUTHORITATIVE_PARCEL_SRID,
+      points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+    };
+    function square(x0: number, y0: number, x1: number, y1: number): Polygon {
+      return { units: "FEET", srid: AUTHORITATIVE_PARCEL_SRID, points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] };
+    }
+
+    it("zero footprints resolves a real, valid zero - not an error, not REQUIRES_VERIFICATION-shaped", async () => {
+      const result = await computeExistingStructureCoverageSqFt(db, parcel, []);
+      expect(result).toEqual({ areaSqFt: 0, footprintCount: 0 });
+    });
+
+    it("a single footprint fully inside the parcel measures its own real area", async () => {
+      const result = await computeExistingStructureCoverageSqFt(db, parcel, [square(10, 10, 20, 20)]);
+      expect(result.areaSqFt).toBeCloseTo(100, 1); // 10ft x 10ft
+      expect(result.footprintCount).toBe(1);
+    });
+
+    it("[hard invariant] two overlapping footprints are unioned, never double-counted - the combined area is strictly less than the naive sum", async () => {
+      // Both 10x10 (100 sq ft each), overlapping in a 5x10 strip (50 sq ft) - real union area is
+      // 100 + 100 - 50 = 150, never the naive double-counted 200.
+      const a = square(0, 0, 10, 10);
+      const b = square(5, 0, 15, 10);
+      const result = await computeExistingStructureCoverageSqFt(db, parcel, [a, b]);
+      expect(result.areaSqFt).toBeCloseTo(150, 1);
+      expect(result.footprintCount).toBe(2);
+    });
+
+    it("[hard invariant] a footprint partially outside the parcel boundary is clipped to only the portion inside - never counts the full off-parcel area", async () => {
+      // A 20x20 footprint straddling the parcel's top-right corner (90,90)-(110,110) - only the
+      // 10x10 portion inside the parcel (90,90)-(100,100) should count, never the full 400 sq ft.
+      const result = await computeExistingStructureCoverageSqFt(db, parcel, [square(90, 90, 110, 110)]);
+      expect(result.areaSqFt).toBeCloseTo(100, 1);
+      expect(result.footprintCount).toBe(1);
+    });
+
+    it("a footprint entirely outside the parcel contributes zero area and is excluded from footprintCount", async () => {
+      const result = await computeExistingStructureCoverageSqFt(db, parcel, [square(200, 200, 210, 210)]);
+      expect(result.areaSqFt).toBe(0);
+      expect(result.footprintCount).toBe(0);
+    });
   });
 });
 

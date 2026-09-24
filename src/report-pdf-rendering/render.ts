@@ -56,6 +56,19 @@ function permitCriterionIconForPdf(status: PermitRequirementFindingForPdf["crite
   return "⚠";
 }
 
+/** Unit 6B Capability C - mirrors ReportView.tsx's ShedLotCoverageResultDisplay shape, duplicated
+ * (not imported - src/ never imports from app/). */
+interface ShedLotCoverageForPdf {
+  status: "WITHIN_STANDARD_ALLOWANCE" | "REQUIRES_VERIFICATION" | "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE";
+  reason?: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE" | "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE" | "LOT_AREA_ADJUSTMENT_UNRESOLVED";
+  estimatedCoverageSqFt: number;
+  facts: { parcelAreaSqFt: number; existingMappedCoverageSqFt: number };
+}
+
+function coveragePercentForPdf(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
+  return Math.round((estimatedCoverageSqFt / parcelAreaSqFt) * 100);
+}
+
 /** Builds the print-specific HTML report template from the persisted artifact only - shares the
  * same underlying data as the web rendering, but is free to lay it out differently for print
  * (e.g. a static map image instead of the interactive MapLibre map - not implemented in this
@@ -70,6 +83,11 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   // never just the headline, so a downloaded PDF is never missing information the web report shows.
   const permitRequirement = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "shed-permit-requirement")?.value as
     | PermitRequirementFindingForPdf
+    | undefined;
+  // Unit 6B Capability C - same "shed-lot-coverage" evidence entry pipeline.ts adds, rendered as
+  // the same 5-case copy as ReportView.tsx's "Estimated lot coverage" section.
+  const shedLotCoverage = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "shed-lot-coverage")?.value as
+    | ShedLotCoverageForPdf
     | undefined;
 
   const findingsHtml = findings
@@ -99,6 +117,39 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   </div>`
     : "";
 
+  const lotCoverageHtml = shedLotCoverage
+    ? `<h2>Estimated lot coverage</h2>
+  <div>
+    <strong>${coveragePercentForPdf(shedLotCoverage.estimatedCoverageSqFt, shedLotCoverage.facts.parcelAreaSqFt)}%</strong>
+    ${
+      shedLotCoverage.status === "WITHIN_STANDARD_ALLOWANCE"
+        ? "<p>Standard applicable limit: 50%</p><p>Result: Within the standard lot-coverage allowance</p>"
+        : ""
+    }
+    ${
+      shedLotCoverage.status === "REQUIRES_VERIFICATION" && shedLotCoverage.reason === "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE"
+        ? "<p>Standard applicable limit: 50%</p><p>Result: Requires verification</p><p>Estimated coverage exceeds the standard 50% limit but may fit within Seattle's 60% allowance for certain qualifying developments (common-amenity or stacked-dwelling-unit arrangements). Permit Preflight could not determine whether that allowance applies to this property.</p>"
+        : ""
+    }
+    ${
+      shedLotCoverage.status === "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE"
+        ? "<p>Even Seattle's higher 60% allowance (for qualifying developments) appears exceeded.</p>"
+        : ""
+    }
+    ${
+      shedLotCoverage.status === "REQUIRES_VERIFICATION" && shedLotCoverage.reason === "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE"
+        ? "<p>Result: Requires verification</p><p>The standard calculated allowance appears exceeded, but a parcel-specific Director-approved amount, if one exists, could alter this result. Permit Preflight has no way to confirm whether such an approval applies to this property.</p>"
+        : ""
+    }
+    ${
+      shedLotCoverage.status === "REQUIRES_VERIFICATION" && shedLotCoverage.reason === "LOT_AREA_ADJUSTMENT_UNRESOLVED"
+        ? "<p>Result: Requires verification</p><p>A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition intersects this parcel and may reduce the countable lot area used for this estimate, pending more precise geometry.</p>"
+        : ""
+    }
+    <p>Existing mapped structure coverage: ${Math.round(shedLotCoverage.facts.existingMappedCoverageSqFt)} sq ft.</p>
+  </div>`
+    : "";
+
   return `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>Permit Preflight Report</title></head>
@@ -108,6 +159,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   <h2>Findings</h2>
   ${findingsHtml}
   ${permitHtml}
+  ${lotCoverageHtml}
   ${explanation ? `<h2>Explanation</h2><p>${escapeHtml(explanation.text)}</p>` : "<h2>Explanation</h2><p><em>Plain-language synthesis is temporarily unavailable.</em></p>"}
 </body>
 </html>`;

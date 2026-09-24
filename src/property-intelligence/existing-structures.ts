@@ -24,6 +24,37 @@
 import type { Polygon } from "../spatial-analysis/types.js";
 import type { Provenance } from "./types.js";
 
+/** Unit 6B Capability C (domain-entities.md §1b) - the `existing-structure-coverage`
+ * PropertyContext fact's value shape. Descriptive only, no regulatory conclusion (property-
+ * intelligence/types.ts's own "never assigns a regulatory classification" boundary) - the
+ * Regulatory Rules Engine's `evaluateShedLotCoverage` is the only place this feeds a conclusion. */
+export interface ExistingStructureCoverageFact {
+  /** ST_Area(ST_Union(<mapped building-outline footprints> ∩ parcel boundary)) - derived from the
+   * SAME footprints Building Intelligence v1's `existing-structures-classified` evidence already
+   * carries, never a second fetch. */
+  mappedFootprintAreaSqFt: number;
+  /** How many distinct mapped footprints intersect the parcel - display/debug only. */
+  footprintCount: number;
+  /** Always present alongside mappedFootprintAreaSqFt - the roof-edge-vs-wall-line over-count and
+   * capture-date/feature-completeness limitation (research-findings.md §2.2), never silently
+   * omitted. */
+  overCountCaveat: string;
+}
+
+const EXISTING_STRUCTURE_COVERAGE_OVER_COUNT_CAVEAT =
+  "Existing mapped structure coverage is estimated from aerial roof-outline footprints (Seattle Building Outlines 2023) - this over-counts the code-countable wall-line area (a safe, conservative direction for a remaining-capacity estimate), and does not reflect structures built or demolished since the 2023 capture or exclusions such as underground structures and qualifying projections.";
+
+/** Unit 6B Capability C - pure "derive from already-fetched facts" function, mirroring
+ * pipeline.ts's own `buildLotCoverageFacts` convention exactly: no network of its own, takes only
+ * the PostGIS coverage computation's own result. */
+export function buildExistingStructureCoverageFact(coverage: { areaSqFt: number; footprintCount: number }): ExistingStructureCoverageFact {
+  return {
+    mappedFootprintAreaSqFt: coverage.areaSqFt,
+    footprintCount: coverage.footprintCount,
+    overCountCaveat: EXISTING_STRUCTURE_COVERAGE_OVER_COUNT_CAVEAT,
+  };
+}
+
 /** One building footprint as returned by the source geometry dataset (Seattle Building Outlines
  * 2023) - geometry only, no structure identity. `outlineId` is that dataset's own OUTLINE_ID,
  * stringified - an internal identifier, never shown to the end user (see ParcelPlacementMap's

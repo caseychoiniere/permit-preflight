@@ -680,6 +680,52 @@ export async function computeEcaExclusionGeometry(db: Db, boundaryPolygon: Polyg
 }
 
 /**
+ * Unit 6B Capability C (domain-entities.md §1b) - the real, mapped existing-structure coverage
+ * within the parcel, for the `existing-structure-coverage` PropertyContext fact. Sibling of
+ * `computeEcaExclusionGeometry` above (same `ST_Intersection`/`ST_Area` discipline, never a new
+ * geometry engine): each footprint is first clipped to the parcel boundary (never assumes
+ * footprints already arrive parcel-clipped), then unioned before measuring area, so overlapping or
+ * adjacent building parts are never double-counted. An empty `footprints` array is a real, valid
+ * "no mapped structures" answer (`{ areaSqFt: 0, footprintCount: 0 }`) - absence of footprints is
+ * not evidence unavailability, matching this codebase's existing-structures.ts's own established
+ * semantics for a genuinely empty result.
+ */
+export async function computeExistingStructureCoverageSqFt(db: Db, boundaryPolygon: Polygon, footprints: Polygon[]): Promise<{ areaSqFt: number; footprintCount: number }> {
+  if (footprints.length === 0) {
+    return { areaSqFt: 0, footprintCount: 0 };
+  }
+  assertAuthoritativeSrid(boundaryPolygon);
+  for (const footprint of footprints) assertAuthoritativeSrid(footprint);
+
+  const boundaryWkt = polygonToWkt(boundaryPolygon);
+  const srid = boundaryPolygon.srid!;
+
+  if (!(await checkIsValidWkt(db, boundaryWkt, srid, "parcel boundary"))) {
+    throw new SpatialComputationError("Parcel boundary is invalid (ST_IsValid) - cannot compute existing structure coverage.");
+  }
+
+  const perFootprintIntersections = footprints.map((footprint) => {
+    const footprintWkt = polygonToWkt(footprint);
+    return sql`SELECT ST_Intersection(ST_SetSRID(ST_GeomFromText(${footprintWkt}), ${srid}::int), ST_SetSRID(ST_GeomFromText(${boundaryWkt}), ${srid}::int)) AS geom`;
+  });
+
+  let row: { area_sq_ft: number | string | null; footprint_count: number | string } | undefined;
+  try {
+    const result = await db.execute(sql`
+      WITH intersections AS (${sql.join(perFootprintIntersections, sql` UNION ALL `)})
+      SELECT ST_Area(ST_Union(geom)) AS area_sq_ft, COUNT(*) FILTER (WHERE NOT ST_IsEmpty(geom)) AS footprint_count
+      FROM intersections
+    `);
+    row = result.rows[0] as typeof row;
+  } catch (err) {
+    throw new SpatialComputationError(`PostGIS existing-structure-coverage computation failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+  }
+  if (!row) throw new SpatialComputationError("ST_Union/ST_Area for existing structure coverage returned no rows.");
+
+  return { areaSqFt: row.area_sq_ft === null ? 0 : Number(row.area_sq_ft), footprintCount: Number(row.footprint_count) };
+}
+
+/**
  * Unit 5 - the final candidate buildable area/polygon, combining a resolved
  * setback-constrained area with a resolved ECA exclusion via PostGIS ST_Difference - NEVER by
  * subtracting area scalars in application code (Final Correction's own binding invariant, NFR-

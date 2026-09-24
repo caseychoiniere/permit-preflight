@@ -7,7 +7,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { classifyExistingStructures, findPrimaryDwelling, StructureClassification, ClassificationBasis, type RawBuildingFootprint } from "../../src/property-intelligence/existing-structures.js";
+import {
+  classifyExistingStructures,
+  findPrimaryDwelling,
+  buildExistingStructureCoverageFact,
+  StructureClassification,
+  ClassificationBasis,
+  type RawBuildingFootprint,
+} from "../../src/property-intelligence/existing-structures.js";
 import type { Polygon } from "../../src/spatial-analysis/types.js";
 import type { Provenance } from "../../src/property-intelligence/types.js";
 
@@ -67,5 +74,24 @@ describe("findPrimaryDwelling", () => {
   it("returns undefined when no structure was classified PRIMARY_DWELLING", () => {
     const structures = classifyExistingStructures([smallHouse, bigGarage], provenance, { status: "UNKNOWN" });
     expect(findPrimaryDwelling(structures)).toBeUndefined();
+  });
+});
+
+describe("buildExistingStructureCoverageFact (Unit 6B Capability C, domain-entities.md §1b)", () => {
+  it("passes area/count through unchanged", () => {
+    const fact = buildExistingStructureCoverageFact({ areaSqFt: 1234.5, footprintCount: 3 });
+    expect(fact.mappedFootprintAreaSqFt).toBe(1234.5);
+    expect(fact.footprintCount).toBe(3);
+  });
+
+  it("[hard invariant] the overCountCaveat is always present, never omitted - even for a genuine zero-footprint result", () => {
+    const fact = buildExistingStructureCoverageFact({ areaSqFt: 0, footprintCount: 0 });
+    expect(fact.overCountCaveat).toBeTruthy();
+    expect(fact.overCountCaveat.length).toBeGreaterThan(0);
+  });
+
+  it("the caveat discloses the roof-edge-vs-wall-line over-count direction (research-findings.md §2.2)", () => {
+    const fact = buildExistingStructureCoverageFact({ areaSqFt: 500, footprintCount: 1 });
+    expect(fact.overCountCaveat.toLowerCase()).toContain("over-counts");
   });
 });

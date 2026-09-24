@@ -15,7 +15,14 @@ import { assemblePropertyContext, type FactRetriever } from "../property-intelli
 import { createKingCountyParcelGeometryRetriever } from "../property-intelligence/king-county-parcel-geometry.js";
 import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence/seattle-building-outlines.js";
 import { createSeattleEcaRetriever } from "../property-intelligence/seattle-eca.js";
-import { classifyExistingStructures, findPrimaryDwelling, type ExistingStructure, type RawBuildingFootprint } from "../property-intelligence/existing-structures.js";
+import {
+  classifyExistingStructures,
+  findPrimaryDwelling,
+  buildExistingStructureCoverageFact,
+  type ExistingStructure,
+  type RawBuildingFootprint,
+  type ExistingStructureCoverageFact,
+} from "../property-intelligence/existing-structures.js";
 import { AvailabilityState, getFact } from "../property-intelligence/types.js";
 import type { PropertyFact } from "../property-intelligence/types.js";
 import { recordIngestionResult } from "../data-source-registry/index.js";
@@ -25,16 +32,17 @@ import {
   computeBuildableEnvelope,
   computeDistanceToDwelling,
   computeEcaExclusionGeometry,
+  computeExistingStructureCoverageSqFt,
   computeParcelAreaSqFt,
   computeSetbackConstrainedArea,
   computeSetbackDistances,
   transformPolygonToWgs84,
 } from "../spatial-analysis/postgis-adapter.js";
-import { evaluateProject, isCriticalAreaFinding } from "../regulatory-rules-engine/evaluate.js";
+import { evaluateProject, isCriticalAreaFinding, evaluateEcaLotAreaAdjustment } from "../regulatory-rules-engine/evaluate.js";
 import { evaluateVacantLand, findActiveScenarioRule, SCENARIO_DEFINITIONS, toAppliedRuleRef } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import type { VacantLandSetbackRuleSpec } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import { EvaluationStatus } from "../regulatory-rules-engine/types.js";
-import type { LotCoverageFacts, ProjectDetails, ShedProjectDetails, Finding } from "../regulatory-rules-engine/types.js";
+import type { LotCoverageFacts, ProjectDetails, ShedProjectDetails, ShedLotCoverageFacts, Finding } from "../regulatory-rules-engine/types.js";
 import type { BuildableEnvelopeFacts, DensityFacts, LotLineRoles } from "../regulatory-rules-engine/vacant-land-types.js";
 import { LifecycleState, toApplicabilityScope } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule, InferencePolicy } from "../regulatory-rule-governance/types.js";
@@ -452,6 +460,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // confirmed - geometry provenance and classification basis stay structurally distinct per
     // structure (existing-structures.ts).
     let existingStructuresForEvidence: ExistingStructure[] | undefined;
+    // Unit 6B Capability C - the mapped existing-structure coverage fact (domain-entities.md §1b).
+    // Only populated once real footprint evidence exists (buildingFootprintsAvailable below) -
+    // absent (never a fabricated zero) when that evidence itself was never fetched/failed,
+    // mirroring this pipeline's own established "no fact when genuinely unavailable" convention.
+    let existingStructureCoverageFact: ExistingStructureCoverageFact | undefined;
     // Regression fix (2026-08-30): the raw fact above is SRID 2926 (authoritative/projected) -
     // useless to any browser map without a transform, and no transform was ever computed or
     // persisted, so ReviewPlacementMap/ReportMap had no display geometry for existing structures
@@ -555,6 +568,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // client-asserted numbers).
     let project: ProjectDetails;
     let lotCoverageFacts: LotCoverageFacts | undefined;
+    let shedLotCoverageFacts: Omit<ShedLotCoverageFacts, "allowanceFacts"> | undefined;
     if (snapshot.projectType === ProjectType.GARAGE) {
       const garageDetails = snapshot.projectDetails as GarageProjectConfiguration;
       project = {
@@ -610,6 +624,18 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         if (primaryDwelling) {
           distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
         }
+        // Unit 6B Capability C - reuses these SAME already-classified footprints (never a second
+        // fetch, domain-entities.md §1b's explicit instruction). Independent of primary-dwelling
+        // classification - every mapped footprint on the parcel counts toward coverage, not just
+        // the dwelling.
+        const coverage = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
+          computeExistingStructureCoverageSqFt(
+            db,
+            geometryFact!.value!,
+            structures.map((s) => s.footprint)
+          )
+        );
+        existingStructureCoverageFact = buildExistingStructureCoverageFact(coverage);
       }
       // Maintenance correction (2026-09-15, RC-7) - the case is now DERIVED from the actual, real
       // pipeline preconditions gathered above (never hand-picked), via a pure function that is
@@ -631,6 +657,22 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         // as the DWELLING_SEPARATION finding's own reason - one source of truth, never a second,
         // independently-worded message for the same fact.
         dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
+      }
+
+      // Unit 6B Capability C - only assembled once real coverage evidence exists (never a
+      // fabricated 0 when it doesn't - evaluateProject safely treats an absent
+      // shedLotCoverageFacts as "not yet computable," never throwing). allowanceFacts is
+      // deliberately excluded - evaluateShedLotCoverage computes it internally as a pure
+      // derivation of ecaAdjustment/parcelAreaSqFt (domain-entities.md §3c's own Flow 4).
+      if (existingStructureCoverageFact && rawParcelAreaSqFt !== undefined) {
+        shedLotCoverageFacts = {
+          parcelAreaSqFt: rawParcelAreaSqFt,
+          existingMappedCoverageSqFt: existingStructureCoverageFact.mappedFootprintAreaSqFt,
+          proposedShedFootprintSqFt: snapshot.projectDetails.widthFt * snapshot.projectDetails.depthFt,
+          // BR-U6B-12/Flow 5 - the SAME single environmental-constraints fact P6 already reads,
+          // never a second ECA fetch or interpretation.
+          ecaAdjustment: evaluateEcaLotAreaAdjustment(environmentalConstraintsFact?.value ?? []),
+        };
       }
 
       // Unit 6B Capability B - the bounded-band isInRequiredSetback derivation (founder-approved
@@ -687,6 +729,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         ecaFindings: environmentalConstraintsFact?.value ?? [],
         candidateActiveInferencePolicies: rowsToInferencePolicies(activePolicyRows),
         lotCoverageFacts,
+        shedLotCoverageFacts,
       })
     );
 
@@ -795,6 +838,16 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // rows TRIAGED). Matches this pipeline's established convention for a structured, non-
       // Finding aggregate result (same pattern as uncovered-constraint-types above).
       ...(outcome.permitRequirement ? [{ factType: "shed-permit-requirement", value: outcome.permitRequirement, provenance: {} }] : []),
+      // Unit 6B Capability C - a descriptive Property Intelligence fact (domain-entities.md §1b),
+      // present whenever real footprint evidence exists, independent of the lot-coverage rules'
+      // own ACTIVE status - never a regulatory conclusion itself (property-intelligence/types.ts's
+      // "never assigns a regulatory classification" boundary).
+      ...(existingStructureCoverageFact
+        ? [{ factType: "existing-structure-coverage", value: existingStructureCoverageFact, provenance: { qualityCaveat: existingStructureCoverageFact.overCountCaveat } }]
+        : []),
+      // The regulatory conclusion itself - present only once evaluateProject's own ACTIVE-gate
+      // (every SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES row) is satisfied.
+      ...(outcome.shedLotCoverage ? [{ factType: "shed-lot-coverage", value: outcome.shedLotCoverage, provenance: {} }] : []),
     ];
 
     const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>

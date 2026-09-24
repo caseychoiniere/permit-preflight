@@ -1425,7 +1425,108 @@ instruction:
 **No rule is to be activated merely to expose the report section.** This acceptance covers the
 intake/customer-flow only; the "Building permit" report section's own customer-facing acceptance
 remains open and reserved for a future, separate rule-activation-stage review. Checkpoint
-commit/push follows in a new section below.
+committed/pushed as `a5845fd` (`9ab9420..a5845fd main -> main`).
+
+## UNIT 6B CAPABILITY C (Lot Coverage Estimate) — Plan APPROVED (bounded override, first-round), IMPLEMENTATION PROCEEDING, 2026-09-23
+
+**Founder directed**, immediately after accepting Capability B in dormant state: "move to Unit 6B
+Capability C — lot coverage. Do not start Unit 7." Verified by direct grep before planning: zero
+real implementation of the `existing-structure-coverage` fact/`computeExistingStructureCoverageSqFt`
+anywhere in this codebase (only forward-referencing comments), and
+`evaluateEcaLotAreaAdjustment`/`evaluateShedLotCoverage` (both already built, already unit-tested)
+are never called from `pipeline.ts`/`app/` — unlike Capability B, this plan needs one genuinely new
+PostGIS geometry helper plus a new Property Intelligence fact, in addition to wiring. Full plan:
+`aidlc-docs/construction/unit-6b-shed-report-value-expansion/code-generation-plan-capability-c.md`.
+
+**Plan gate v1** (`UNIT-6B-CAPABILITY-C-LOT-COVERAGE:code-generation-plan:v1`, decision
+`a933b40a-240a-4630-b41a-79c6b689dfcd`): ESCALATE, but — unlike Capability B's first two rounds —
+**every finding is the same already-litigated authentication-only pattern**, not a new substantive
+objection: the CRITICAL/MAJOR findings restate elements of Unit 6B's own Functional Design Part 1
+(APPROVED 2026-09-13, `PLAN AMENDMENT — Unit 6B` section above — the 50%/60%/625 sq ft figures, the
+4 ECA exclusion categories, the report copy) as needing "founder ratification through the
+authoritative channel," disputing none of their actual content; the one INFO finding is
+affirmatively positive about the technical approach ("appropriately narrow and reversible"). All
+three of the founder's own standing bounded-override conditions (2026-09-15, "for the remainder of
+Unit 6B") are met on this first submission with no revision cycle needed: (1) identical
+authentication-only limitation; (2) no substantive blocking finding — the sole non-authentication
+finding is positive, not a defect; (3) no new founder-reserved decision — every regulatory figure
+and report-copy element being escalated on was already founder-approved 2026-09-13, not decided
+here. Applied the override per the founder's own explicit, current-session instruction pattern for
+this exact scenario. **Plan gate APPROVED by bounded override, proceeding to implementation.**
+Decision `a933b40a-240a-4630-b41a-79c6b689dfcd` remains unaltered in `.ai/reviewer/decisions.jsonl`.
+
+### Implementation COMPLETE, live-verified, 2026-09-23 — awaiting founder review
+
+Built exactly the plan's scope: `computeExistingStructureCoverageSqFt` (new PostGIS helper,
+`src/spatial-analysis/postgis-adapter.ts`, mirrors `computeEcaExclusionGeometry`'s
+`ST_Intersection`/`ST_Union`/`ST_Area` pattern - unions each footprint's intersection with the
+parcel before measuring, so overlapping/adjacent structures are never double-counted and an
+off-parcel footprint is correctly clipped); `ExistingStructureCoverageFact` +
+`buildExistingStructureCoverageFact` (new, `src/property-intelligence/existing-structures.ts`,
+mirrors `buildLotCoverageFacts`'s "derive from already-fetched facts" convention, reuses the SAME
+already-classified footprints Building Intelligence v1 fetches, never a second fetch); full
+pipeline wiring (`evaluateEcaLotAreaAdjustment` reusing the same single `environmental-constraints`
+fact P6 already reads; `shedLotCoverageFacts` assembly; the `existing-structure-coverage`
+descriptive evidence entry, always present once footprint evidence exists, independent of rule
+ACTIVE status; the `shed-lot-coverage` regulatory-conclusion evidence entry, gated correctly behind
+the untouched `evaluateProject` ACTIVE gate); a new "Estimated lot coverage" report section
+(`app/components/ReportView.tsx`) and matching PDF block (`src/report-pdf-rendering/render.ts`),
+both implementing frontend-components.md §4's exact 5-case copy (Case A/B/C, the
+Director-alternative-relevant branch, and `LOT_AREA_ADJUSTMENT_UNRESOLVED`), Case A never
+mentioning the 60% allowance per the founder's own explicit UX principle. No customer-facing
+intake question added (per the already-approved design). No `approve()`/`activate()` call
+anywhere; Capability A/B untouched.
+
+**Verification, stronger than Capability B's**: `npm test` 634/634 (+10 new: 6
+`computeExistingStructureCoverageSqFt` live PostGIS tests incl. overlap-union and off-parcel-
+clipping hard invariants, 3 `buildExistingStructureCoverageFact` tests, 7 `render.test.ts` tests
+for all 5 `ShedLotCoverageResult` shapes plus dormancy); `tsc --noEmit`/`npm run build` clean. Ran
+the **entire** live integration suite (23 files, 116 tests, 0 failures) against the real Neon DB -
+not just the one file relevant to this change - including `pipeline.integration.test.ts`'s full
+real end-to-end shed report generation now exercising the new coverage computation on every run.
+Incidentally discovered and fixed one small, genuinely pre-existing, unrelated test staleness bug
+in `postgis-adapter.integration.test.ts` (a hard-invariant assertion never updated after
+`computeSetbackDistances` began unconditionally returning `footprintProjected`) while running this
+suite live for the first time in a while. Then ran a **real INTERNAL_PROTOTYPE report generation**
+(`scripts/generate-prototype-report.ts`) against a fresh screening request for the real Fuhrman Ave
+parcel (created via a live browser walkthrough), and confirmed directly in the database that the
+persisted artifact's `existing-structure-coverage` evidence entry contains a real, live
+PostGIS-computed `mappedFootprintAreaSqFt: 2064.51` (the parcel's one real mapped building,
+correctly clipped) with `footprintCount: 1` and the mandatory caveat attached - the first time in
+this Unit 6B pass that a genuinely new fact type has been observed end-to-end in a real persisted
+artifact, not just inferred from passing tests. `shed-lot-coverage` correctly absent (rules
+TRIAGED, confirmed via the pipeline's own diagnostic log showing zero `SHED_LOT_COVERAGE_*`
+eligible rule types).
+
+**Not yet founder-accepted. No commit made**, per this session's established checkpoint
+discipline (commit only after explicit founder review, mirroring Capability B). Stopping here to
+present for founder review - the "Estimated lot coverage" report/PDF section cannot be observed on
+any real report until the founder makes a separate, later rule-activation decision (out of scope
+for this pass, matching Capability B's own precedent exactly).
+
+### FOUNDER ACCEPTANCE (2026-09-24) — Unit 6B, all three capabilities, current status summary
+
+The founder reviewed and accepted Capability C in DORMANT state, and simultaneously recorded the
+full, current acceptance status across all three Unit 6B capabilities built to date:
+
+> **Capability A**: customer-facing implementation accepted.
+>
+> **Capability B**: implementation accepted; intake/customer flow accepted; regulatory activation
+> NOT yet authorized; Building Permit report-section visual acceptance deferred until activation.
+>
+> **Capability C**: implementation accepted; `existing-structure-coverage` Property Intelligence
+> fact verified end-to-end; regulatory activation NOT yet authorized; Estimated Lot Coverage
+> report-section visual acceptance deferred until activation.
+>
+> For Capability C specifically, accepted: `computeExistingStructureCoverageSqFt` geometry
+> approach; parcel clipping before area calculation; overlap-safe union behavior; reuse of existing
+> Building Intelligence footprints; `existing-structure-coverage` fact/provenance; pipeline wiring;
+> dormant `shed-lot-coverage` aggregate; web/PDF implementation subject to later visual acceptance
+> when activated; current test/integration evidence.
+
+**No rule is to be activated yet.** Checkpoint commit/push follows immediately below, then the
+Unit 6B rule-activation readiness review begins (a separate, new work item - not itself an
+activation).
 
 ## Workspace State
 - **Existing Code**: No

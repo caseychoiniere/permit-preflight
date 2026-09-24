@@ -106,3 +106,86 @@ describe("renderReportHtml - Unit 6B Capability B Building permit block (report/
     expect(html).toContain("&lt;script&gt;");
   });
 });
+
+describe("renderReportHtml - Unit 6B Capability C Estimated lot coverage block (report/PDF consistency)", () => {
+  const facts = { parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 1000 };
+
+  it("Case A (WITHIN_STANDARD_ALLOWANCE) shows the standard limit and result, never mentions the 60% allowance", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [{ factType: "shed-lot-coverage", value: { status: "WITHIN_STANDARD_ALLOWANCE", estimatedCoverageSqFt: 1900, baseAllowanceSqFt: 2500, facts }, provenance: {} }],
+      })
+    );
+    expect(html).toContain("Standard applicable limit: 50%");
+    expect(html).toContain("Within the standard lot-coverage allowance");
+    expect(html).not.toContain("60%");
+  });
+
+  it("Case B (MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE) discloses the 60% possibility, never claims a failure", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [
+          {
+            factType: "shed-lot-coverage",
+            value: { status: "REQUIRES_VERIFICATION", reason: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE", estimatedCoverageSqFt: 2800, baseAllowanceSqFt: 2500, potentialSpecialAllowanceSqFt: 3000, facts },
+            provenance: {},
+          },
+        ],
+      })
+    );
+    expect(html).toContain("Result: Requires verification");
+    expect(html).toContain("60% allowance");
+  });
+
+  it("Case C without Director relevance states the 60% ceiling is exceeded", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [
+          { factType: "shed-lot-coverage", value: { status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE", estimatedCoverageSqFt: 3500, potentialSpecialAllowanceSqFt: 3000, facts }, provenance: {} },
+        ],
+      })
+    );
+    expect(html).toContain("Even Seattle's higher 60% allowance");
+  });
+
+  it("Case C with Director relevance never claims an unconditional failure", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [
+          {
+            factType: "shed-lot-coverage",
+            value: { status: "REQUIRES_VERIFICATION", reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE", estimatedCoverageSqFt: 3500, potentialSpecialAllowanceSqFt: 3000, facts },
+            provenance: {},
+          },
+        ],
+      })
+    );
+    expect(html).toContain("Director-approved amount");
+    expect(html).not.toContain("Even Seattle's higher");
+  });
+
+  it("LOT_AREA_ADJUSTMENT_UNRESOLVED discloses the unresolved ECA exclusion, never a guessed WITHIN/EXCEEDS result", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [
+          { factType: "shed-lot-coverage", value: { status: "REQUIRES_VERIFICATION", reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED", estimatedCoverageSqFt: 2000, facts }, provenance: {} },
+        ],
+      })
+    );
+    expect(html).toContain("may reduce the countable lot area");
+  });
+
+  it("always shows existingMappedCoverageSqFt", () => {
+    const html = renderReportHtml(
+      fakeArtifact({
+        evidence: [{ factType: "shed-lot-coverage", value: { status: "WITHIN_STANDARD_ALLOWANCE", estimatedCoverageSqFt: 1900, baseAllowanceSqFt: 2500, facts }, provenance: {} }],
+      })
+    );
+    expect(html).toContain("Existing mapped structure coverage: 1000 sq ft.");
+  });
+
+  it("renders nothing for the Estimated lot coverage section when the evidence entry is absent - correct dormancy", () => {
+    const html = renderReportHtml(fakeArtifact({ evidence: [] }));
+    expect(html).not.toContain("Estimated lot coverage");
+  });
+});

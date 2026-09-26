@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { draft, triage } from "../../src/regulatory-rule-governance/lifecycle.js";
 import { evaluateProject } from "../../src/regulatory-rules-engine/evaluate.js";
-import { realShedPermitCandidates } from "../fixtures/shed-permit-candidates.js";
+import { realShedPermitCandidates, tierForRealShedPermitCandidate } from "../fixtures/shed-permit-candidates.js";
 import type { PropertyContext } from "../../src/property-intelligence/types.js";
-import type { RegulatoryRule, Tier } from "../../src/regulatory-rule-governance/types.js";
+import type { RegulatoryRule } from "../../src/regulatory-rule-governance/types.js";
 
 /**
  * code-generation-plan.md §5.2 - the hard-invariant test proving all 19 founder-confirmed Unit
@@ -12,16 +12,10 @@ import type { RegulatoryRule, Tier } from "../../src/regulatory-rule-governance/
  * garage-candidate.test.ts precedent for L1.
  */
 
-// Founder-confirmed tiers (candidate-regulatory-rules.md's "Summary table", 2026-09-13 founder
-// review) - only P6 and C1e's Director-alternative branch are genuinely Tier 2 (discretionary/
-// textual ambiguity); every other row is Tier 1 (a fully deterministic rule text, even where the
-// per-parcel/customer fact needed to apply it is unknown - the project's governing principle
-// distinguishing rule ambiguity from missing evidence).
-const TIER_2_CANDIDATE_IDS = new Set(["shed-permit-p6-eca-criterion-2026", "shed-lot-coverage-c1e-director-alternative-2026"]);
-
-function tierFor(candidateId: string): Tier {
-  return TIER_2_CANDIDATE_IDS.has(candidateId) ? "TIER_2" : "TIER_1";
-}
+// 2026-09-24: tierFor is now exported from the fixture module itself (tierForRealShedPermitCandidate)
+// as this codebase's single source of truth for the real 19's founder-confirmed tiers - reused here
+// and by scripts/bootstrap-unit-6b-governance.ts rather than each re-deriving it.
+const tierFor = tierForRealShedPermitCandidate;
 
 describe("Real Unit 6B shed permit/lot-coverage candidates - honest governance status (not fabricated)", () => {
   it("has exactly the 19 founder-confirmed candidate rules, all marked as real (non-test-fixture) content", () => {

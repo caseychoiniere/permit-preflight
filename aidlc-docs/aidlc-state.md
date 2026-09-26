@@ -1528,6 +1528,181 @@ full, current acceptance status across all three Unit 6B capabilities built to d
 Unit 6B rule-activation readiness review begins (a separate, new work item - not itself an
 activation).
 
+## UNIT 6B RULE-ACTIVATION READINESS REVIEW — COMPLETE, `aidlc-reviewer.review_gate` APPROVED, 2026-09-24
+
+**Founder-directed**, after Capability C's checkpoint (commit `1b46278`) and acceptance: a
+rule-by-rule readiness matrix for all 19 Unit 6B governance rules (P1/P2a/P2b-1/P2b-2/P3a/P3b/P4/
+P5/P6/P7a/P7b/P9, C1a/C1b/C1c/C1d/C1e-floor/C1e-director/C2), across 10 dimensions each, plus
+constituent-gate synthesis for Capability B/C and a proposed (not executed) activation set.
+**Analysis only — no lifecycle state changed, no rule activated.** Full document:
+`aidlc-docs/decisions/2026-09-24-unit-6b-rule-activation-readiness-review.md`.
+
+**Submitted to `aidlc-reviewer.review_gate` 5 times** (`UNIT-6B-RULE-ACTIVATION-READINESS-REVIEW:
+assessment:v1`→`v5`) — **every round caught a genuine, real finding, never the repeated
+authentication-only pattern this session otherwise established a bounded override for** (this
+review's own substance never depended on authenticating the founder-acceptance record, so no
+override was needed or used). Findings fixed across the 5 rounds, in order:
+- **v1→v2**: the per-rule "Lifecycle" field overstated `TRIAGED` when the real state is
+  `RESEARCHED` (nothing has ever been persisted or actually progressed); item 24 (P2b) was
+  overstated as "in substance, closed" by this document's own say-so, which it has no authority to
+  declare; the proposed-activation-set count was wrong (said "10," named 2); evidentiary claims
+  lacked quoted source.
+- **v2→v3**: added a full Verification Appendix (live DB query, `lifecycle.ts`'s actual Tier-2
+  `sourceVerify()` gate, `evaluate.ts`'s three constituent-rule-type sets, admin-route inventory,
+  governance-fixture docstring) plus a genuine arithmetic error (5 months → 11 days).
+- **v3→v4**: the most substantive catch — `evaluateEcaLotAreaAdjustment` (C1b) was misdescribed as
+  reaching `ESTABLISHED` for two of the four named categories; **verified against the actual
+  function that `ESTABLISHED` is unreachable for all four**, cascading into C1e-floor/C1e-director
+  (both practically unreachable today, not merely "depends on" C1b) and surfacing a genuinely new,
+  previously-undocumented finding: the generic `steep_slope` hazard type maps directly to the
+  narrower named `STEEP_SLOPE_NON_DISTURBANCE_AREA` exclusion category, a regulatory-mapping
+  question this review does not resolve but which **does** currently change real customer-facing
+  results (`evaluateShedLotCoverage` branches differently on `REQUIRES_VERIFICATION` vs.
+  `NOT_APPLICABLE`) — not inert as first (incorrectly) stated. Also closed remaining "content-ready"
+  overclaims, expanded test evidence to all 6 cited suites (162/162), proved the C1e end-to-end
+  reachability claim via `pipeline.ts`'s single production call site, and replaced abbreviated route
+  excerpts with complete file contents + a real directory listing.
+- **v4→v5**: `rule-tier-review.md` itself contains an unresolved internal tension on item 26 (its
+  "Open" section calls it promotion-blocking; its 2026-09-13 correction-round text calls the same
+  limitations "documented... not open research questions... not a near-term-closable data gap") —
+  the document now discloses both framings explicitly rather than silently picking one, correctly
+  distinguishing item 26 (awaiting a founder/governance disposition on already-completed research)
+  from the newly-surfaced `steep_slope` question (a genuinely closeable research task).
+
+**v5 APPROVED** (decision `57e9294a-4992-4862-ae7b-573755ef83cb`, INFO only: "approval of this
+documentation does not approve, source-verify, or activate C1b or any other rule").
+
+### Headline findings for the founder
+
+- **No Unit 6B governance row is persisted in the real database** (confirmed by an exact-match
+  query against all 19 real `ruleType` values — zero rows), **and no admin-UI/API mechanism exists
+  for the forward lifecycle at all** (`app/api/admin/rules/` has only read + `disable`/`reenable`;
+  nothing calls `draft`/`triage`/`sourceVerify`/`markTested`/`approve`/`activate`). This blocks
+  every rule equally, regardless of tier or content readiness.
+- **`PermitRequirementFinding` (Capability B)** requires 9 rules ACTIVE; conditionally, once the
+  process gap and each rule's own narrower items are resolved, **P6** (Tier 2) remains the
+  structural blocker — it cannot even reach `SOURCE_VERIFIED` without a recorded escalated-
+  professional opinion this project has never obtained for anything. P7b (item 25) has its own
+  separate, genuinely open, more readily-closeable research item.
+- **`ShedLotCoverageResult` (Capability C)** requires 6 rules ACTIVE; conditionally, **C1e-director**
+  (Tier 2, same structural blocker as P6) remains, **plus** C1b's own two open items (item 26 —
+  internally disputed within its own source document; the new `steep_slope`-mapping question) and
+  C1e-floor's resulting practical unreachability. Capability C's path is longer than Capability B's.
+- **The standalone `AccessoryStructureHeightLimit` finding (P2b-1/P2b-2)** is the most
+  activation-ready piece of Unit 6B — fully Tier 1, no Tier-2 dependency, and item 24's underlying
+  research appears substantially advanced by this session's own live SMC 23.44.070 fetch (though
+  formally still open pending founder/governance disposition).
+- **P9 and C2** are fully Tier 1 and gate nothing at all in the current code (`UNIT_6B_AGGREGATE_
+  ONLY_RULE_TYPES` members but absent from every constituent-gate set) — activating them would be
+  record-keeping only, functionally inert to any current code path.
+
+Not yet founder-reviewed. Awaiting the founder's disposition on the proposed activation set (4
+options in the document, not mutually exclusive) and on the two internally-tense/newly-surfaced
+regulatory-governance items (26, `steep_slope` mapping) this review surfaced but does not resolve.
+
+**UPDATE 2026-09-24 — superseded/advanced by the rule-lifecycle admin mechanism work below**: P2b
+is now CLOSED as SOURCE_VERIFIED on the regulatory-text dimension; C1b's disposition is SPLIT
+(rule text SOURCE_VERIFIED, implementation/evidence activation-blocked). See
+`aidlc-docs/decisions/2026-09-24-rule-lifecycle-admin-mechanism-plan.md` §0 for the full founder
+disposition, recorded using regulatory rule IDs going forward (old "item 24/26/27" numbering kept
+as historical aliases only, never destructively renumbered).
+
+## RULE-LIFECYCLE ADMIN MECHANISM + UNIT 6B BOOTSTRAP — Plan proceeding to implementation on direct founder authority, 2026-09-24
+
+Founder-directed, following the readiness review's own finding that no admin mechanism exists for
+the forward governance lifecycle beyond read + `disable`/`reenable`. Plan:
+`aidlc-docs/decisions/2026-09-24-rule-lifecycle-admin-mechanism-plan.md`. §0 records the founder's
+P2b (CLOSED, SOURCE_VERIFIED on the text dimension) and C1b (SPLIT: rule SOURCE_VERIFIED,
+implementation/evidence activation-blocked) dispositions verbatim, plus §0.3's founder-directed
+admin-mechanism authorization-boundary decision (below).
+
+**Reviewer gate history — 5 consecutive `aidlc-reviewer.review_gate` submissions, decisions
+`d380b4dd-211d-410d-9289-94d2f3f17491` → `67af6737-6812-4603-b301-31abf9db82c1` →
+`4e24704b-1263-4b50-8cb0-0c00ad44b8fa` → `c4c00ca6-928c-4762-82f0-405ca1e24e7f` →
+`c616350e-8405-457d-990f-bdcf51b57ce3`**, each ESCALATE. Every genuine technical finding across all
+5 rounds was fixed on its own merits: `founderIdentity` derived exclusively server-side (never
+client-supplied); the pre-existing `reenable()` `DISABLED→ACTIVE` exception explicitly disclosed;
+bootstrap test UUIDs made fully synthetic (never the real 19); bootstrap insert + audit-log write
+made atomic (one `withAdminTransaction` per candidate); Tier-2 source-verification scoped out of
+this mechanism entirely (route only accepts `tier: "TIER_1"`) rather than trusting an unauthenticated
+`escalatedProfessional` claim; `founderVerifiedAt` made server-derived, never client-supplied; and,
+per a direct mid-conversation founder decision (§0.3, elicited via AskUserQuestion specifically
+because it was a genuinely open architecture question, not asserted), an explicit exact-match
+confirmation-value safety interlock (`confirm: "APPROVE RULE"` / `"ACTIVATE RULE"`) added to the
+`approve`/`activate` routes specifically — a deliberate-action guard, not a second authentication
+factor, reusing the existing single-operator admin credential (Basic Auth + `ADMIN_OPERATOR_ID`,
+already founder-approved for `disable`/`reenable` in Unit 3/ADM-7) as the sole authorization
+boundary, per the founder's explicit instruction not to build a second credential/auth tier/MFA/
+second-human-approval system.
+
+**What remained unresolved after all 5 rounds was structural, not substantive**: the reviewer's own
+5th response stated explicitly that no technical objection remained ("technically coherent...
+reasonable safeguards") and that its sole remaining objection was that "the claimed bounded override
+cannot override the governing trust boundary" — i.e., this specific reviewer installation's
+decision-policy will never accept `APPROVE` for founder-reserved regulatory/authorization content
+through `review_gate`, regardless of packet phrasing, evidence, or how directly founder words are
+quoted, and does not recognize this session's previously-established "bounded override" framing as
+a valid resolution mechanism for that category of finding. This was surfaced to the founder directly
+(not resolved unilaterally) via AskUserQuestion: proceed on direct founder authority, split the plan,
+or pause. **Founder's answer (2026-09-24): proceed to implementation on direct founder authority.**
+The P2b/C1b dispositions, the 19-candidate bootstrap-at-TRIAGED authorization, and the
+authorization-boundary design were each given directly by the founder in this conversation — the
+reviewer gate's structural inability to approve packet content for this reserved category does not
+change that these are real, direct founder instructions. **This is the first point in this session
+where the standing "bounded override" doctrine was found not to function at the tool level for this
+reviewer installation** — future ESCALATEs of this shape (reviewer confirms no substantive objection
+remains, only packet-authentication) should go directly to the founder for a proceed/split/pause
+decision rather than continued resubmission.
+
+Proceeding now to implementation per the plan's §1-§7 (DB migration; `repository.ts` extension;
+`admin-lifecycle.ts` new functions with the confirmation interlock; 5 new admin API routes;
+`bootstrap-unit-6b.ts` + CLI script; isolated-synthetic-fixture tests). The reviewer remains in
+normal use for genuinely delegable engineering sub-decisions within this implementation, per the
+founder's own "Founder override" provision — not for this specific reserved-content gate again. No
+rule will be activated by this work; the real 19-candidate bootstrap runs only as a later, manual,
+one-time CLI action, reported per the plan's §8 deliverables A-E.
+
+### IMPLEMENTATION COMPLETE (2026-09-24) — mechanism built, real 19-candidate bootstrap run and live-verified
+
+All of §1-§7 implemented: `admin_action_type` enum gained 6 new values (`RULE_TRIAGED`,
+`RULE_SOURCE_VERIFIED`, `RULE_TESTED`, `RULE_APPROVED`, `RULE_ACTIVATED`, `RULE_BOOTSTRAPPED`) via
+an additive-only migration, generated and applied to the real Neon DB;
+`repository.ts` gained `transitionLifecycleState`'s `additionalFields` parameter and
+`insertRuleIfAbsent` (`ON CONFLICT DO NOTHING`, never `DO UPDATE`); `admin-lifecycle.ts` gained
+`triageRule`/`sourceVerifyRule`/`markRuleTested`/`approveRule`/`activateRule`, each deriving
+`founderIdentity` exclusively from `requireOperatorId()`, `sourceVerifyRule` hard-rejecting Tier-2
+requests with `NOT_SUPPORTED` before any DB access, `approveRule`/`activateRule` requiring the
+founder-directed exact-match `confirm` safety interlock (`"APPROVE RULE"`/`"ACTIVATE RULE"`,
+checked before any DB access) before reaching the pure `lifecycle.ts` functions; 5 new admin API
+routes (`triage`/`source-verify`/`mark-tested`/`approve`/`activate`) with the same
+`requireOperatorId`/`validateReason`/Zod-boundary/`NOT_FOUND`-`REJECTED`-`CONFLICT`-`OK` shape as
+`disable`/`reenable`; `bootstrap-unit-6b.ts` (candidates/fixed-ids as parameters, never module
+constants, so tests never touch the real 19 UUIDs; insert + `RULE_BOOTSTRAPPED` audit write atomic
+per candidate inside one `withAdminTransaction`) + `scripts/bootstrap-unit-6b-governance.ts` (the
+sole caller supplying the real 19 candidates + real fixed UUIDs, never invoked by any test).
+
+**Testing**: 14 new tests, all passing against the real Neon DB — `admin-lifecycle.integration.test.ts`
+(10 tests: full forward chain on a disposable synthetic row including reaching `ACTIVE`;
+backward/skipped-transition rejection; Tier-2 `NOT_SUPPORTED`; stale/CONFLICT; 5 confirmation-
+interlock tests) and `bootstrap-unit-6b.integration.test.ts` (4 tests: create-at-TRIAGED with
+disclosed provenance; idempotency; never-overwrites-progressed-row; insert/audit atomicity) - both
+use exclusively freshly-generated synthetic UUIDs/candidates, never the real 19 or real P9/C2.
+`npm test`: 634/634 unchanged. `npm run test:integration`: 130 passing + 13 skipped across all 25
+files, 0 failures. `tsc --noEmit` clean. `npm run build` clean, all 5 new routes registered.
+
+**Real bootstrap executed and live-verified**: ran `scripts/bootstrap-unit-6b-governance.ts`
+(operator `caseychoiniere@gmail.com`, per direct founder answer to an explicit question about which
+identity to attribute). Live query confirms: all 19 real Unit 6B candidates exist at `TRIAGED`;
+zero are `ACTIVE`; the only `ACTIVE` rows anywhere in `regulatory_rules` are the 4 pre-existing,
+unrelated `STAGING-TEST-ONLY` staging fixtures. §0's P2b (CLOSED, SOURCE_VERIFIED on the text
+dimension)/C1b (SPLIT: rule SOURCE_VERIFIED, implementation/evidence activation-blocked)
+dispositions were recorded in `rule-tier-review.md`, `candidate-regulatory-rules.md`, and the
+rule-activation readiness review document, each as an additive "UPDATE 2026-09-24" note - no prior
+content destructively rewritten, old item numbers (24/26/27) kept as historical aliases only.
+
+No rule activated. No commit made yet - awaiting founder instruction on checkpointing this work,
+matching this project's established checkpoint-only-on-explicit-instruction discipline.
+
 ## Workspace State
 - **Existing Code**: No
 - **Reverse Engineering Needed**: No

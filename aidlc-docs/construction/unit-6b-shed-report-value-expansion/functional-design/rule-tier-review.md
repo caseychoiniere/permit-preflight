@@ -93,3 +93,37 @@ is not bypassed.
 - C1e's Director-approved-alternative data channel (expected to remain permanently
   `REQUIRES_VERIFICATION` in practice — Permit Preflight has no way to obtain actual Director
   approvals).
+
+## UPDATE 2026-09-24 — Founder disposition on items 24 and 26 (does not renumber the above; regulatory rule IDs are authoritative going forward)
+
+Following the Unit 6B rule-activation readiness review, the founder gave a direct, explicit
+disposition on both open items above. Old item numbers (24, 26, 27) are kept as historical aliases
+only, never destructively renumbered — `P2b`/`C1b` (the regulatory rule IDs) are the authoritative
+reference from this point forward. Full detail:
+`aidlc-docs/decisions/2026-09-24-rule-lifecycle-admin-mechanism-plan.md` §0.
+
+- **P2b (item 24) — CLOSED on the regulatory-text dimension.** P2b is Tier 1 and
+  **SOURCE-VERIFIED as regulatory text**: SMC 23.44.070.A.1 (general height limit, 32 ft, for
+  structures not listed in A.2/A.3) and SMC 23.44.070.A.3 (accessory structures located in a
+  required setback, 12 ft, with that same provision's own stated roof exceptions). The prior
+  12-ft-vs-15-ft source discrepancy is no longer open. **This closes item 24 specifically as a
+  source-verification question.** It does NOT resolve the separate, still-open `isInRequiredSetback`
+  **evidence** question (Chapter 23.53/Queen Anne Boulevard guards) — text verification and
+  per-property evidence availability are two different axes; closing one does not close the other.
+  P2b may progress `SOURCE_VERIFIED → TESTED → APPROVED` once evidence/test requirements are
+  satisfied; `ACTIVE` remains a separate, later founder-authorized action.
+- **C1b (item 26) — SPLIT disposition, not closed outright.** The underlying rule text (SMC
+  23.44.080.B's four named categories, further defined by 23.44.080.E for the steep-slope
+  non-disturbance sub-area) is Tier 1 and **SOURCE-VERIFIED as regulatory text** — this is NOT an
+  open regulatory-interpretation/tier question. **However, C1b's implementation/evidence is NOT
+  ready for `APPROVED`/`ACTIVE`**, because: (a) the current `steep_slope` →
+  `STEEP_SLOPE_NON_DISTURBANCE_AREA` mapping treats the generic hazard layer as equivalent to the
+  narrower designated sub-area, unconfirmed; (b) wetland polygons are not confirmed to represent
+  the regulatory buffer geometry, not just the wetland itself; (c) submerged-land/shoreline-setback
+  geometry remains unresolved (the already-documented `Shoreline_Environments` layer limitation);
+  (d) riparian-corridor source equivalence is not independently re-confirmed. This resolves the
+  apparent tension between this document's own "Open... block SOURCE_VERIFIED/ACTIVE promotion"
+  framing above and its earlier "documented... not open research questions... not near-term-
+  closable" framing (2026-09-13 founder correction round): both were partially right, describing
+  different axes — **rule tier/source-verification and implementation/evidence readiness are two
+  separate axes**, not one.

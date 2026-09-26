@@ -428,3 +428,18 @@ export const realShedPermitCandidates: DraftedRuleInput[] = [
     isTestOnlyFixture: false,
   },
 ];
+
+/**
+ * Founder-confirmed tiers (candidate-regulatory-rules.md's "Summary table", 2026-09-13 founder
+ * review) - only P6 and C1e's Director-alternative branch are genuinely Tier 2 (discretionary/
+ * textual ambiguity); every other row is Tier 1 (a fully deterministic rule text, even where the
+ * per-parcel/customer fact needed to apply it is unknown - the project's governing principle
+ * distinguishing rule ambiguity from missing evidence). Exported as this module's single source
+ * of truth (2026-09-24) - both the governance test below and the real bootstrap script
+ * (`scripts/bootstrap-unit-6b-governance.ts`) import this rather than each re-deriving it.
+ */
+export const TIER_2_CANDIDATE_IDS = new Set(["shed-permit-p6-eca-criterion-2026", "shed-lot-coverage-c1e-director-alternative-2026"]);
+
+export function tierForRealShedPermitCandidate(candidateId: string): "TIER_1" | "TIER_2" {
+  return TIER_2_CANDIDATE_IDS.has(candidateId) ? "TIER_2" : "TIER_1";
+}

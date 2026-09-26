@@ -385,3 +385,13 @@ further, not tiered, not implemented.
 | C1e (Director alternative) | **T2** | genuine discretionary determination |
 | C2 | **T1** | current 23.44.080.C exclusions — aerial-data limitation ≠ tier driver |
 | C3 | **SUPERSEDED — not implemented** | pre-2026 rear-yard rule, no current equivalent found |
+
+**UPDATE 2026-09-24**: item 24 (P2b) and item 26 (C1b) have both received an explicit founder
+disposition since this table was written — item 24 is CLOSED as a source-verification question
+(P2b is SOURCE_VERIFIED as regulatory text, distinct from the still-open `isInRequiredSetback`
+evidence question); item 26 is SPLIT (C1b's rule text is SOURCE_VERIFIED, its implementation/
+evidence remains activation-blocked). Old item numbers are kept as historical aliases only, never
+destructively renumbered — see
+`aidlc-docs/construction/unit-6b-shed-report-value-expansion/functional-design/rule-tier-review.md`'s
+own "UPDATE 2026-09-24" section and
+`aidlc-docs/decisions/2026-09-24-rule-lifecycle-admin-mechanism-plan.md` §0 for full detail.

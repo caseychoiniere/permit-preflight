@@ -350,6 +350,14 @@ export const adminActionTypeEnum = pgEnum("admin_action_type", [
   "RULE_REENABLED",
   "DATA_SOURCE_MARKED_UNHEALTHY",
   "DATA_SOURCE_OVERRIDE_CLEARED",
+  // Rule-lifecycle admin mechanism (2026-09-24) - forward-governance transitions beyond
+  // disable/reenable. See src/regulatory-rule-governance/admin-lifecycle.ts.
+  "RULE_TRIAGED",
+  "RULE_SOURCE_VERIFIED",
+  "RULE_TESTED",
+  "RULE_APPROVED",
+  "RULE_ACTIVATED",
+  "RULE_BOOTSTRAPPED",
 ]);
 
 export const adminTargetTypeEnum = pgEnum("admin_target_type", ["ORDER", "REGULATORY_RULE", "DATA_SOURCE"]);

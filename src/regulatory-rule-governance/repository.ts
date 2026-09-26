@@ -6,7 +6,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { regulatoryRules } from "../db/schema.js";
+import { regulatoryRules, type NewRegulatoryRuleRow } from "../db/schema.js";
 import type { Db, TransactionalDb } from "../db/client.js";
 import type { RegulatoryRule } from "./types.js";
 import { LifecycleState } from "./types.js";
@@ -65,18 +65,41 @@ export type TransitionResult = { transitioned: true; rule: RegulatoryRule } | { 
  * database's current, authoritative state at write time, closing the TOCTOU gap a plain read
  * followed by an unconditional write would leave open.
  */
+/**
+ * `additionalFields` (rule-lifecycle admin mechanism, 2026-09-24) - merged into the same `SET`
+ * clause as `lifecycleState`, for the fields each new transition also persists (`triage()`'s
+ * `tier`, `sourceVerify()`'s appended `verificationHistory`, `approve()`'s
+ * `acceptedEvidenceQuality`/`approvalRecord`). The `{from, to}` WHERE-guard itself is untouched -
+ * this parameter is strictly additive to what's already SET, never a new correctness mechanism.
+ */
 export async function transitionLifecycleState(
   tx: TransactionalDb,
   id: string,
-  transition: { from: LifecycleState; to: LifecycleState }
+  transition: { from: LifecycleState; to: LifecycleState },
+  additionalFields?: Partial<NewRegulatoryRuleRow>
 ): Promise<TransitionResult> {
   const rows = await tx
     .update(regulatoryRules)
-    .set({ lifecycleState: transition.to })
+    .set({ lifecycleState: transition.to, ...additionalFields })
     .where(and(eq(regulatoryRules.id, id), eq(regulatoryRules.lifecycleState, transition.from)))
     .returning();
 
   const [row] = rows;
   if (!row) return { transitioned: false };
   return { transitioned: true, rule: rowToRegulatoryRule(row) };
+}
+
+export type InsertResult = { inserted: true; rule: RegulatoryRule } | { inserted: false };
+
+/**
+ * Bootstrap-only insert (rule-lifecycle admin mechanism, §5) - `INSERT ... ON CONFLICT (id) DO
+ * NOTHING`, deliberately never `DO UPDATE` (unlike `scripts/staging-test-rules.ts`'s own upsert
+ * precedent), per the founder's explicit "unable to overwrite an existing record silently"
+ * requirement. Used only by `bootstrap-unit-6b.ts`, never by any lifecycle-transition route.
+ */
+export async function insertRuleIfAbsent(tx: TransactionalDb, row: NewRegulatoryRuleRow): Promise<InsertResult> {
+  const rows = await tx.insert(regulatoryRules).values(row).onConflictDoNothing({ target: regulatoryRules.id }).returning();
+  const [inserted] = rows;
+  if (!inserted) return { inserted: false };
+  return { inserted: true, rule: rowToRegulatoryRule(inserted) };
 }

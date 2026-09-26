@@ -50,6 +50,13 @@
       "when": 1787883913984,
       "tag": "0006_glamorous_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790283380238,
+      "tag": "0007_legal_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

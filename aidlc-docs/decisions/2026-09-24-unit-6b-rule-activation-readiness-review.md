@@ -175,6 +175,18 @@ admin mechanism now exists (see
 through `SOURCE_VERIFIED → TESTED → APPROVED`; `ACTIVE` remains a separate, later founder-authorized
 action, not performed as part of this update.
 
+**ADDITIVE NOTE 2026-09-26 (P2b TESTED-readiness; historical text above and in the persisted rule
+rows is intentionally not rewritten)**: (1) The P2b source question is resolved — both rows were
+SOURCE_VERIFIED on 2026-09-26 via the lifecycle mechanism. The persisted P2b test-case
+descriptions still say "item 24 unresolved"; that is historical description, not current
+regulatory truth. (2) TESTED evidence rests on the current concrete automated tests, including
+those added 2026-09-26: exact-threshold tests at 12.0/12.01 ft (in setback) and 32.0/32.01 ft
+(outside) in `shed-permit-evaluate.test.ts`, and `assembleFindingsToPersist` tests in
+`pipeline.test.ts` (a pure extraction of the findings-append previously inline in
+`runReportGenerationPipeline`, behavior unchanged). Above-limit results keep the existing
+semantics: REQUIRES_VERIFICATION, never FAIL. (3) One declared case says 35 ft where the concrete
+test uses 40 ft; both exercise the same above-32-ft behavior class.
+
 ### P3a — Foundation type (exemption criterion)
 - **Code type**: `SHED_PERMIT_P3A_FOUNDATION_EXEMPTION`
 - **Lifecycle**: RESEARCHED (see cross-cutting finding above)

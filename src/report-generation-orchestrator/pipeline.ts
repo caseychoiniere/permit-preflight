@@ -66,6 +66,15 @@ export interface PipelineDependencies {
   generateExplanation?: (findings: Finding[]) => Promise<ExplanationResult>;
 }
 
+/** The exact findings-collection construction used at the persistence/explanation boundary in
+ * runReportGenerationPipeline, extracted as a pure function so the P2b fold-in is directly
+ * testable without a database (same pattern as selectFindingsForExplanation below). Appends
+ * `accessoryHeightLimitFinding` (P2b) to the ordinary findings when present; never folds in
+ * `permitRequirement`, which reaches the artifact only via its own evidence entry. */
+export function assembleFindingsToPersist(outcome: { findings: Finding[]; accessoryHeightLimitFinding?: Finding }): Finding[] {
+  return outcome.accessoryHeightLimitFinding ? [...outcome.findings, outcome.accessoryHeightLimitFinding] : outcome.findings;
+}
+
 /**
  * Maintenance correction (2026-09-15) - the exact boundary between a full EvaluationOutcome's
  * findings and what Report Explanation's free-text synthesis is given. The individual per-hazard
@@ -796,7 +805,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // never via `findings`, so it structurally cannot reach Report Explanation's LLM input (which
     // reads only `findings`) - the LLM cannot narrate, reinterpret, or override buildingPermit/
     // reviewPath by construction, not by a runtime guard.
-    const findingsToPersist = outcome.accessoryHeightLimitFinding ? [...outcome.findings, outcome.accessoryHeightLimitFinding] : outcome.findings;
+    const findingsToPersist = assembleFindingsToPersist(outcome);
 
     // Report Explanation (AI, optional) - never fails the job on unavailability (BR-U2-8).
     const findingsForExplanation = selectFindingsForExplanation(findingsToPersist);

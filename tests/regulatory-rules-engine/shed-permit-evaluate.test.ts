@@ -274,6 +274,31 @@ describe("P2b (evaluateAccessoryHeightLimit) - location-sensitive, never an unco
     expect(finding.classification).toBe("REQUIRES_VERIFICATION");
     expect(finding.explanationBasis).toContain("dwelling-unit count needed to select the 10ft vs 15ft front setback");
   });
+  // Exact regulatory thresholds (2026-09-26, P2b TESTED-readiness): the limit is inclusive (<=).
+  // Above-limit result semantics are the existing ones - REQUIRES_VERIFICATION (never FAIL), since
+  // SMC 23.44.070 carries roof/height exceptions not enumerated here.
+  it("[boundary] in a required setback: exactly 12.0 ft PASSES (inclusive limit)", () => {
+    const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 12.0, isInRequiredSetback: true }));
+    expect(finding).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+    expect(finding.supportingEvidence).toContain("limitFt=12");
+  });
+  it("[boundary] in a required setback: 12.01 ft exceeds the limit (REQUIRES_VERIFICATION, never a definite PASS)", () => {
+    const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 12.01, isInRequiredSetback: true }));
+    expect(finding.classification).toBe("REQUIRES_VERIFICATION");
+    expect(finding.complianceOutcome).toBeUndefined();
+    expect(finding.explanationBasis).toContain("exceeds the 12ft limit");
+  });
+  it("[boundary] outside every required setback: exactly 32.0 ft PASSES (inclusive limit)", () => {
+    const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 32.0, isInRequiredSetback: false }));
+    expect(finding).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+    expect(finding.supportingEvidence).toContain("limitFt=32");
+  });
+  it("[boundary] outside every required setback: 32.01 ft exceeds the limit (REQUIRES_VERIFICATION, never a definite PASS)", () => {
+    const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 32.01, isInRequiredSetback: false }));
+    expect(finding.classification).toBe("REQUIRES_VERIFICATION");
+    expect(finding.complianceOutcome).toBeUndefined();
+    expect(finding.explanationBasis).toContain("exceeds the 32ft limit");
+  });
   it("falls back to the generic explanation when isInRequiredSetback is undefined but no specific reasons were supplied", () => {
     const finding = evaluateAccessoryHeightLimit(baseProject({ heightFt: 10, requiredSetbackEvidenceGapReasons: [] }));
     expect(finding.classification).toBe("REQUIRES_VERIFICATION");

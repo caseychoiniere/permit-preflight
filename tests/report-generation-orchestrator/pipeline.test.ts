@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   selectFindingsForExplanation,
+  assembleFindingsToPersist,
   deriveDwellingSeparationEvidenceGapReason,
   selectDwellingSeparationEvidenceGapCase,
   deriveStreetFrontageRoleGapReasons,
@@ -409,3 +410,49 @@ describe(
   }
 );
 
+
+describe("assembleFindingsToPersist - P2b accessoryHeightLimitFinding survives the evaluator -> pipeline persistence boundary (2026-09-26)", () => {
+  function activeRule(ruleType: string): RegulatoryRule {
+    return {
+      id: `active-${ruleType}`,
+      subject: ruleType,
+      applicableProjectType: "shed",
+      applicableZone: "NR",
+      ruleSpecification: { ruleType },
+      citation: { smcSections: [] },
+      lifecycleState: "ACTIVE",
+      caveats: [],
+      testCases: [],
+      verificationHistory: [],
+      isTestOnlyFixture: true,
+      acceptedEvidenceQuality: [],
+    };
+  }
+  const p2bTypes = ["SHED_PERMIT_P2B1_ACCESSORY_HEIGHT_LIMIT_IN_SETBACK", "SHED_PERMIT_P2B2_ACCESSORY_HEIGHT_LIMIT_OUTSIDE_SETBACK"];
+  const propertyContext: PropertyContext = { parcelId: "test", assembledAt: "2026-01-01T00:00:00.000Z", facts: [] };
+  const project = { projectType: "shed" as const, widthFt: 8, depthFt: 8, heightFt: 10, alleyAdjacent: false, isInRequiredSetback: true };
+
+  it("with both P2b rows ACTIVE, the real evaluateProject outcome's accessoryHeightLimitFinding is appended to the persisted findings, after every ordinary finding", () => {
+    const outcome = evaluateProject({ propertyContext, project, candidateActiveRules: p2bTypes.map(activeRule), ecaFindings: [], candidateActiveInferencePolicies: [] });
+    expect(outcome.accessoryHeightLimitFinding).toBeDefined();
+    const persisted = assembleFindingsToPersist(outcome);
+    expect(persisted).toHaveLength(outcome.findings.length + 1);
+    expect(persisted[persisted.length - 1]).toBe(outcome.accessoryHeightLimitFinding);
+    expect(persisted.slice(0, -1)).toEqual(outcome.findings);
+    expect(persisted[persisted.length - 1]).toMatchObject({ subject: "Accessory structure height limit", classification: "KNOWN", complianceOutcome: "PASS" });
+  });
+
+  it("the appended finding also flows into the Report Explanation input (it is a non-ECA finding), unlike the permitRequirement aggregate which is never folded in", () => {
+    const outcome = evaluateProject({ propertyContext, project, candidateActiveRules: p2bTypes.map(activeRule), ecaFindings: [], candidateActiveInferencePolicies: [] });
+    const forExplanation = selectFindingsForExplanation(assembleFindingsToPersist(outcome));
+    expect(forExplanation.some((f) => f.subject === "Accessory structure height limit")).toBe(true);
+    expect(assembleFindingsToPersist(outcome).some((f) => f.subject.toLowerCase().includes("permit requirement"))).toBe(false);
+  });
+
+  it("dormant: with the P2b rows not ACTIVE, nothing is appended and the persisted findings equal outcome.findings exactly", () => {
+    const outcome = evaluateProject({ propertyContext, project, candidateActiveRules: [], ecaFindings: [], candidateActiveInferencePolicies: [] });
+    expect(outcome.accessoryHeightLimitFinding).toBeUndefined();
+    expect(assembleFindingsToPersist(outcome)).toEqual(outcome.findings);
+    expect(assembleFindingsToPersist(outcome).some((f) => f.subject === "Accessory structure height limit")).toBe(false);
+  });
+});

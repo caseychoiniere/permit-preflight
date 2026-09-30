@@ -304,7 +304,7 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
                 <>
                   <p className="mt-2 text-sm text-amber-900">Result: Requires verification</p>
                   <p className="mt-2 text-sm text-amber-900">
-                    A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition intersects this parcel and
+                    A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition may intersect this parcel, or cannot be ruled out from mapped data (regulatory buffers and setback areas are not mapped), and
                     may reduce the countable lot area used for this estimate, pending more precise geometry.
                   </p>
                 </>

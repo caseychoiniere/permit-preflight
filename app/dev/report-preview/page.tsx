@@ -1,0 +1,56 @@
+/**
+ * DEV/TEST-ONLY report preview (Unit 6B). Renders the REAL `ReportView` and the REAL PDF HTML
+ * (`renderReportHtml`) side by side from deterministic fixtures produced by the production
+ * evaluator (see src/dev-preview/report-preview-fixtures.ts). Returns 404 in any production
+ * build - never a customer-facing route. Reads and writes nothing in the database and never
+ * touches regulatory lifecycle state. Open at /dev/report-preview while `npm run dev` is running.
+ */
+
+import { notFound } from "next/navigation";
+import { ReportView, type Report } from "../../components/ReportView.js";
+import { PREVIEW_SCENARIOS, buildPreviewReport, toPreviewArtifactRow } from "../../../src/dev-preview/report-preview-fixtures.js";
+import { renderReportHtml } from "../../../src/report-pdf-rendering/render.js";
+import type { EvidenceReportArtifactRow } from "../../../src/db/schema.js";
+
+export const dynamic = "force-dynamic";
+
+export default async function ReportPreviewPage({ searchParams }: { searchParams: Promise<{ scenario?: string }> }) {
+  if (process.env.NODE_ENV === "production") notFound();
+
+  const { scenario: requested } = await searchParams;
+  const scenario = PREVIEW_SCENARIOS.find((s) => s.id === requested) ?? PREVIEW_SCENARIOS[0]!;
+  const report = buildPreviewReport(scenario);
+  const pdfHtml = renderReportHtml(toPreviewArtifactRow(report) as unknown as EvidenceReportArtifactRow);
+  const groups = Array.from(new Set(PREVIEW_SCENARIOS.map((s) => s.group)));
+
+  return (
+    <main style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+      <h1>Unit 6B report preview (dev only)</h1>
+      <p>
+        Fixtures come from the real evaluator over in-memory rules. No database access, no lifecycle changes. Currently showing: <strong>{scenario.title}</strong> ({scenario.id}).
+      </p>
+      <nav aria-label="Preview scenarios">
+        {groups.map((group) => (
+          <div key={group} style={{ marginBottom: 8 }}>
+            <strong>{group}: </strong>
+            {PREVIEW_SCENARIOS.filter((s) => s.group === group).map((s) => (
+              <a key={s.id} href={`?scenario=${s.id}`} style={{ marginRight: 12, fontWeight: s.id === scenario.id ? 700 : 400 }}>
+                {s.title}
+              </a>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+        <section aria-label="Web report">
+          <h2>Web (ReportView)</h2>
+          <ReportView report={report as unknown as Report} />
+        </section>
+        <section aria-label="PDF HTML">
+          <h2>PDF HTML (renderReportHtml)</h2>
+          <iframe title="PDF HTML preview" srcDoc={pdfHtml} style={{ width: "100%", height: 900, border: "1px solid #ccc", background: "#fff" }} />
+        </section>
+      </div>
+    </main>
+  );
+}

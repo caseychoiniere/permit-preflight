@@ -90,6 +90,13 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     | ShedLotCoverageForPdf
     | undefined;
 
+  // BR-U6B-11 - the existing-structure coverage figure is always disclosed with its over-count/
+  // capture-date caveat. The web report shows it under Evidence Notes; the PDF has no Evidence
+  // Notes section, so it is rendered adjacent to the figure (found by the dev report-preview
+  // harness's web/PDF parity test, 2026-09-27).
+  const coverageCaveat = (artifact.evidence as { factType: string; provenance?: { qualityCaveat?: string } }[]).find((e) => e.factType === "existing-structure-coverage")
+    ?.provenance?.qualityCaveat;
+
   const findingsHtml = findings
     .map((f) => {
       const distinct = f.classification === FindingClassification.REQUIRES_VERIFICATION ? ' style="border-left: 4px solid #b45309; padding-left: 8px;"' : "";
@@ -143,10 +150,11 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     }
     ${
       shedLotCoverage.status === "REQUIRES_VERIFICATION" && shedLotCoverage.reason === "LOT_AREA_ADJUSTMENT_UNRESOLVED"
-        ? "<p>Result: Requires verification</p><p>A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition intersects this parcel and may reduce the countable lot area used for this estimate, pending more precise geometry.</p>"
+        ? "<p>Result: Requires verification</p><p>A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition may intersect this parcel, or cannot be ruled out from mapped data (regulatory buffers and setback areas are not mapped), and may reduce the countable lot area used for this estimate, pending more precise geometry.</p>"
         : ""
     }
     <p>Existing mapped structure coverage: ${Math.round(shedLotCoverage.facts.existingMappedCoverageSqFt)} sq ft.</p>
+    ${coverageCaveat ? `<p><em>${escapeHtml(coverageCaveat)}</em></p>` : ""}
   </div>`
     : "";
 

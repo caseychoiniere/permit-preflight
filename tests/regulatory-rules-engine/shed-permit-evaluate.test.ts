@@ -99,6 +99,10 @@ describe("P1 / ROOF_AREA (evaluateRoofArea)", () => {
   it("REQUIRES_VERIFICATION - overhang disclosed without an exact measurement", () => {
     expect(evaluateRoofArea(baseProject({ roofOverhang: { extendsBeyondWalls: true } })).status).toBe("REQUIRES_VERIFICATION");
   });
+  it("[boundary] exactly 120 sq ft footprint is MET (inclusive), 121 sq ft is NOT_MET", () => {
+    expect(evaluateRoofArea(baseProject({ widthFt: 12, depthFt: 10 })).status).toBe("MET");
+    expect(evaluateRoofArea(baseProject({ widthFt: 11, depthFt: 11 })).status).toBe("NOT_MET");
+  });
   it("MET - overhang given but projected area still within 120 sq ft", () => {
     expect(evaluateRoofArea(baseProject({ widthFt: 10, depthFt: 10, roofOverhang: { extendsBeyondWalls: true, approxOverhangIn: 3 } })).status).toBe("MET");
   });
@@ -181,6 +185,18 @@ describe("P7a+P7b / SIZE_SPAN (evaluateSizeSpan)", () => {
   });
   it("NOT_MET for span > 14 without a qualifying truss", () => {
     expect(evaluateSizeSpan(baseProject({ structuralSpanInfo: { structuralSpanFt: 20 } })).status).toBe("NOT_MET");
+  });
+  it("[P7a boundary] exactly 750 sq ft footprint is not disqualified (inclusive, 'up to 750'); 751 sq ft is NOT_MET", () => {
+    expect(evaluateSizeSpan(baseProject({ widthFt: 25, depthFt: 30, structuralSpanInfo: { structuralSpanFt: 10 } })).status).toBe("MET");
+    expect(evaluateSizeSpan(baseProject({ widthFt: 751, depthFt: 1, structuralSpanInfo: { structuralSpanFt: 10 } })).status).toBe("NOT_MET");
+  });
+  it("[P7b boundary] with a manufactured truss, exactly 30ft is MET (inclusive) and 30.01ft is NOT_MET", () => {
+    expect(evaluateSizeSpan(baseProject({ structuralSpanInfo: { structuralSpanFt: 30, usesManufacturedTruss: true } })).status).toBe("MET");
+    expect(evaluateSizeSpan(baseProject({ structuralSpanInfo: { structuralSpanFt: 30.01, usesManufacturedTruss: true } })).status).toBe("NOT_MET");
+  });
+  it("[P7b boundary] just under 14ft (13.99) is MET and just over (14.01) without a truss is NOT_MET - only exactly 14.0 is unresolved", () => {
+    expect(evaluateSizeSpan(baseProject({ structuralSpanInfo: { structuralSpanFt: 13.99 } })).status).toBe("MET");
+    expect(evaluateSizeSpan(baseProject({ structuralSpanInfo: { structuralSpanFt: 14.01 } })).status).toBe("NOT_MET");
   });
   it("NOT_MET for span > 30ft even with a manufactured truss", () => {
     expect(evaluateSizeSpan(baseProject({ structuralSpanInfo: { structuralSpanFt: 35, usesManufacturedTruss: true } })).status).toBe("NOT_MET");
@@ -316,21 +332,49 @@ describe("P8 (buildTradePermitDisclosures) - non-tiered advisory, independent of
   });
 });
 
-describe("C1b/C1e (evaluateEcaLotAreaAdjustment)", () => {
-  it("NOT_APPLICABLE when no named category intersects", () => {
-    const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType: "steep_slope", mappedIntersectionResult: "NO_INTERSECTION" })]);
-    expect(result.status).toBe("NOT_APPLICABLE");
+describe("C1b/C1e (evaluateEcaLotAreaAdjustment) - fail-closed on unmodeled regulatory buffers/setbacks (2026-09-27 correction)", () => {
+  const clear = (hazardType: string) => ecaFinding({ hazardType, mappedIntersectionResult: "NO_INTERSECTION" });
+
+  it("[fail-closed] a wetland polygon that does NOT intersect the parcel is REQUIRES_VERIFICATION - its regulatory buffer could still reach the parcel", () => {
+    const result = evaluateEcaLotAreaAdjustment([clear("steep_slope"), clear("wetland"), clear("riparian_corridor")]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).toEqual(expect.arrayContaining(["WETLAND_AND_BUFFER", "RIPARIAN_CORRIDOR", "SUBMERGED_LAND_OR_SHORELINE_SETBACK"]));
   });
-  it("NOT_APPLICABLE when only non-named categories intersect (e.g. priority_habitat)", () => {
-    const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType: "priority_habitat", mappedIntersectionResult: "INTERSECTS" })]);
-    expect(result.status).toBe("NOT_APPLICABLE");
+  it("[fail-closed] a riparian-corridor polygon that does not intersect is not treated as ruling out the corridor's regulated area", () => {
+    const result = evaluateEcaLotAreaAdjustment([clear("riparian_corridor")]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).toContain("RIPARIAN_CORRIDOR");
   });
-  it("REQUIRES_VERIFICATION when a named category intersects (exact exclusion geometry never established in this pass)", () => {
+  it("[fail-closed] shoreline/submerged-land is never fetched - its absence from the findings can never rule it out", () => {
+    const result = evaluateEcaLotAreaAdjustment([clear("steep_slope"), clear("wetland"), clear("riparian_corridor")]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).toContain("SUBMERGED_LAND_OR_SHORELINE_SETBACK");
+  });
+  it("[fail-closed] an empty findings list (ECA data unavailable) is never read as 'no exclusion applies'", () => {
+    expect(evaluateEcaLotAreaAdjustment([]).status).toBe("REQUIRES_VERIFICATION");
+  });
+  it("only non-named categories (e.g. priority_habitat) never rule out the four named categories", () => {
+    expect(evaluateEcaLotAreaAdjustment([clear("priority_habitat")]).status).toBe("REQUIRES_VERIFICATION");
+  });
+  it("REQUIRES_VERIFICATION when a named category polygon intersects, listing that category", () => {
     const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType: "riparian_corridor", mappedIntersectionResult: "INTERSECTS" })]);
     expect(result.status).toBe("REQUIRES_VERIFICATION");
-    if (result.status === "REQUIRES_VERIFICATION") {
-      expect(result.intersectingCategories).toEqual(["RIPARIAN_CORRIDOR"]);
-    }
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).toContain("RIPARIAN_CORRIDOR");
+  });
+  it("[steep slope] a generic steep_slope INTERSECTS never establishes the designated non-disturbance area - it stays REQUIRES_VERIFICATION, never ESTABLISHED/NOT_APPLICABLE", () => {
+    const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType: "steep_slope", mappedIntersectionResult: "INTERSECTS" })]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+  });
+  it("[steep slope] a parcel clear of the generic steep-slope layer rules out the designated non-disturbance sub-area only - other categories still unresolved", () => {
+    const result = evaluateEcaLotAreaAdjustment([clear("steep_slope")]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).not.toContain("STEEP_SLOPE_NON_DISTURBANCE_AREA");
+  });
+  it("[end to end] with today's real evidence shape, an unresolved adjustment can never yield ordinary Case A/B/C banding (no false WITHIN_STANDARD_ALLOWANCE)", () => {
+    const ecaAdjustment = evaluateEcaLotAreaAdjustment([clear("steep_slope"), clear("wetland"), clear("riparian_corridor")]);
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 1000, proposedShedFootprintSqFt: 100, ecaAdjustment });
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.reason).toBe("LOT_AREA_ADJUSTMENT_UNRESOLVED");
   });
 });
 
@@ -365,6 +409,43 @@ describe("Flow 4 (evaluateShedLotCoverage) - CASE A/B/C banding and the asymmetr
     if (result.status === "REQUIRES_VERIFICATION") expect(result.reason).toBe("POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE");
   });
 
+  it("[C1a boundary] 2500.01 of 5000 sq ft (just over 50%) leaves the base allowance and becomes MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE", () => {
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 2000, proposedShedFootprintSqFt: 500.01, ecaAdjustment: notApplicable });
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.reason).toBe("MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE");
+  });
+  it("[C1c/C1d boundary] exactly 60% (3000 of 5000) is still MAY_QUALIFY (inclusive); 3000.01 is EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE", () => {
+    const at60 = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 2500, proposedShedFootprintSqFt: 500, ecaAdjustment: notApplicable });
+    expect(at60.status).toBe("REQUIRES_VERIFICATION");
+    if (at60.status === "REQUIRES_VERIFICATION") expect(at60.reason).toBe("MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE");
+    const over60 = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 2500, proposedShedFootprintSqFt: 500.01, ecaAdjustment: notApplicable });
+    expect(over60.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
+  });
+  it("[C1c/C1d] 60% is never auto-applied: coverage between 50% and 60% is never reported as WITHIN_STANDARD_ALLOWANCE", () => {
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 10000, existingMappedCoverageSqFt: 5500, proposedShedFootprintSqFt: 100, ecaAdjustment: notApplicable });
+    expect(result.status).not.toBe("WITHIN_STANDARD_ALLOWANCE");
+  });
+  it("[C1b denominator + C1a] an ESTABLISHED excluded area is subtracted from the lot area before the 50% test", () => {
+    const ecaAdjustment: EcaLotAreaAdjustment = { status: "ESTABLISHED", excludedAreaSqFt: 2000, minimumCoverageFloor: { status: "KNOWN" }, basis: "test" } as EcaLotAreaAdjustment;
+    // adjusted lot = 8000 - 2000 = 6000 -> 50% = 3000 (floor 625 lower); 3000 is within, 3000.01 is not.
+    const within = evaluateShedLotCoverage({ parcelAreaSqFt: 8000, existingMappedCoverageSqFt: 2500, proposedShedFootprintSqFt: 500, ecaAdjustment });
+    expect(within.status).toBe("WITHIN_STANDARD_ALLOWANCE");
+    const over = evaluateShedLotCoverage({ parcelAreaSqFt: 8000, existingMappedCoverageSqFt: 2500, proposedShedFootprintSqFt: 500.01, ecaAdjustment });
+    expect(over.status).toBe("REQUIRES_VERIFICATION");
+  });
+  it("[C1e floor] on a small lot with a C1b area present, the 625 sq ft floor replaces a lower 50% allowance", () => {
+    const ecaAdjustment: EcaLotAreaAdjustment = { status: "ESTABLISHED", excludedAreaSqFt: 200, minimumCoverageFloor: { status: "KNOWN" }, basis: "test" } as EcaLotAreaAdjustment;
+    // adjusted lot = 1000 - 200 = 800 -> 50% = 400 < 625 floor -> base allowance 625.
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 1000, existingMappedCoverageSqFt: 400, proposedShedFootprintSqFt: 200, ecaAdjustment });
+    expect(result.status).toBe("WITHIN_STANDARD_ALLOWANCE");
+    if (result.status === "WITHIN_STANDARD_ALLOWANCE") {
+      expect(result.baseAllowanceSqFt).toBe(625);
+      expect(result.facts.allowanceFacts.c1eFloorSqFt).toBe(625);
+    }
+    // The floor also lifts the 60% special allowance (480 < 625), so 626 exceeds both.
+    const over = evaluateShedLotCoverage({ parcelAreaSqFt: 1000, existingMappedCoverageSqFt: 400, proposedShedFootprintSqFt: 226, ecaAdjustment });
+    expect(over.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
+  });
   it("asymmetric override - unresolved C1b denominator but estimated coverage already exceeds the optimistic 60% ceiling", () => {
     const ecaAdjustment: EcaLotAreaAdjustment = { status: "REQUIRES_VERIFICATION", intersectingCategories: ["RIPARIAN_CORRIDOR"], reason: "test" };
     const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3200, proposedShedFootprintSqFt: 100, ecaAdjustment });

@@ -22,6 +22,7 @@ import {
   PermitReviewPath,
   PermitCriterionId,
   PermitCriterionStatus,
+  CoverageExcludedEcaCategory,
 } from "./types.js";
 import type {
   EvaluationOutcome,
@@ -35,7 +36,6 @@ import type {
   TradePermitDisclosure,
   AccessoryStructureHeightLimit,
   EcaLotAreaAdjustment,
-  CoverageExcludedEcaCategory,
   ShedLotCoverageFacts,
   ShedLotCoverageResult,
 } from "./types.js";
@@ -1114,31 +1114,57 @@ const ECA_HAZARD_TYPE_TO_COVERAGE_EXCLUDED_CATEGORY: Record<string, CoverageExcl
   steep_slope: "STEEP_SLOPE_NON_DISTURBANCE_AREA",
 };
 
+/**
+ * Whether a NO_INTERSECTION result from the mapped layer(s) rules out the COMPLETE regulatory
+ * exclusion area of each SMC 23.44.080.B category (2026-09-27 fail-closed correction).
+ * - RIPARIAN_CORRIDOR / WETLAND_AND_BUFFER / SUBMERGED_LAND_OR_SHORELINE_SETBACK: `false` - the mapped
+ *   polygon is not established to equal the regulated area (wetland buffers, shoreline setbacks and
+ *   riparian source equivalence are not modeled), so a polygon that misses the parcel does NOT rule
+ *   out an exclusion area that could still reach it. No buffer distances are invented here.
+ * - STEEP_SLOPE_NON_DISTURBANCE_AREA: `true` only for NO_INTERSECTION - the designated non-disturbance
+ *   area lies within the mapped steep-slope ECA, so a parcel clear of that layer is clear of it. An
+ *   INTERSECTS result never establishes the designated area (generic steep_slope != designated
+ *   non-disturbance area) and stays REQUIRES_VERIFICATION.
+ * A future authoritative buffer/setback source may flip a flag to true; nothing else changes.
+ */
+const CATEGORY_RULED_OUT_BY_NO_INTERSECTION: Record<CoverageExcludedEcaCategory, boolean> = {
+  RIPARIAN_CORRIDOR: false,
+  WETLAND_AND_BUFFER: false,
+  SUBMERGED_LAND_OR_SHORELINE_SETBACK: false,
+  STEEP_SLOPE_NON_DISTURBANCE_AREA: true,
+};
+
 /** C1b/C1e - only the 4 SMC 23.44.080.B-named categories ever participate (BR-U6B-12). No
  * excluded-area geometry computation is wired for shed in this pass (item 26's data-source gap),
- * so ESTABLISHED is not reachable from this function today - it exists on the type for a future
- * pass that supplies precomputed excluded-area geometry, exactly Unit 4's LOT_COVERAGE
- * precedent (always REQUIRES_VERIFICATION when relevant, never fabricated). */
+ * so ESTABLISHED is not reachable from this function today. NOT_APPLICABLE is returned ONLY when
+ * the available evidence rules out the complete exclusion area of every category (see
+ * CATEGORY_RULED_OUT_BY_NO_INTERSECTION); otherwise REQUIRES_VERIFICATION - never fabricated, and
+ * never a false "no exclusion applies" from a polygon that merely misses the parcel. */
 function evaluateEcaLotAreaAdjustment(ecaFindings: CriticalAreaFinding[]): EcaLotAreaAdjustment {
-  const intersectingCategories = new Set<CoverageExcludedEcaCategory>();
+  const findingsByCategory = new Map<CoverageExcludedEcaCategory, CriticalAreaFinding[]>();
   for (const finding of ecaFindings) {
     const category = ECA_HAZARD_TYPE_TO_COVERAGE_EXCLUDED_CATEGORY[finding.hazardType];
-    if (category && finding.mappedIntersectionResult !== MappedIntersectionResult.NO_INTERSECTION) {
-      intersectingCategories.add(category);
-    }
+    if (category) findingsByCategory.set(category, [...(findingsByCategory.get(category) ?? []), finding]);
   }
 
-  if (intersectingCategories.size === 0) {
+  const unresolvedCategories: CoverageExcludedEcaCategory[] = [];
+  for (const category of Object.values(CoverageExcludedEcaCategory)) {
+    const findings = findingsByCategory.get(category) ?? [];
+    const ruledOut = CATEGORY_RULED_OUT_BY_NO_INTERSECTION[category] && findings.length > 0 && findings.every((f) => f.mappedIntersectionResult === MappedIntersectionResult.NO_INTERSECTION);
+    if (!ruledOut) unresolvedCategories.push(category);
+  }
+
+  if (unresolvedCategories.length === 0) {
     return {
       status: "NOT_APPLICABLE",
-      reason: "No mapped riparian corridor, wetland/buffer, submerged-land/shoreline-setback, or steep-slope non-disturbance area intersects this parcel.",
+      reason: "Available mapped evidence rules out the complete exclusion area of every SMC 23.44.080.B-named category for this parcel.",
     };
   }
   return {
     status: "REQUIRES_VERIFICATION",
-    intersectingCategories: Array.from(intersectingCategories),
+    intersectingCategories: unresolvedCategories,
     reason:
-      "A SMC 23.44.080.B-named lot-area-exclusion category intersects this parcel, but the exact excluded-area geometry needed to adjust the lot-coverage denominator is not established by this evaluation.",
+      "A SMC 23.44.080.B-named lot-area-exclusion category may intersect this parcel, or cannot be ruled out from the mapped data (regulatory buffers and setback areas are not modeled), so the lot-coverage denominator is not established by this evaluation.",
   };
 }
 

@@ -37,7 +37,7 @@ describe.skipIf(!hasKey)("Rule Research Assistant / RRAG-1 live Anthropic integr
     expect(result.subject.length).toBeGreaterThan(0);
     expect(["TIER_1", "TIER_2"]).toContain(result.suggestedTier);
     expect(result.reasoningChain.length).toBeGreaterThan(0);
-  }, 30000);
+  }, 90000); // live LLM call: typically ~23s, occasionally >30s (flaky-timeout observation 2026-09-27)
 });
 
 describe.skipIf(hasKey)("Rule Research Assistant / RRAG-1 live Anthropic integration (skipped)", () => {

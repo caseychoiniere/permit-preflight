@@ -66,6 +66,19 @@ export interface PipelineDependencies {
   generateExplanation?: (findings: Finding[]) => Promise<ExplanationResult>;
 }
 
+/** The three Unit 6B evidence-entry constructors runReportGenerationPipeline uses, extracted so the
+ * dev report-preview harness builds its evidence through the SAME functions (and the caveat's
+ * provenance path the PDF renderer reads is therefore the production one, not a re-typed copy). */
+export function permitRequirementEvidenceEntry(outcome: { permitRequirement?: unknown }) {
+  return outcome.permitRequirement ? { factType: "shed-permit-requirement", value: outcome.permitRequirement, provenance: {} } : undefined;
+}
+export function existingStructureCoverageEvidenceEntry(fact: ExistingStructureCoverageFact) {
+  return { factType: "existing-structure-coverage", value: fact, provenance: { qualityCaveat: fact.overCountCaveat } };
+}
+export function shedLotCoverageEvidenceEntry(outcome: { shedLotCoverage?: unknown }) {
+  return outcome.shedLotCoverage ? { factType: "shed-lot-coverage", value: outcome.shedLotCoverage, provenance: {} } : undefined;
+}
+
 /** The exact findings-collection construction used at the persistence/explanation boundary in
  * runReportGenerationPipeline, extracted as a pure function so the P2b fold-in is directly
  * testable without a database (same pattern as selectFindingsForExplanation below). Appends
@@ -846,17 +859,15 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // constituent ShedPermitRuleType row) is satisfied - dormant in production today (all 19
       // rows TRIAGED). Matches this pipeline's established convention for a structured, non-
       // Finding aggregate result (same pattern as uncovered-constraint-types above).
-      ...(outcome.permitRequirement ? [{ factType: "shed-permit-requirement", value: outcome.permitRequirement, provenance: {} }] : []),
+      ...(permitRequirementEvidenceEntry(outcome) ? [permitRequirementEvidenceEntry(outcome)!] : []),
       // Unit 6B Capability C - a descriptive Property Intelligence fact (domain-entities.md §1b),
       // present whenever real footprint evidence exists, independent of the lot-coverage rules'
       // own ACTIVE status - never a regulatory conclusion itself (property-intelligence/types.ts's
       // "never assigns a regulatory classification" boundary).
-      ...(existingStructureCoverageFact
-        ? [{ factType: "existing-structure-coverage", value: existingStructureCoverageFact, provenance: { qualityCaveat: existingStructureCoverageFact.overCountCaveat } }]
-        : []),
+      ...(existingStructureCoverageFact ? [existingStructureCoverageEvidenceEntry(existingStructureCoverageFact)] : []),
       // The regulatory conclusion itself - present only once evaluateProject's own ACTIVE-gate
       // (every SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES row) is satisfied.
-      ...(outcome.shedLotCoverage ? [{ factType: "shed-lot-coverage", value: outcome.shedLotCoverage, provenance: {} }] : []),
+      ...(shedLotCoverageEvidenceEntry(outcome) ? [shedLotCoverageEvidenceEntry(outcome)!] : []),
     ];
 
     const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>

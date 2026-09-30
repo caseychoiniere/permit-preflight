@@ -91,7 +91,7 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
     // This synthetic, isTestOnlyFixture: true, test-cleanup-scoped row reaching ACTIVE is the one
     // disclosed exception proving this mechanism's correctness (plan §6/§7) - it is deleted in
     // afterAll and never touches any real governance rule.
-    const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId));
+    const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt);
     const actionTypes = entries.map((e) => e.actionType).sort();
     expect(actionTypes).toEqual(["RULE_ACTIVATED", "RULE_APPROVED", "RULE_SOURCE_VERIFIED", "RULE_TESTED", "RULE_TRIAGED"].sort());
     for (const entry of entries) {
@@ -113,7 +113,7 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
     const activatedTooEarly = await activateRule(db, ruleId, OPERATOR_ID, REASON, "ACTIVATE RULE");
     expect(activatedTooEarly.outcome).toBe("REJECTED");
 
-    const noAuditEntries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId));
+    const noAuditEntries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt);
     expect(noAuditEntries.map((e) => e.actionType)).toEqual(["RULE_TRIAGED"]);
   });
 
@@ -127,7 +127,7 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
 
     const [row] = await db.select().from(regulatoryRules).where(eq(regulatoryRules.id, ruleId));
     expect(row?.lifecycleState).toBe("TRIAGED");
-    const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId));
+    const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt);
     expect(entries.map((e) => e.actionType)).toEqual(["RULE_TRIAGED"]);
   });
 
@@ -168,7 +168,7 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
 
       const [row] = await db.select().from(regulatoryRules).where(eq(regulatoryRules.id, ruleId));
       expect(row?.lifecycleState).toBe("TESTED");
-      const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId));
+      const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt);
       expect(entries.map((e) => e.actionType)).toEqual(["RULE_TRIAGED", "RULE_SOURCE_VERIFIED", "RULE_TESTED"]);
     });
 
@@ -178,7 +178,7 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
       expect(result.outcome).toBe("OK");
 
       const [entry] = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt);
-      const approveEntry = (await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId))).find((e) => e.actionType === "RULE_APPROVED");
+      const approveEntry = (await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt)).find((e) => e.actionType === "RULE_APPROVED");
       expect(approveEntry?.metadata).toMatchObject({ confirmationSatisfied: true });
       expect(entry).toBeDefined();
     });

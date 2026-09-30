@@ -189,3 +189,21 @@ describe("renderReportHtml - Unit 6B Capability C Estimated lot coverage block (
     expect(html).not.toContain("Estimated lot coverage");
   });
 });
+
+describe("renderReportHtml - Capability C existing-coverage caveat (BR-U6B-11 parity fix, 2026-09-27)", () => {
+  const coverageEntry = {
+    factType: "shed-lot-coverage",
+    value: { status: "WITHIN_STANDARD_ALLOWANCE", estimatedCoverageSqFt: 1500, baseAllowanceSqFt: 2500, facts: { parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 1400, proposedShedFootprintSqFt: 100 } },
+    provenance: {},
+  };
+  it("renders the over-count caveat adjacent to the existing-coverage figure when the existing-structure-coverage entry carries it", () => {
+    const html = renderReportHtml(
+      fakeArtifact({ evidence: [coverageEntry, { factType: "existing-structure-coverage", value: {}, provenance: { qualityCaveat: "This over-counts the code-countable area." } }] })
+    );
+    expect(html).toContain("Existing mapped structure coverage: 1400 sq ft.");
+    expect(html).toContain("This over-counts the code-countable area.");
+  });
+  it("omits the caveat paragraph when no existing-structure-coverage entry exists", () => {
+    expect(renderReportHtml(fakeArtifact({ evidence: [coverageEntry] }))).not.toContain("over-counts");
+  });
+});

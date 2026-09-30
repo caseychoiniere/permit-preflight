@@ -4,9 +4,53 @@
 ## MANDATORY: Git Commit Attribution
 Never add Claude, Claude Code, Anthropic, AI-generated, or other AI attribution to Git commits. Never add Co-Authored-By trailers for Claude/Anthropic. All commits must use the repository user's existing Git author/committer identity.
 
+## MANDATORY: Delegated Founder Decision Policy
+
+The human founder has delegated routine product, engineering, prioritization, and bounded regulatory judgment to the ChatGPT advisor used alongside this repository.
+
+Claude should not ask the human founder for routine or reversible decisions.
+
+Decision flow:
+
+1. Routine/reversible engineering decision:
+   Claude decides and continues.
+
+2. Substantive but delegated decision:
+   Claude presents the issue to the ChatGPT advisor.
+   A decision relayed by the human founder from that advisor is authoritative for the delegated scope.
+
+3. Reviewer finding:
+   The reviewer is adversarial QA, not an authority gate.
+   If the reviewer identifies a real defect, fix it.
+   If the reviewer raises a judgment call, route it to the delegated advisor.
+   If the reviewer merely says it cannot authenticate founder authority, record that and continue when the decision is within delegated scope.
+
+4. Human-founder-only decisions:
+   - APPROVED → ACTIVE
+   - pricing / monetization / billing-model changes
+   - material customer-facing promises or scope changes
+   - unresolved material legal/regulatory interpretation choices
+   - material security/privacy/authentication-model changes
+   - payment/money correctness or financial-liability decisions
+   - major irreversible architecture/infrastructure commitments
+   - changes to this delegation policy
+
+Reviewer approval is not required to authenticate delegated authority.
+
+Reviewer remains responsible for identifying:
+- correctness defects
+- invariant violations
+- unsupported regulatory claims
+- provenance/auditability issues
+- security flaws
+- missing tests
+- implementation inconsistencies
+
+Fail closed on customer-facing regulatory claims, not on the development workflow.
+
 ## MANDATORY: Delegated AIDLC Approval
 
-**This section overrides every "Wait for Explicit Approval" / "ask the user" / "present for founder review" instruction that follows in this file and in every loaded `.aidlc-rule-details/` file, wherever the decision at that checkpoint is delegated authority. Read this section before acting on any such checkpoint.**
+**This section overrides every "Wait for Explicit Approval" / "ask the user" / "present for founder review" instruction that follows in this file and in every loaded `.aidlc-rule-details/` file, wherever the decision at that checkpoint is delegated authority. Read this section before acting on any such checkpoint. It implements item 3 ("Reviewer finding") of the Delegated Founder Decision Policy above for the specific case of `aidlc-reviewer` gates — the reviewer authenticates nothing about founder authority; it is QA only, per that policy.**
 
 The project uses an independent AIDLC reviewer exposed by the `aidlc-reviewer` MCP server. The reviewer substitutes for founder approval for delegated engineering and workflow decisions. **Do not stop to request founder approval when the reviewer has authority to make the decision.**
 

@@ -16,6 +16,7 @@ export const AdminActionType = {
   RULE_APPROVED: "RULE_APPROVED",
   RULE_ACTIVATED: "RULE_ACTIVATED",
   RULE_BOOTSTRAPPED: "RULE_BOOTSTRAPPED",
+  RULE_PROFESSIONAL_REVIEW_RECORDED: "RULE_PROFESSIONAL_REVIEW_RECORDED",
 } as const;
 export type AdminActionType = (typeof AdminActionType)[keyof typeof AdminActionType];
 

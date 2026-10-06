@@ -365,10 +365,51 @@ describe("C1b/C1e (evaluateEcaLotAreaAdjustment) - fail-closed on unmodeled regu
     const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType: "steep_slope", mappedIntersectionResult: "INTERSECTS" })]);
     expect(result.status).toBe("REQUIRES_VERIFICATION");
   });
-  it("[steep slope] a parcel clear of the generic steep-slope layer rules out the designated non-disturbance sub-area only - other categories still unresolved", () => {
+  it("[advisory maps] SMC 25.09.030.A: a parcel clear of the advisory steep-slope layer does NOT rule out the designated non-disturbance area - no category can be ruled out by map silence", () => {
     const result = evaluateEcaLotAreaAdjustment([clear("steep_slope")]);
     expect(result.status).toBe("REQUIRES_VERIFICATION");
-    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).not.toContain("STEEP_SLOPE_NON_DISTURBANCE_AREA");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.intersectingCategories).toContain("STEEP_SLOPE_NON_DISTURBANCE_AREA");
+  });
+  it("[advisory maps] even with EVERY real hazard layer clear, the denominator is never NOT_APPLICABLE (no dispositive source exists for any 23.44.080.B category)", () => {
+    const all = ["steep_slope", "known_slides", "potential_slide_areas", "riparian_corridor", "wetland", "priority_habitat", "flood_prone", "landfill_historical", "liquefaction_prone", "peat_settlement"].map(clear);
+    const result = evaluateEcaLotAreaAdjustment(all);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") {
+      expect(result.intersectingCategories).toHaveLength(4);
+      expect(result.mapIndicatedCategories).toEqual([]);
+    }
+  });
+  it("[rule logic, declared case 0] IF dispositive evidence ruled out every named category, the adjustment is NOT_APPLICABLE; one still-unresolved or intersecting category prevents it (production evidence never reaches this: see the advisory-map tests)", () => {
+    const allRuledOut = { RIPARIAN_CORRIDOR: true, WETLAND_AND_BUFFER: true, SUBMERGED_LAND_OR_SHORELINE_SETBACK: true, STEEP_SLOPE_NON_DISTURBANCE_AREA: true } as const;
+    const clearAll = [clear("riparian_corridor"), clear("wetland"), clear("shoreline_setback"), clear("steep_slope")];
+    expect(evaluateEcaLotAreaAdjustment(clearAll, allRuledOut).status).toBe("NOT_APPLICABLE");
+    expect(evaluateEcaLotAreaAdjustment([...clearAll.slice(0, 3), ecaFinding({ hazardType: "steep_slope", mappedIntersectionResult: "INTERSECTS" })], allRuledOut).status).toBe("REQUIRES_VERIFICATION");
+    expect(evaluateEcaLotAreaAdjustment(clearAll.slice(0, 3), allRuledOut).status).toBe("REQUIRES_VERIFICATION");
+  });
+  it.each([
+    ["riparian_corridor", "RIPARIAN_CORRIDOR"],
+    ["wetland", "WETLAND_AND_BUFFER"],
+    ["wetland_buffer", "WETLAND_AND_BUFFER"],
+    ["shoreline_setback", "SUBMERGED_LAND_OR_SHORELINE_SETBACK"],
+    ["submerged_land", "SUBMERGED_LAND_OR_SHORELINE_SETBACK"],
+    ["steep_slope", "STEEP_SLOPE_NON_DISTURBANCE_AREA"],
+  ])("[per category] a mapped %s INTERSECTS indicates exactly %s; every category stays unresolved", (hazardType, category) => {
+    const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType, mappedIntersectionResult: "INTERSECTS" })]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") {
+      expect(result.mapIndicatedCategories).toEqual([category]);
+      expect(result.intersectingCategories).toHaveLength(4);
+    }
+  });
+  it("[mixed findings] INDETERMINATE counts as a map indication and a clear sibling layer rules nothing out", () => {
+    const result = evaluateEcaLotAreaAdjustment([clear("wetland"), ecaFinding({ hazardType: "riparian_corridor", mappedIntersectionResult: "INDETERMINATE" })]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.mapIndicatedCategories).toEqual(["RIPARIAN_CORRIDOR"]);
+  });
+  it("[map indication] an INTERSECTS result is recorded as an indication (mapIndicatedCategories), never as an established exclusion", () => {
+    const result = evaluateEcaLotAreaAdjustment([ecaFinding({ hazardType: "wetland", mappedIntersectionResult: "INTERSECTS" })]);
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION") expect(result.mapIndicatedCategories).toEqual(["WETLAND_AND_BUFFER"]);
   });
   it("[end to end] with today's real evidence shape, an unresolved adjustment can never yield ordinary Case A/B/C banding (no false WITHIN_STANDARD_ALLOWANCE)", () => {
     const ecaAdjustment = evaluateEcaLotAreaAdjustment([clear("steep_slope"), clear("wetland"), clear("riparian_corridor")]);
@@ -444,6 +485,27 @@ describe("Flow 4 (evaluateShedLotCoverage) - CASE A/B/C banding and the asymmetr
     }
     // The floor also lifts the 60% special allowance (480 < 625), so 626 exceeds both.
     const over = evaluateShedLotCoverage({ parcelAreaSqFt: 1000, existingMappedCoverageSqFt: 400, proposedShedFootprintSqFt: 226, ecaAdjustment });
+    expect(over.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
+  });
+  it("[Director relevance] unresolved denominator, coverage above the optimistic ceiling, and a mapped layer positively indicates a 23.44.080.B area -> POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE (may be relevant, never 'applies')", () => {
+    const ecaAdjustment: EcaLotAreaAdjustment = { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: ["WETLAND_AND_BUFFER"], reason: "test" };
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3200, proposedShedFootprintSqFt: 100, ecaAdjustment });
+    expect(result.status).toBe("REQUIRES_VERIFICATION");
+    if (result.status === "REQUIRES_VERIFICATION" && result.reason === "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE") {
+      expect(result.facts.allowanceFacts.c1eDirectorAlternativeRelevant).toBe(true);
+    } else throw new Error("expected POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE");
+  });
+  it("[Director relevance] no mapped indication of any 23.44.080.B area keeps the hedged EXCEEDS result (no Director-alternative claim)", () => {
+    const ecaAdjustment: EcaLotAreaAdjustment = { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: [], reason: "test" };
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3200, proposedShedFootprintSqFt: 100, ecaAdjustment });
+    expect(result.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
+  });
+  it("[625 floor] on a tiny parcel the optimistic ceiling is at least 625 sq ft (23.44.080.D), so 600 sq ft is never reported as exceeding", () => {
+    const ecaAdjustment: EcaLotAreaAdjustment = { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: [], reason: "test" };
+    const within = evaluateShedLotCoverage({ parcelAreaSqFt: 900, existingMappedCoverageSqFt: 500, proposedShedFootprintSqFt: 100, ecaAdjustment });
+    expect(within.status).toBe("REQUIRES_VERIFICATION");
+    if (within.status === "REQUIRES_VERIFICATION") expect(within.reason).toBe("LOT_AREA_ADJUSTMENT_UNRESOLVED");
+    const over = evaluateShedLotCoverage({ parcelAreaSqFt: 900, existingMappedCoverageSqFt: 500, proposedShedFootprintSqFt: 126, ecaAdjustment });
     expect(over.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
   });
   it("asymmetric override - unresolved C1b denominator but estimated coverage already exceeds the optimistic 60% ceiling", () => {

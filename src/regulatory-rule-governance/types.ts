@@ -72,6 +72,9 @@ export interface VerificationRecord {
     professionType: ProfessionType;
     opinion: string;
     reviewedAt: string;
+    /** rule_professional_reviews.id this record was built from (2026-10-06) - present on every record
+     * created through the lifecycle mechanism; absent on legacy/fixture records. */
+    reviewRecordId?: string;
   };
 }
 

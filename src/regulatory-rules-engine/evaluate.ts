@@ -1115,32 +1115,42 @@ const ECA_HAZARD_TYPE_TO_COVERAGE_EXCLUDED_CATEGORY: Record<string, CoverageExcl
 };
 
 /**
- * Whether a NO_INTERSECTION result from the mapped layer(s) rules out the COMPLETE regulatory
- * exclusion area of each SMC 23.44.080.B category (2026-09-27 fail-closed correction).
- * - RIPARIAN_CORRIDOR / WETLAND_AND_BUFFER / SUBMERGED_LAND_OR_SHORELINE_SETBACK: `false` - the mapped
- *   polygon is not established to equal the regulated area (wetland buffers, shoreline setbacks and
- *   riparian source equivalence are not modeled), so a polygon that misses the parcel does NOT rule
- *   out an exclusion area that could still reach it. No buffer distances are invented here.
- * - STEEP_SLOPE_NON_DISTURBANCE_AREA: `true` only for NO_INTERSECTION - the designated non-disturbance
- *   area lies within the mapped steep-slope ECA, so a parcel clear of that layer is clear of it. An
- *   INTERSECTS result never establishes the designated area (generic steep_slope != designated
- *   non-disturbance area) and stays REQUIRES_VERIFICATION.
- * A future authoritative buffer/setback source may flip a flag to true; nothing else changes.
+ * C1b: no SMC 23.44.080.B category can be ruled out by mapped data today (2026-10-06 analysis,
+ * aidlc-docs/decisions/2026-10-06-unit-6b-blocker-resolution.md). SMC 25.09.030.A: "The Department's
+ * maps are advisory except" geologic-hazard (peat/seismic/volcanic) maps, FEMA flood maps, WDFW-mapped
+ * areas and peat maps for parcels <= 50,000 sq ft - none of which are a 23.44.080.B category.
+ * - RIPARIAN_CORRIDOR: riparian watercourse (Type F/Np/Ns per WAC) + 100 ft from the field-surveyed
+ *   ordinary high water mark (25.09.012.D.5); the ECA layer is advisory and does not carry field-surveyed
+ *   OHWM or WAC watercourse typing.
+ * - WETLAND_AND_BUFFER: wetland by field criteria (25.09.012.C); buffer width by category AND habitat
+ *   function (25.09.160 Table A); the layer lacks habitat function and is advisory.
+ * - SUBMERGED_LAND_OR_SHORELINE_SETBACK: Shoreline District, SMC 23.60A; setback contextual/discretionary;
+ *   the available layer is an environment-designation overlay, not submerged-land/setback geometry.
+ * - STEEP_SLOPE_NON_DISTURBANCE_AREA: 23.44.080.E = all steep-slope hazard areas (>=40% over 10 ft, measured,
+ *   25.09.012.A.3.b.5) except relief/waiver/variance areas; the steep-slope layer is advisory and cannot
+ *   show absence, and the exceptions are permit-specific/discretionary.
+ * Hence a mapped NO_INTERSECTION never rules a category out. A future dispositive source may flip an
+ * entry to true; nothing else changes. A mapped INTERSECTS is an indication, not an establishment.
  */
 const CATEGORY_RULED_OUT_BY_NO_INTERSECTION: Record<CoverageExcludedEcaCategory, boolean> = {
   RIPARIAN_CORRIDOR: false,
   WETLAND_AND_BUFFER: false,
   SUBMERGED_LAND_OR_SHORELINE_SETBACK: false,
-  STEEP_SLOPE_NON_DISTURBANCE_AREA: true,
+  STEEP_SLOPE_NON_DISTURBANCE_AREA: false,
 };
 
 /** C1b/C1e - only the 4 SMC 23.44.080.B-named categories ever participate (BR-U6B-12). No
- * excluded-area geometry computation is wired for shed in this pass (item 26's data-source gap),
- * so ESTABLISHED is not reachable from this function today. NOT_APPLICABLE is returned ONLY when
- * the available evidence rules out the complete exclusion area of every category (see
- * CATEGORY_RULED_OUT_BY_NO_INTERSECTION); otherwise REQUIRES_VERIFICATION - never fabricated, and
- * never a false "no exclusion applies" from a polygon that merely misses the parcel. */
-function evaluateEcaLotAreaAdjustment(ecaFindings: CriticalAreaFinding[]): EcaLotAreaAdjustment {
+ * excluded-area geometry computation is wired for shed (see CATEGORY_RULED_OUT_BY_NO_INTERSECTION
+ * for why none can be established), so ESTABLISHED is not reachable from this function today.
+ * NOT_APPLICABLE is returned ONLY when the evidence rules out the complete exclusion area of every
+ * category; otherwise REQUIRES_VERIFICATION - never fabricated, and never a false "no exclusion
+ * applies" from a polygon that merely misses the parcel or an advisory map's silence. */
+function evaluateEcaLotAreaAdjustment(
+  ecaFindings: CriticalAreaFinding[],
+  /** Injectable only so tests can exercise the rule logic under hypothetical dispositive evidence;
+   * production always uses CATEGORY_RULED_OUT_BY_NO_INTERSECTION. */
+  ruledOutByNoIntersection: Record<CoverageExcludedEcaCategory, boolean> = CATEGORY_RULED_OUT_BY_NO_INTERSECTION
+): EcaLotAreaAdjustment {
   const findingsByCategory = new Map<CoverageExcludedEcaCategory, CriticalAreaFinding[]>();
   for (const finding of ecaFindings) {
     const category = ECA_HAZARD_TYPE_TO_COVERAGE_EXCLUDED_CATEGORY[finding.hazardType];
@@ -1148,10 +1158,12 @@ function evaluateEcaLotAreaAdjustment(ecaFindings: CriticalAreaFinding[]): EcaLo
   }
 
   const unresolvedCategories: CoverageExcludedEcaCategory[] = [];
+  const mapIndicatedCategories: CoverageExcludedEcaCategory[] = [];
   for (const category of Object.values(CoverageExcludedEcaCategory)) {
     const findings = findingsByCategory.get(category) ?? [];
-    const ruledOut = CATEGORY_RULED_OUT_BY_NO_INTERSECTION[category] && findings.length > 0 && findings.every((f) => f.mappedIntersectionResult === MappedIntersectionResult.NO_INTERSECTION);
+    const ruledOut = ruledOutByNoIntersection[category] && findings.length > 0 && findings.every((f) => f.mappedIntersectionResult === MappedIntersectionResult.NO_INTERSECTION);
     if (!ruledOut) unresolvedCategories.push(category);
+    if (findings.some((f) => f.mappedIntersectionResult !== MappedIntersectionResult.NO_INTERSECTION)) mapIndicatedCategories.push(category);
   }
 
   if (unresolvedCategories.length === 0) {
@@ -1163,8 +1175,9 @@ function evaluateEcaLotAreaAdjustment(ecaFindings: CriticalAreaFinding[]): EcaLo
   return {
     status: "REQUIRES_VERIFICATION",
     intersectingCategories: unresolvedCategories,
+    mapIndicatedCategories,
     reason:
-      "A SMC 23.44.080.B-named lot-area-exclusion category may intersect this parcel, or cannot be ruled out from the mapped data (regulatory buffers and setback areas are not modeled), so the lot-coverage denominator is not established by this evaluation.",
+      "A SMC 23.44.080.B-named lot-area-exclusion category may intersect this parcel, or cannot be ruled out from the mapped data (the City's environmentally critical area maps are advisory, SMC 25.09.030.A, and regulatory buffers and setback areas are not modeled), so the lot-coverage denominator is not established by this evaluation.",
   };
 }
 
@@ -1197,8 +1210,24 @@ function evaluateShedLotCoverage(input: Omit<ShedLotCoverageFacts, "allowanceFac
   const estimatedCoverageSqFt = existingMappedCoverageSqFt + proposedShedFootprintSqFt;
 
   if (ecaAdjustment.status === "REQUIRES_VERIFICATION") {
-    const optimisticPotentialSpecialAllowanceSqFt = Math.max(parcelAreaSqFt * 0.6, 0);
+    // Optimistic ceiling: exclusions only shrink the denominator, so the full parcel is the most
+    // generous case - but if a SMC 23.44.080.B area is present the 625 sq ft floor (23.44.080.D) could
+    // exceed 60% of a very small parcel, so the ceiling is the greater of the two.
+    const optimisticPotentialSpecialAllowanceSqFt = Math.max(parcelAreaSqFt * 0.6, 625);
     if (estimatedCoverageSqFt > optimisticPotentialSpecialAllowanceSqFt) {
+      // A Director-approved alternative (23.44.080.D, via a Chapter 25.09 reduction/waiver/modification)
+      // exists only on lots with a 23.44.080.B area. When a mapped layer positively indicates one,
+      // the alternative MAY be relevant (never "applies"); with no map indication the existing
+      // hedged "appears exceeded" result stands.
+      if ((ecaAdjustment.mapIndicatedCategories?.length ?? 0) > 0) {
+        return {
+          status: "REQUIRES_VERIFICATION",
+          reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE",
+          estimatedCoverageSqFt,
+          potentialSpecialAllowanceSqFt: optimisticPotentialSpecialAllowanceSqFt,
+          facts: { ...facts, allowanceFacts: { ...facts.allowanceFacts, c1eDirectorAlternativeRelevant: true } },
+        };
+      }
       return {
         status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE",
         estimatedCoverageSqFt,

@@ -9,10 +9,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, type Db } from "../../src/db/client.js";
-import { regulatoryRules, adminActionLog } from "../../src/db/schema.js";
+import { regulatoryRules, adminActionLog, ruleProfessionalReviews } from "../../src/db/schema.js";
 import {
   triageRule,
   sourceVerifyRule,
+  recordProfessionalReview,
   markRuleTested,
   approveRule,
   activateRule,
@@ -32,6 +33,7 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
 
   afterAll(async () => {
     if (cleanupRuleIds.length === 0) return;
+    await db.delete(ruleProfessionalReviews).where(inArray(ruleProfessionalReviews.ruleId, cleanupRuleIds));
     await db.delete(adminActionLog).where(inArray(adminActionLog.targetId, cleanupRuleIds));
     await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, cleanupRuleIds));
   });
@@ -117,13 +119,13 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
     expect(noAuditEntries.map((e) => e.actionType)).toEqual(["RULE_TRIAGED"]);
   });
 
-  it("Tier-2 source-verification is rejected with NOT_SUPPORTED before any DB write", async () => {
+  it("Tier-2 source-verification without a recorded professional review is REJECTED before any DB write", async () => {
     const ruleId = await insertDraftedSyntheticRule();
     const triaged = await triageRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2");
     expect(triaged.outcome).toBe("OK");
 
     const result = await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2");
-    expect(result.outcome).toBe("NOT_SUPPORTED");
+    expect(result.outcome).toBe("REJECTED");
 
     const [row] = await db.select().from(regulatoryRules).where(eq(regulatoryRules.id, ruleId));
     expect(row?.lifecycleState).toBe("TRIAGED");
@@ -192,6 +194,107 @@ describe.skipIf(!hasDb)("Rule-lifecycle admin mechanism - live Neon integration 
 
       const [row] = await db.select().from(regulatoryRules).where(eq(regulatoryRules.id, ruleId));
       expect(row?.lifecycleState).toBe("APPROVED");
+    });
+  });
+
+  describe("Tier-2 professional-review path (2026-10-06) - synthetic rows only", () => {
+    const REVIEW = {
+      reviewerIdentity: "Synthetic Test Reviewer",
+      reviewerRole: "LAND_USE_CONSULTANT" as const,
+      reviewDate: "2026-10-01T00:00:00Z",
+      sourceProvisions: ["SYNTHETIC provision"],
+      conclusion: "Synthetic conclusion.",
+      limitations: "none identified",
+      evidenceRefs: ["synthetic-evidence-1"],
+      suitableForDeterministicOrFailClosedUse: true,
+    };
+    async function triagedTier2(): Promise<string> {
+      const ruleId = await insertDraftedSyntheticRule();
+      expect((await triageRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2")).outcome).toBe("OK");
+      return ruleId;
+    }
+
+    it("Tier-2 source verification FAILS CLOSED with no recorded professional review, and writes nothing", async () => {
+      const ruleId = await triagedTier2();
+      const result = await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2");
+      expect(result.outcome).toBe("REJECTED");
+      const [row] = await db.select().from(regulatoryRules).where(eq(regulatoryRules.id, ruleId));
+      expect(row?.lifecycleState).toBe("TRIAGED");
+    });
+
+    it("a TIER_1 request against a Tier-2 rule cannot masquerade as professional review", async () => {
+      const ruleId = await triagedTier2();
+      expect((await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, REVIEW, "RECORD PROFESSIONAL REVIEW")).outcome).toBe("OK");
+      expect((await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_1")).outcome).toBe("REJECTED");
+    });
+
+    it("record -> source-verify succeeds; escalatedProfessional comes from the persisted row (with its id), and both actions are audited", async () => {
+      const ruleId = await triagedTier2();
+      const recorded = await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, REVIEW, "RECORD PROFESSIONAL REVIEW");
+      expect(recorded.outcome).toBe("OK");
+      const verified = await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2");
+      expect(verified.outcome).toBe("OK");
+      if (verified.outcome === "OK" && recorded.outcome === "OK") {
+        expect(verified.rule.lifecycleState).toBe("SOURCE_VERIFIED");
+        const record = verified.rule.verificationHistory[0];
+        expect(record?.tier).toBe("TIER_2");
+        expect(record?.escalatedProfessional?.reviewRecordId).toBe(recorded.reviewId);
+        expect(record?.escalatedProfessional?.identity).toBe("Synthetic Test Reviewer");
+      }
+      const entries = await db.select().from(adminActionLog).where(eq(adminActionLog.targetId, ruleId)).orderBy(adminActionLog.createdAt);
+      expect(entries.map((e) => e.actionType)).toEqual(["RULE_TRIAGED", "RULE_PROFESSIONAL_REVIEW_RECORDED", "RULE_SOURCE_VERIFIED"]);
+    });
+
+    it("equally-timestamped conflicting reviews fail closed (no arbitrary winner)", async () => {
+      const ruleId = await triagedTier2();
+      const at = new Date("2026-10-02T00:00:00Z");
+      for (const suitable of [true, false]) {
+        await db.insert(ruleProfessionalReviews).values({
+          ruleId, reviewerIdentity: "Synthetic Test Reviewer", reviewerRole: "LAND_USE_CONSULTANT", reviewDate: new Date("2026-10-01T00:00:00Z"),
+          sourceProvisions: ["SYNTHETIC provision"], conclusion: "Synthetic.", limitations: "none identified", evidenceRefs: ["synthetic-1"],
+          suitableForProductUse: suitable, recordedBy: OPERATOR_ID, createdAt: at,
+        });
+      }
+      expect((await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2")).outcome).toBe("REJECTED");
+    });
+
+    it("a later negative review supersedes an earlier suitable one (latest wins)", async () => {
+      const ruleId = await triagedTier2();
+      expect((await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, REVIEW, "RECORD PROFESSIONAL REVIEW")).outcome).toBe("OK");
+      await new Promise((r) => setTimeout(r, 25));
+      expect((await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, { ...REVIEW, suitableForDeterministicOrFailClosedUse: false }, "RECORD PROFESSIONAL REVIEW")).outcome).toBe("OK");
+      expect((await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2")).outcome).toBe("REJECTED");
+    });
+
+    it("the review row and its audit entry are atomic: a failing audit insert (blank reason) rolls the review back", async () => {
+      const ruleId = await triagedTier2();
+      await expect(recordProfessionalReview(db, ruleId, OPERATOR_ID, "   ", REVIEW, "RECORD PROFESSIONAL REVIEW")).rejects.toThrow();
+      const rows = await db.select().from(ruleProfessionalReviews).where(eq(ruleProfessionalReviews.ruleId, ruleId));
+      expect(rows).toHaveLength(0);
+    });
+
+    it("once SOURCE_VERIFIED, further reviews cannot be recorded (state lock)", async () => {
+      const ruleId = await triagedTier2();
+      await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, REVIEW, "RECORD PROFESSIONAL REVIEW");
+      expect((await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2")).outcome).toBe("OK");
+      expect((await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, REVIEW, "RECORD PROFESSIONAL REVIEW")).outcome).toBe("REJECTED");
+    });
+
+    it("a negative review (not suitable for product use) blocks Tier-2 source verification", async () => {
+      const ruleId = await triagedTier2();
+      await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, { ...REVIEW, suitableForDeterministicOrFailClosedUse: false }, "RECORD PROFESSIONAL REVIEW");
+      expect((await sourceVerifyRule(db, ruleId, OPERATOR_ID, REASON, "TIER_2")).outcome).toBe("REJECTED");
+    });
+
+    it("recording requires the exact confirmation, a Tier-2 TRIAGED rule, and valid content - and appends only on success", async () => {
+      const ruleId = await triagedTier2();
+      expect((await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, REVIEW, "record professional review")).outcome).toBe("REJECTED");
+      expect((await recordProfessionalReview(db, ruleId, OPERATOR_ID, REASON, { ...REVIEW, evidenceRefs: [] }, "RECORD PROFESSIONAL REVIEW")).outcome).toBe("REJECTED");
+      const tier1 = await insertDraftedSyntheticRule();
+      await triageRule(db, tier1, OPERATOR_ID, REASON, "TIER_1");
+      expect((await recordProfessionalReview(db, tier1, OPERATOR_ID, REASON, REVIEW, "RECORD PROFESSIONAL REVIEW")).outcome).toBe("REJECTED");
+      const rows = await db.select().from(ruleProfessionalReviews).where(inArray(ruleProfessionalReviews.ruleId, [ruleId, tier1]));
+      expect(rows).toHaveLength(0);
     });
   });
 });

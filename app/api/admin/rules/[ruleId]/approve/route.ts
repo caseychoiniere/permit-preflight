@@ -45,7 +45,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ rul
     case "NOT_FOUND":
       return Response.json({ error: "Regulatory rule not found." }, { status: 404 });
     case "REJECTED":
-    case "NOT_SUPPORTED":
       return Response.json({ error: result.reason }, { status: 400 });
     case "CONFLICT":
       return Response.json({ error: "The rule's lifecycle state changed before this request could be applied - reload and retry." }, { status: 409 });

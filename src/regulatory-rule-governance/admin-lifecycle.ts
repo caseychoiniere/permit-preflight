@@ -14,7 +14,9 @@
 
 import { withAdminTransaction } from "../db/client.js";
 import type { Db } from "../db/client.js";
-import { getRuleById, transitionLifecycleState } from "./repository.js";
+import { getRuleById, getRuleByIdForUpdate, transitionLifecycleState, insertProfessionalReview, getNewestProfessionalReviews } from "./repository.js";
+import { RECORD_PROFESSIONAL_REVIEW_CONFIRMATION, validateProfessionalReviewInput, buildEscalatedProfessional } from "./professional-review.js";
+import type { ProfessionalReviewInput } from "./professional-review.js";
 import { disable, reenable, triage, sourceVerify, markTested, approve, activate } from "./lifecycle.js";
 import type { LifecycleResult } from "./lifecycle.js";
 import { recordAdminAction } from "../admin-action-log/repository.js";
@@ -25,7 +27,6 @@ import { Tier as TierEnum } from "./types.js";
 export type AdminLifecycleOutcome =
   | { outcome: "OK"; rule: RegulatoryRule }
   | { outcome: "REJECTED"; reason: string }
-  | { outcome: "NOT_SUPPORTED"; reason: string }
   | { outcome: "NOT_FOUND" }
   | { outcome: "CONFLICT" };
 
@@ -139,29 +140,102 @@ export function triageRule(db: Db, ruleId: string, operatorId: string, reason: s
 }
 
 /**
- * TRIAGED -> SOURCE_VERIFIED. Tier-2 source-verification is out of scope for this mechanism
- * entirely (2026-09-24 correction, reviewer decision 67af6737-6812-4603-b301-31abf9db82c1) -
- * rejected with NOT_SUPPORTED before any DB access, before ever constructing a VerificationRecord.
- * Only TIER_1 requests reach the pure `sourceVerify()` function through this route. Tier-2
- * professional-opinion provenance is a separate, later, founder-directed design, not built here.
+ * TRIAGED -> SOURCE_VERIFIED.
+ * - Tier 1: unchanged. `escalatedProfessional` is never attached.
+ * - Tier 2 (2026-10-06): requires a recorded, suitable professional review (recordProfessionalReview).
+ *   `escalatedProfessional` is built from that persisted row - never from the request - so a plain
+ *   request cannot assert a professional opinion, and a TIER_1 request against a Tier-2 rule (or the
+ *   reverse) is rejected by the pure sourceVerify()'s tier-match check. Missing/negative/incomplete
+ *   review evidence fails closed before any write.
  *
- * `founderVerifiedAt` is always server-derived from request time, never client-supplied (matches
- * `approve()`'s existing `approvedAt` "caller decides what 'now' means" discipline).
+ * `founderVerifiedAt` is always server-derived from request time, never client-supplied.
  */
 export async function sourceVerifyRule(db: Db, ruleId: string, operatorId: string, reason: string, tier: Tier): Promise<AdminLifecycleOutcome> {
-  if (tier === TierEnum.TIER_2) {
-    return { outcome: "NOT_SUPPORTED", reason: "Tier-2 source-verification is not supported by this mechanism." };
-  }
   const founderVerifiedAt = new Date().toISOString();
-  return runNewTransition(
-    db,
-    ruleId,
-    operatorId,
-    reason,
-    (rule) => sourceVerify(rule, { tier, founderIdentity: operatorId, founderVerifiedAt }),
-    AdminActionType.RULE_SOURCE_VERIFIED,
-    (rule) => ({ verificationHistory: rule.verificationHistory })
-  );
+  if (tier === TierEnum.TIER_1) {
+    return runNewTransition(
+      db,
+      ruleId,
+      operatorId,
+      reason,
+      (rule) => sourceVerify(rule, { tier, founderIdentity: operatorId, founderVerifiedAt }),
+      AdminActionType.RULE_SOURCE_VERIFIED,
+      (rule) => ({ verificationHistory: rule.verificationHistory })
+    );
+  }
+
+  // Tier 2: the review lookup, the pure verification and the state transition all happen inside ONE
+  // transaction that holds a row lock on the rule (SELECT ... FOR UPDATE), the same lock
+  // recordProfessionalReview takes - so a concurrent review cannot slip in between the read of the
+  // review and the transition (no TOCTOU), and a verified rule can no longer accept new reviews.
+  return withAdminTransaction(async (tx): Promise<AdminLifecycleOutcome> => {
+    const rule = await getRuleByIdForUpdate(tx, ruleId);
+    if (!rule) return { outcome: "NOT_FOUND" };
+    const review = buildEscalatedProfessional(await getNewestProfessionalReviews(tx, ruleId));
+    if (review.outcome === "REJECTED") return { outcome: "REJECTED", reason: review.reason };
+    const pure = sourceVerify(rule, { tier, founderIdentity: operatorId, founderVerifiedAt, escalatedProfessional: review.escalatedProfessional });
+    if (pure.outcome === "REJECTED") return { outcome: "REJECTED", reason: pure.reason };
+    const transition = await transitionLifecycleState(tx, ruleId, { from: rule.lifecycleState, to: pure.rule.lifecycleState }, { verificationHistory: pure.rule.verificationHistory });
+    if (!transition.transitioned) return { outcome: "CONFLICT" };
+    await recordAdminAction(tx, {
+      operatorId,
+      actionType: AdminActionType.RULE_SOURCE_VERIFIED,
+      targetType: AdminTargetType.REGULATORY_RULE,
+      targetId: ruleId,
+      reason,
+      metadata: { professionalReviewId: review.escalatedProfessional.reviewRecordId },
+    });
+    return { outcome: "OK", rule: transition.rule };
+  });
+}
+
+/**
+ * Records Tier-2 professional-review evidence for a TRIAGED Tier-2 rule (append-only, one transaction
+ * with its audit entry). The existing single-operator admin identity records it; `confirm` must equal
+ * "RECORD PROFESSIONAL REVIEW" (a deliberate-action guard, not an authentication factor). This records
+ * an opinion a human professional produced - it never generates one.
+ */
+export async function recordProfessionalReview(
+  db: Db,
+  ruleId: string,
+  operatorId: string,
+  reason: string,
+  input: ProfessionalReviewInput,
+  confirm: string
+): Promise<{ outcome: "OK"; reviewId: string } | { outcome: "REJECTED"; reason: string } | { outcome: "NOT_FOUND" }> {
+  if (confirm !== RECORD_PROFESSIONAL_REVIEW_CONFIRMATION) {
+    return { outcome: "REJECTED", reason: `INVALID_CONFIRMATION: confirm must equal "${RECORD_PROFESSIONAL_REVIEW_CONFIRMATION}" exactly.` };
+  }
+  const validation = validateProfessionalReviewInput(input);
+  if (validation.outcome === "INVALID") return { outcome: "REJECTED", reason: validation.issues.join(" ") };
+
+  return withAdminTransaction(async (tx) => {
+    const rule = await getRuleByIdForUpdate(tx, ruleId);
+    if (!rule) return { outcome: "NOT_FOUND" } as const;
+    if (rule.tier !== TierEnum.TIER_2) return { outcome: "REJECTED", reason: "Professional review applies only to Tier-2 rules." } as const;
+    if (rule.lifecycleState !== "TRIAGED") return { outcome: "REJECTED", reason: `Professional review can only be recorded while the rule is TRIAGED (currently ${rule.lifecycleState}).` } as const;
+    const { id } = await insertProfessionalReview(tx, {
+      ruleId,
+      reviewerIdentity: input.reviewerIdentity.trim(),
+      reviewerRole: input.reviewerRole,
+      reviewDate: validation.reviewDate,
+      sourceProvisions: input.sourceProvisions,
+      conclusion: input.conclusion,
+      limitations: input.limitations,
+      evidenceRefs: input.evidenceRefs,
+      suitableForProductUse: input.suitableForDeterministicOrFailClosedUse,
+      recordedBy: operatorId,
+    });
+    await recordAdminAction(tx, {
+      operatorId,
+      actionType: AdminActionType.RULE_PROFESSIONAL_REVIEW_RECORDED,
+      targetType: AdminTargetType.REGULATORY_RULE,
+      targetId: ruleId,
+      reason,
+      metadata: { professionalReviewId: id, reviewerRole: input.reviewerRole, evidenceRefCount: input.evidenceRefs.length, suitableForProductUse: input.suitableForDeterministicOrFailClosedUse },
+    });
+    return { outcome: "OK", reviewId: id } as const;
+  });
 }
 
 /** SOURCE_VERIFIED -> TESTED. No identity field on this transition (unchanged from `markTested()`

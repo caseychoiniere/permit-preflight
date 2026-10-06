@@ -378,7 +378,15 @@ export type CoverageExcludedEcaCategory = (typeof CoverageExcludedEcaCategory)[k
 
 export type EcaLotAreaAdjustment =
   | { status: "NOT_APPLICABLE"; reason: string }
-  | { status: "REQUIRES_VERIFICATION"; intersectingCategories: CoverageExcludedEcaCategory[]; reason: string }
+  | {
+      status: "REQUIRES_VERIFICATION";
+      /** Every named category that cannot be ruled out (today: all four - no dispositive map exists). */
+      intersectingCategories: CoverageExcludedEcaCategory[];
+      /** The subset a mapped layer POSITIVELY indicates (advisory INTERSECTS). An indication, never an
+       * establishment - drives only whether a Director-approved alternative may be relevant. */
+      mapIndicatedCategories?: CoverageExcludedEcaCategory[];
+      reason: string;
+    }
   | {
       status: "ESTABLISHED";
       excludedAreaSqFt: number;

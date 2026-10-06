@@ -358,7 +358,47 @@ export const adminActionTypeEnum = pgEnum("admin_action_type", [
   "RULE_APPROVED",
   "RULE_ACTIVATED",
   "RULE_BOOTSTRAPPED",
+  // Tier-2 professional-review evidence recorded for a rule (2026-10-06) - see
+  // src/regulatory-rule-governance/professional-review.ts.
+  "RULE_PROFESSIONAL_REVIEW_RECORDED",
 ]);
+
+/**
+ * Tier-2 professional-review evidence (2026-10-06). Append-only: rows are never updated or deleted;
+ * a later review supersedes an earlier one by being newer. Recorded only through
+ * regulatory-rule-governance/admin-lifecycle.ts's recordProfessionalReview (existing single-operator
+ * admin identity, one transaction with its admin_action_log entry). sourceVerifyRule builds a Tier-2
+ * VerificationRecord's `escalatedProfessional` from the latest row here - never from a request body.
+ */
+export const ruleProfessionalReviews = pgTable(
+  "rule_professional_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => regulatoryRules.id),
+    reviewerIdentity: text("reviewer_identity").notNull(),
+    reviewerRole: text("reviewer_role").notNull(),
+    reviewDate: timestamp("review_date", { withTimezone: true }).notNull(),
+    sourceProvisions: jsonb("source_provisions").notNull(),
+    conclusion: text("conclusion").notNull(),
+    limitations: text("limitations").notNull(),
+    evidenceRefs: jsonb("evidence_refs").notNull(),
+    /** The reviewer's explicit confirmation that the interpretation is suitable for deterministic
+     * or fail-closed product use. A review with `false` is a negative review and blocks Tier-2
+     * source verification. */
+    suitableForProductUse: boolean("suitable_for_product_use").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("rule_professional_reviews_identity_not_blank", sql`length(trim(${table.reviewerIdentity})) > 0`),
+    check("rule_professional_reviews_conclusion_not_blank", sql`length(trim(${table.conclusion})) > 0`),
+    check("rule_professional_reviews_limitations_not_blank", sql`length(trim(${table.limitations})) > 0`),
+    index("rule_professional_reviews_rule_idx").on(table.ruleId),
+  ]
+);
+export type RuleProfessionalReviewRow = typeof ruleProfessionalReviews.$inferSelect;
 
 export const adminTargetTypeEnum = pgEnum("admin_target_type", ["ORDER", "REGULATORY_RULE", "DATA_SOURCE"]);
 

@@ -111,7 +111,8 @@ export const PREVIEW_SCENARIOS: PreviewScenarioDefinition[] = [
     expected: { lotCoverageStatus: "REQUIRES_VERIFICATION", lotCoverageReason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE" },
     project: {},
     existingMappedCoverageSqFt: 3100,
-    ecaAdjustment: { status: "ESTABLISHED", excludedAreaSqFt: 0, minimumCoverageFloor: { status: "REQUIRES_VERIFICATION", reason: "Preview fixture" }, basis: "Preview fixture" } as EcaLotAreaAdjustment,
+    // Reachable in production: an unresolved denominator with a mapped layer positively indicating a 23.44.080.B area.
+    ecaAdjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: ["WETLAND_AND_BUFFER"], reason: "Preview fixture: a mapped wetland layer intersects." },
   },
   {
     id: "coverage-lot-area-unresolved",

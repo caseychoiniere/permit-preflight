@@ -5,8 +5,8 @@
  * version/lifecycle history read and ADM-7's disable/re-enable persistence.
  */
 
-import { eq, and } from "drizzle-orm";
-import { regulatoryRules, type NewRegulatoryRuleRow } from "../db/schema.js";
+import { eq, and, desc } from "drizzle-orm";
+import { regulatoryRules, ruleProfessionalReviews, type NewRegulatoryRuleRow } from "../db/schema.js";
 import type { Db, TransactionalDb } from "../db/client.js";
 import type { RegulatoryRule } from "./types.js";
 import { LifecycleState } from "./types.js";
@@ -102,4 +102,57 @@ export async function insertRuleIfAbsent(tx: TransactionalDb, row: NewRegulatory
   const [inserted] = rows;
   if (!inserted) return { inserted: false };
   return { inserted: true, rule: rowToRegulatoryRule(inserted) };
+}
+
+export interface NewProfessionalReview {
+  ruleId: string;
+  reviewerIdentity: string;
+  reviewerRole: string;
+  reviewDate: Date;
+  sourceProvisions: string[];
+  conclusion: string;
+  limitations: string;
+  evidenceRefs: string[];
+  suitableForProductUse: boolean;
+  recordedBy: string;
+}
+
+/** Append-only insert of one professional-review row. Never updates or deletes an existing row. */
+export async function insertProfessionalReview(tx: TransactionalDb, review: NewProfessionalReview): Promise<{ id: string }> {
+  const [row] = await tx.insert(ruleProfessionalReviews).values(review).returning({ id: ruleProfessionalReviews.id });
+  if (!row) throw new Error("Professional review insert returned no row.");
+  return row;
+}
+
+function toPersistedReview(row: typeof ruleProfessionalReviews.$inferSelect) {
+  return {
+    id: row.id,
+    reviewerIdentity: row.reviewerIdentity,
+    reviewerRole: row.reviewerRole,
+    reviewDate: row.reviewDate,
+    sourceProvisions: row.sourceProvisions as string[],
+    conclusion: row.conclusion,
+    limitations: row.limitations,
+    evidenceRefs: row.evidenceRefs as string[],
+    suitableForProductUse: row.suitableForProductUse,
+  };
+}
+
+/**
+ * The newest GROUP of professional reviews recorded for a rule: every row sharing the maximum
+ * created_at (normally one). Returning the whole tie group - rather than an arbitrary single row -
+ * lets the caller fail closed when equally-new reviews disagree (a later review supersedes an
+ * earlier one; reviews with identical timestamps cannot be ordered, so any unsuitable one blocks).
+ */
+export async function getNewestProfessionalReviews(db: Db | TransactionalDb, ruleId: string) {
+  const rows = await db.select().from(ruleProfessionalReviews).where(eq(ruleProfessionalReviews.ruleId, ruleId)).orderBy(desc(ruleProfessionalReviews.createdAt), desc(ruleProfessionalReviews.id));
+  const newest = rows[0]?.createdAt.getTime();
+  return rows.filter((r) => r.createdAt.getTime() === newest).map(toPersistedReview);
+}
+
+/** Row-locking read (SELECT ... FOR UPDATE) used inside a transaction to serialize Tier-2 review
+ * recording against Tier-2 source verification for the same rule. */
+export async function getRuleByIdForUpdate(tx: TransactionalDb, id: string): Promise<RegulatoryRule | undefined> {
+  const [row] = await tx.select().from(regulatoryRules).where(eq(regulatoryRules.id, id)).for("update");
+  return row ? rowToRegulatoryRule(row) : undefined;
 }

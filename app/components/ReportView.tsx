@@ -90,6 +90,12 @@ interface PermitRequirementFindingDisplay {
   reviewPath: "NONE" | "STFI_LIKELY" | "FULL_REVIEW_LIKELY" | "REQUIRES_VERIFICATION";
   criteria: PermitCriterionResultDisplay[];
   tradePermitDisclosures: TradePermitDisclosureDisplay[];
+  /** Optional: absent on reports persisted before 2026-10-07 and whenever the ECA criterion is evaluated. */
+  ecaDeferral?: { allOtherExemptionCriteriaMet: boolean; note?: string };
+}
+/** Optional on persisted results: absent on reports generated before 2026-10-07. */
+interface LotCoverageToleranceDisplay {
+  explanation: string[];
 }
 
 /** frontend-components.md §2's exact 5-row headline table - shared with render.ts's PDF template
@@ -124,9 +130,23 @@ interface ShedLotCoverageFactsDisplay {
 type ShedLotCoverageResultDisplay =
   | { status: "WITHIN_STANDARD_ALLOWANCE"; estimatedCoverageSqFt: number; baseAllowanceSqFt: number; facts: ShedLotCoverageFactsDisplay }
   | { status: "REQUIRES_VERIFICATION"; reason: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE"; estimatedCoverageSqFt: number; baseAllowanceSqFt: number; potentialSpecialAllowanceSqFt: number; facts: ShedLotCoverageFactsDisplay }
-  | { status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE"; estimatedCoverageSqFt: number; potentialSpecialAllowanceSqFt: number; facts: ShedLotCoverageFactsDisplay }
+  | {
+      status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE";
+      estimatedCoverageSqFt: number;
+      potentialSpecialAllowanceSqFt: number;
+      facts: ShedLotCoverageFactsDisplay;
+      exclusionTolerance?: LotCoverageToleranceDisplay;
+      parcelSpecificApprovalDisclosure?: string;
+    }
   | { status: "REQUIRES_VERIFICATION"; reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE"; estimatedCoverageSqFt: number; potentialSpecialAllowanceSqFt: number; facts: ShedLotCoverageFactsDisplay }
-  | { status: "REQUIRES_VERIFICATION"; reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED"; estimatedCoverageSqFt: number; facts: ShedLotCoverageFactsDisplay };
+  | {
+      status: "REQUIRES_VERIFICATION";
+      reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED";
+      estimatedCoverageSqFt: number;
+      facts: ShedLotCoverageFactsDisplay;
+      exclusionTolerance?: LotCoverageToleranceDisplay;
+      parcelSpecificApprovalDisclosure?: string;
+    };
 
 function coveragePercent(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
   return Math.round((estimatedCoverageSqFt / parcelAreaSqFt) * 100);
@@ -236,6 +256,7 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
               <div className="flex flex-wrap items-center gap-2">
                 <strong className="text-sm text-slate-900">{permitHeadline(permitRequirement.buildingPermit, permitRequirement.reviewPath)}</strong>
               </div>
+              {permitRequirement.ecaDeferral?.note && <p className="mt-2 text-sm text-amber-900">{permitRequirement.ecaDeferral.note}</p>}
               <ul className="mt-3 flex flex-col gap-1">
                 {permitRequirement.criteria.map((c, i) => (
                   <li key={i} className="text-sm text-slate-600">
@@ -289,7 +310,15 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
                 </>
               )}
               {shedLotCoverage.status === "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE" && (
-                <p className="mt-2 text-sm text-slate-600">Even Seattle&apos;s higher 60% allowance (for qualifying developments) appears exceeded.</p>
+                <>
+                  <p className="mt-2 text-sm text-slate-600">Even Seattle&apos;s higher 60% allowance (for qualifying developments) appears exceeded.</p>
+                  {shedLotCoverage.exclusionTolerance?.explanation.map((p, i) => (
+                    <p key={i} className="mt-2 text-sm text-slate-600">
+                      {p}
+                    </p>
+                  ))}
+                  {shedLotCoverage.parcelSpecificApprovalDisclosure && <p className="mt-2 text-sm text-slate-500">{shedLotCoverage.parcelSpecificApprovalDisclosure}</p>}
+                </>
               )}
               {shedLotCoverage.status === "REQUIRES_VERIFICATION" && shedLotCoverage.reason === "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE" && (
                 <>
@@ -307,6 +336,12 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
                     A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition may intersect this parcel, or cannot be ruled out from mapped data (regulatory buffers and setback areas are not mapped), and
                     may reduce the countable lot area used for this estimate, pending more precise geometry.
                   </p>
+                  {shedLotCoverage.exclusionTolerance?.explanation.map((p, i) => (
+                    <p key={i} className="mt-2 text-sm text-slate-600">
+                      {p}
+                    </p>
+                  ))}
+                  {shedLotCoverage.parcelSpecificApprovalDisclosure && <p className="mt-2 text-sm text-slate-500">{shedLotCoverage.parcelSpecificApprovalDisclosure}</p>}
                 </>
               )}
               <p className="mt-3 text-sm text-slate-500">Existing mapped structure coverage: {Math.round(shedLotCoverage.facts.existingMappedCoverageSqFt)} sq ft.</p>

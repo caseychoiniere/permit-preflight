@@ -38,6 +38,8 @@ interface PermitRequirementFindingForPdf {
   reviewPath: "NONE" | "STFI_LIKELY" | "FULL_REVIEW_LIKELY" | "REQUIRES_VERIFICATION";
   criteria: { criterionId: string; status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION" | "NOT_APPLICABLE"; explanationBasis: string }[];
   tradePermitDisclosures: { trade: string; explanationBasis: string }[];
+  /** Optional: absent on reports persisted before 2026-10-07 and whenever the ECA criterion is evaluated. */
+  ecaDeferral?: { allOtherExemptionCriteriaMet: boolean; note?: string };
 }
 
 /** frontend-components.md §2's exact 5-row headline table - same logic as ReportView.tsx's
@@ -63,6 +65,17 @@ interface ShedLotCoverageForPdf {
   reason?: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE" | "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE" | "LOT_AREA_ADJUSTMENT_UNRESOLVED";
   estimatedCoverageSqFt: number;
   facts: { parcelAreaSqFt: number; existingMappedCoverageSqFt: number };
+  /** Optional: absent on reports persisted before 2026-10-07. */
+  exclusionTolerance?: { explanation: string[] };
+  parcelSpecificApprovalDisclosure?: string;
+}
+
+/** Tolerance explanation + neutral parcel-specific-approval disclosure (2026-10-07) - identical
+ * text to ReportView.tsx; both are printed verbatim from the persisted evaluator output. */
+function toleranceHtmlForPdf(coverage: ShedLotCoverageForPdf): string {
+  const paragraphs = (coverage.exclusionTolerance?.explanation ?? []).map((p) => `<p>${escapeHtml(p)}</p>`);
+  if (coverage.parcelSpecificApprovalDisclosure) paragraphs.push(`<p>${escapeHtml(coverage.parcelSpecificApprovalDisclosure)}</p>`);
+  return paragraphs.join("");
 }
 
 function coveragePercentForPdf(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
@@ -111,6 +124,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     ? `<h2>Building permit</h2>
   <div>
     <strong>${escapeHtml(permitHeadlineForPdf(permitRequirement.buildingPermit, permitRequirement.reviewPath))}</strong>
+    ${permitRequirement.ecaDeferral?.note ? `<p>${escapeHtml(permitRequirement.ecaDeferral.note)}</p>` : ""}
     <ul>
       ${permitRequirement.criteria.map((c) => `<li>${permitCriterionIconForPdf(c.status)} ${escapeHtml(c.explanationBasis)}</li>`).join("\n      ")}
     </ul>
@@ -140,7 +154,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     }
     ${
       shedLotCoverage.status === "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE"
-        ? "<p>Even Seattle's higher 60% allowance (for qualifying developments) appears exceeded.</p>"
+        ? `<p>Even Seattle's higher 60% allowance (for qualifying developments) appears exceeded.</p>${toleranceHtmlForPdf(shedLotCoverage)}`
         : ""
     }
     ${
@@ -150,7 +164,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     }
     ${
       shedLotCoverage.status === "REQUIRES_VERIFICATION" && shedLotCoverage.reason === "LOT_AREA_ADJUSTMENT_UNRESOLVED"
-        ? "<p>Result: Requires verification</p><p>A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition may intersect this parcel, or cannot be ruled out from mapped data (regulatory buffers and setback areas are not mapped), and may reduce the countable lot area used for this estimate, pending more precise geometry.</p>"
+        ? `<p>Result: Requires verification</p><p>A mapped riparian corridor, wetland, shoreline-setback, or steep-slope non-disturbance condition may intersect this parcel, or cannot be ruled out from mapped data (regulatory buffers and setback areas are not mapped), and may reduce the countable lot area used for this estimate, pending more precise geometry.</p>${toleranceHtmlForPdf(shedLotCoverage)}`
         : ""
     }
     <p>Existing mapped structure coverage: ${Math.round(shedLotCoverage.facts.existingMappedCoverageSqFt)} sq ft.</p>

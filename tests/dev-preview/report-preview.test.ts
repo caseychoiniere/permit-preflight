@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -36,7 +37,7 @@ describe("dev report-preview harness (Unit 6B dormant result sections)", () => {
   it("covers every required Capability B and Capability C result shape", () => {
     const ids = PREVIEW_SCENARIOS.map((s) => s.id);
     for (const id of [
-      "permit-likely-exempt",
+      "permit-eca-determination-only",
       "permit-stfi-likely",
       "permit-full-review-likely",
       "permit-review-path-unresolved",
@@ -44,8 +45,10 @@ describe("dev report-preview harness (Unit 6B dormant result sections)", () => {
       "coverage-standard",
       "coverage-special-allowance",
       "coverage-exceeds",
-      "coverage-director-alternative",
+      "coverage-exceeds-map-indicated",
       "coverage-lot-area-unresolved",
+      "coverage-unresolved-over-50",
+      "coverage-unresolved-small-lot-floor",
     ]) {
       expect(ids).toContain(id);
     }
@@ -101,6 +104,12 @@ describe("dev report-preview harness (Unit 6B dormant result sections)", () => {
       }
       expect(web).toContain("SDCI makes the final determination");
       expect(pdf).toContain("SDCI makes the final determination");
+      // The ECA-only note (2026-10-07) is printed verbatim on both surfaces whenever the evaluator emits it.
+      const note = (permit as { ecaDeferral?: { note?: string } }).ecaDeferral?.note;
+      if (note) {
+        expect(web).toContain(normalize(note));
+        expect(pdf).toContain(normalize(note));
+      }
       // P9: the exemption disclaimer appears on both surfaces iff LIKELY_EXEMPT.
       const disclaimer = "does not waive setback, lot-coverage, height, or rear-yard-coverage compliance";
       expect(web.includes(disclaimer)).toBe(permit.buildingPermit === "LIKELY_EXEMPT");
@@ -130,6 +139,16 @@ describe("dev report-preview harness (Unit 6B dormant result sections)", () => {
       expect(pdf).toContain(percent);
       expect(web).toContain(`${coverage.facts.existingMappedCoverageSqFt} sq ft`);
       expect(pdf).toContain(`${coverage.facts.existingMappedCoverageSqFt} sq ft`);
+      // Tolerance + neutral parcel-specific-approval disclosure (2026-10-07): identical text on both surfaces.
+      const tolerance = (coverage as { exclusionTolerance?: { explanation: string[] }; parcelSpecificApprovalDisclosure?: string });
+      for (const paragraph of tolerance.exclusionTolerance?.explanation ?? []) {
+        expect(web).toContain(normalize(paragraph));
+        expect(pdf).toContain(normalize(paragraph));
+      }
+      if (tolerance.parcelSpecificApprovalDisclosure) {
+        expect(web).toContain(normalize(tolerance.parcelSpecificApprovalDisclosure));
+        expect(pdf).toContain(normalize(tolerance.parcelSpecificApprovalDisclosure));
+      }
       // C2: the over-count caveat travels with the estimate on both surfaces.
       expect(web.toLowerCase()).toContain("over-count");
       expect(pdf.toLowerCase()).toContain("over-count");
@@ -139,5 +158,34 @@ describe("dev report-preview harness (Unit 6B dormant result sections)", () => {
   it("[standard case] never mentions the 60% allowance on either surface (founder UX principle)", () => {
     expect(renderWeb("coverage-standard")).not.toContain("60%");
     expect(renderPdf("coverage-standard")).not.toContain("60%");
+  });
+
+  it("[B] all-other-criteria-met scenario shows the ECA-only explanation and never says exempt (web and PDF)", () => {
+    for (const out of [renderWeb("permit-eca-determination-only"), renderPdf("permit-eca-determination-only")]) {
+      expect(out).toContain("Requires verification");
+      expect(out).toContain("All other screened building-permit exemption criteria are met. The remaining question is whether the site is in or near an environmentally critical area.");
+      expect(out).toContain("SDCI makes that determination.");
+      expect(out).not.toContain("Likely not required");
+      expect(out).not.toContain("does not waive setback");
+    }
+  });
+
+  it("[C] production-realistic scenarios print the exclusion tolerance, and no surface claims a Director alternative", () => {
+    for (const id of ["coverage-lot-area-unresolved", "coverage-unresolved-over-50", "coverage-unresolved-small-lot-floor", "coverage-exceeds-map-indicated"]) {
+      for (const out of [renderWeb(id), renderPdf(id)]) {
+        expect(out).toContain("Parcel-specific SDCI approvals, reductions, waivers, or modifications are not evaluated by Permit Preflight");
+        expect(out).not.toMatch(/Director-approved/i);
+      }
+    }
+    expect(renderWeb("coverage-lot-area-unresolved")).toContain("approximately 1,870 sq ft (37% of the parcel)");
+    expect(renderPdf("coverage-lot-area-unresolved")).toContain("approximately 1,870 sq ft (37% of the parcel)");
+    expect(renderWeb("coverage-unresolved-over-50")).toContain("already above the 50% limit even if no area is excluded");
+    expect(renderPdf("coverage-unresolved-over-50")).toContain("already above the 50% limit even if no area is excluded");
+  });
+
+  it("the preview's active set excludes P6 and C1e-director (they remain inactive for the MVP)", () => {
+    const source = readFileSync(new URL("../../src/dev-preview/report-preview-fixtures.ts", import.meta.url), "utf8");
+    expect(source).toContain("MVP_ACTIVE_RULE_TYPES.map(previewOnlyActiveRule)");
+    expect(source).toMatch(/INACTIVE_DISCRETIONARY_RULE_TYPES[^\n]*SHED_PERMIT_P6_ECA_CRITERION[^\n]*SHED_LOT_COVERAGE_C1E_DIRECTOR_ALTERNATIVE/);
   });
 });

@@ -1795,3 +1795,17 @@ Tests: added resolveBuildingVisualState to the existing parcel-placement-helpers
 **Context**: Full analysis in aidlc-docs/decisions/2026-10-06-unit-6b-blocker-resolution.md. Two product-value findings flagged for the founder's activation decision: Capability B can never report LIKELY_EXEMPT (P6 is always REQUIRES_VERIFICATION with real advisory ECA layers) and Capability C can never report a plain "within 50%" (denominator never established).
 
 ---
+
+---
+
+## Unit 6B Outcome-Specific Gating — Professional Review of P6 / C1e-director Deferred for the MVP
+**Timestamp**: 2026-10-07T00:00:00Z
+**User Input**: Founder decision: skip professional review for P6 and C1e-director for the MVP; do not fabricate review evidence, source-verify, re-tier, approve or activate either rule; keep the professional-review mechanism; implement outcome-specific gating so discretionary Tier-2 rules no longer gate deterministic customer value that does not depend on resolving them (Capability B permit-required / ECA-only REQUIRES_VERIFICATION / never LIKELY_EXEMPT while P6 is inactive; Capability C calculation without C1e-director); add the lot-coverage exclusion tolerance (50% and 60%, 625 sq ft floor), a neutral parcel-specific-approval disclosure with no Director-alternative claim, explicit dependency model, targeted and parity tests, additive documentation; verify, reviewer once as adversarial QA, commit and push; stop with an activation-readiness report and do not activate or start Unit 7.
+**AI Response**: Replaced the blanket constituent gating in evaluate.ts with an explicit outcome-dependency model (per-criterion rule dependencies; REQUIRED needs one active disqualifier; REQUIRES_VERIFICATION needs the eight deterministic permit rules; LIKELY_EXEMPT additionally needs P6; Capability C needs five rules and Director-alternative claims need C1e-director). Added lot-coverage-tolerance.ts and persisted `ecaDeferral`, `exclusionTolerance`, `parcelSpecificApprovalDisclosure` evaluator output printed verbatim by ReportView and the PDF template. Preview harness now previews the MVP active set. Tests added; lifecycle state verified unchanged (17 APPROVED, P6 and C1e-director TRIAGED/TIER_2, 0 ACTIVE). Docs: additive addenda to the 2026-10-06 product-value analysis and professional-review packet.
+**Context**: Delegated-policy decision (founder-relayed). No activation, no Unit 7, no professional-review evidence created. Known value trade-off recorded: a dispositive priority-habitat/peat hit no longer yields REQUIRED/full-review because inactive P6 is not evaluated.
+
+---
+
+Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED_FOUNDER solely for inability to authenticate the founder decision (recorded, not a defect, per the Delegated Founder Decision Policy). One real finding fixed: inactive-P6 ECA copy no longer calls map-dispositive layers "advisory" (now "context only; not used to decide this criterion"). Unit suite 783/783 after the fix.
+
+---

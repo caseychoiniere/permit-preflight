@@ -5,7 +5,10 @@
  * rule is activated.
  *
  * Every result shape here comes from the REAL production evaluator (`evaluateProject`) run over
- * in-memory, never-persisted, `isTestOnlyFixture: true` ACTIVE rule objects. Nothing here reads
+ * in-memory, never-persisted, `isTestOnlyFixture: true` ACTIVE rule objects. The active set is the
+ * MVP set: every Unit 6B rule EXCEPT the discretionary Tier-2 rules P6 and C1e-director (2026-10-07
+ * founder decision), so previews show exactly what a customer would see on activation of the
+ * deterministic set. Nothing here reads
  * or writes the database, touches regulatory lifecycle state, or bypasses production evaluation;
  * the fixtures only stand in for the ACTIVE-rule input that the database would supply once rules
  * are activated. Findings are assembled with the same `assembleFindingsToPersist` the pipeline
@@ -42,6 +45,10 @@ const CONSTITUENT_RULE_TYPES = [
   "SHED_LOT_COVERAGE_C1E_MINIMUM_FLOOR",
   "SHED_LOT_COVERAGE_C1E_DIRECTOR_ALTERNATIVE",
 ] as const;
+
+/** Discretionary Tier-2 rules: TRIAGED/inactive for the MVP, so never part of the previewed active set. */
+const INACTIVE_DISCRETIONARY_RULE_TYPES: ReadonlySet<string> = new Set(["SHED_PERMIT_P6_ECA_CRITERION", "SHED_LOT_COVERAGE_C1E_DIRECTOR_ALTERNATIVE"]);
+const MVP_ACTIVE_RULE_TYPES = CONSTITUENT_RULE_TYPES.filter((rt) => !INACTIVE_DISCRETIONARY_RULE_TYPES.has(rt));
 
 function previewOnlyActiveRule(ruleType: string): RegulatoryRule {
   return {
@@ -93,10 +100,12 @@ export interface PreviewScenarioDefinition {
   project: Partial<ShedProjectDetails>;
   existingMappedCoverageSqFt: number;
   ecaAdjustment: EcaLotAreaAdjustment;
+  /** Defaults to PARCEL_AREA_SQFT. */
+  parcelAreaSqFt?: number;
 }
 
 export const PREVIEW_SCENARIOS: PreviewScenarioDefinition[] = [
-  { id: "permit-likely-exempt", group: "Capability B - Building permit", title: "LIKELY_EXEMPT", expected: { buildingPermit: "LIKELY_EXEMPT", reviewPath: "NONE" }, project: {}, existingMappedCoverageSqFt: 1500, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
+  { id: "permit-eca-determination-only", group: "Capability B - Building permit", title: "All other criteria met - turns only on the ECA question", expected: { buildingPermit: "REQUIRES_VERIFICATION", reviewPath: "REQUIRES_VERIFICATION" }, project: {}, existingMappedCoverageSqFt: 1500, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
   { id: "permit-stfi-likely", group: "Capability B - Building permit", title: "REQUIRED / STFI_LIKELY", expected: { buildingPermit: "REQUIRED", reviewPath: "STFI_LIKELY" }, project: { widthFt: 12, depthFt: 12, utilityIntent: { electrical: true, plumbing: false, mechanical: true } }, existingMappedCoverageSqFt: 1500, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
   { id: "permit-full-review-likely", group: "Capability B - Building permit", title: "REQUIRED / FULL_REVIEW_LIKELY", expected: { buildingPermit: "REQUIRED", reviewPath: "FULL_REVIEW_LIKELY" }, project: { widthFt: 30, depthFt: 30 }, existingMappedCoverageSqFt: 1500, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
   { id: "permit-review-path-unresolved", group: "Capability B - Building permit", title: "REQUIRED / review path unresolved", expected: { buildingPermit: "REQUIRED", reviewPath: "REQUIRES_VERIFICATION" }, project: { widthFt: 12, depthFt: 12, foundationType: undefined }, existingMappedCoverageSqFt: 1500, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
@@ -105,22 +114,40 @@ export const PREVIEW_SCENARIOS: PreviewScenarioDefinition[] = [
   { id: "coverage-special-allowance", group: "Capability C - Estimated lot coverage", title: "> 50% and <= 60% (special-allowance verification)", expected: { lotCoverageStatus: "REQUIRES_VERIFICATION", lotCoverageReason: "MAY_QUALIFY_FOR_SPECIAL_ALLOWANCE" }, project: {}, existingMappedCoverageSqFt: 2500, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
   { id: "coverage-exceeds", group: "Capability C - Estimated lot coverage", title: "> 60%", expected: { lotCoverageStatus: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE" }, project: {}, existingMappedCoverageSqFt: 3100, ecaAdjustment: NOT_APPLICABLE_ADJUSTMENT },
   {
-    id: "coverage-director-alternative",
+    id: "coverage-exceeds-map-indicated",
     group: "Capability C - Estimated lot coverage",
-    title: "Director-approved alternative relevant",
-    expected: { lotCoverageStatus: "REQUIRES_VERIFICATION", lotCoverageReason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE" },
+    title: "> 60%, a mapped layer indicates an exclusion area (no Director-alternative claim)",
+    expected: { lotCoverageStatus: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE" },
     project: {},
     existingMappedCoverageSqFt: 3100,
-    // Reachable in production: an unresolved denominator with a mapped layer positively indicating a 23.44.080.B area.
     ecaAdjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: ["WETLAND_AND_BUFFER"], reason: "Preview fixture: a mapped wetland layer intersects." },
   },
   {
     id: "coverage-lot-area-unresolved",
     group: "Capability C - Estimated lot coverage",
-    title: "Lot-area adjustment unresolved",
+    title: "Lot-area adjustment unresolved - 31% with tolerance",
     expected: { lotCoverageStatus: "REQUIRES_VERIFICATION", lotCoverageReason: "LOT_AREA_ADJUSTMENT_UNRESOLVED" },
     project: {},
     existingMappedCoverageSqFt: 1500,
+    ecaAdjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], reason: "Preview fixture: a lot-area-exclusion category may intersect." },
+  },
+  {
+    id: "coverage-unresolved-over-50",
+    group: "Capability C - Estimated lot coverage",
+    title: "Unresolved, already over 50% with no exclusions (60% tolerance)",
+    expected: { lotCoverageStatus: "REQUIRES_VERIFICATION", lotCoverageReason: "LOT_AREA_ADJUSTMENT_UNRESOLVED" },
+    project: {},
+    existingMappedCoverageSqFt: 2500,
+    ecaAdjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], reason: "Preview fixture: a lot-area-exclusion category may intersect." },
+  },
+  {
+    id: "coverage-unresolved-small-lot-floor",
+    group: "Capability C - Estimated lot coverage",
+    title: "Unresolved, tiny 900 sq ft parcel (625 sq ft minimum)",
+    expected: { lotCoverageStatus: "REQUIRES_VERIFICATION", lotCoverageReason: "LOT_AREA_ADJUSTMENT_UNRESOLVED" },
+    project: {},
+    parcelAreaSqFt: 900,
+    existingMappedCoverageSqFt: 480,
     ecaAdjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], reason: "Preview fixture: a lot-area-exclusion category may intersect." },
   },
 ];
@@ -139,11 +166,11 @@ export function buildPreviewReport(scenario: PreviewScenarioDefinition): Preview
   const outcome = evaluateProject({
     propertyContext,
     project,
-    candidateActiveRules: CONSTITUENT_RULE_TYPES.map(previewOnlyActiveRule),
+    candidateActiveRules: MVP_ACTIVE_RULE_TYPES.map(previewOnlyActiveRule),
     ecaFindings: CLEAR_ECA,
     candidateActiveInferencePolicies: [],
     shedLotCoverageFacts: {
-      parcelAreaSqFt: PARCEL_AREA_SQFT,
+      parcelAreaSqFt: scenario.parcelAreaSqFt ?? PARCEL_AREA_SQFT,
       existingMappedCoverageSqFt: scenario.existingMappedCoverageSqFt,
       proposedShedFootprintSqFt: project.widthFt * project.depthFt,
       ecaAdjustment: scenario.ecaAdjustment,

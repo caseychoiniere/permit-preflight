@@ -445,7 +445,7 @@ describe("Flow 4 (evaluateShedLotCoverage) - CASE A/B/C banding and the asymmetr
       minimumCoverageFloor: { status: "REQUIRES_VERIFICATION", reason: "test" },
       basis: "test",
     };
-    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3500, proposedShedFootprintSqFt: 500, ecaAdjustment });
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3500, proposedShedFootprintSqFt: 500, ecaAdjustment }, { directorAlternativeRuleActive: true });
     expect(result.status).toBe("REQUIRES_VERIFICATION");
     if (result.status === "REQUIRES_VERIFICATION") expect(result.reason).toBe("POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE");
   });
@@ -487,9 +487,9 @@ describe("Flow 4 (evaluateShedLotCoverage) - CASE A/B/C banding and the asymmetr
     const over = evaluateShedLotCoverage({ parcelAreaSqFt: 1000, existingMappedCoverageSqFt: 400, proposedShedFootprintSqFt: 226, ecaAdjustment });
     expect(over.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
   });
-  it("[Director relevance] unresolved denominator, coverage above the optimistic ceiling, and a mapped layer positively indicates a 23.44.080.B area -> POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE (may be relevant, never 'applies')", () => {
+  it("[Director relevance, C1e-director ACTIVE] unresolved denominator, coverage above the optimistic ceiling, and a mapped layer positively indicates a 23.44.080.B area -> POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE (may be relevant, never 'applies')", () => {
     const ecaAdjustment: EcaLotAreaAdjustment = { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: ["WETLAND_AND_BUFFER"], reason: "test" };
-    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3200, proposedShedFootprintSqFt: 100, ecaAdjustment });
+    const result = evaluateShedLotCoverage({ parcelAreaSqFt: 5000, existingMappedCoverageSqFt: 3200, proposedShedFootprintSqFt: 100, ecaAdjustment }, { directorAlternativeRuleActive: true });
     expect(result.status).toBe("REQUIRES_VERIFICATION");
     if (result.status === "REQUIRES_VERIFICATION" && result.reason === "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE") {
       expect(result.facts.allowanceFacts.c1eDirectorAlternativeRelevant).toBe(true);
@@ -615,5 +615,201 @@ describe("§4.14 - partial-activation aggregation rule (never a partial/placehol
     });
     expect(outcome.permitRequirement).toBeDefined();
     expect(outcome.accessoryHeightLimitFinding).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Outcome-specific gating (2026-10-07 founder decision): discretionary Tier-2 rules (P6,
+// C1e-director) no longer gate deterministic value that does not depend on resolving them. The
+// general lifecycle rule is unchanged: an inactive rule never contributes a conclusion.
+// ---------------------------------------------------------------------------------------------
+describe("Outcome-specific gating - Capability B (P6 inactive)", () => {
+  const MVP_PERMIT_RULE_TYPES = ALL_PERMIT_RULE_TYPES.filter((rt) => rt !== ShedPermitRuleType.ECA_CRITERION);
+  const mvpRules = MVP_PERMIT_RULE_TYPES.map((rt) => activeShedRule(rt));
+  const cleanShed = {
+    projectType: "shed" as const,
+    widthFt: 8,
+    depthFt: 8,
+    heightFt: 8,
+    alleyAdjacent: false,
+    foundationType: "SLAB_ON_GRADE" as const,
+    attachment: "DETACHED" as const,
+    intendedUse: "STORAGE" as const,
+    isInRequiredSetback: false,
+    structuralSpanInfo: { structuralSpanFt: 10 },
+  };
+  // Production-realistic: map-dispositive layers clear plus advisory layers.
+  const ecaFindings: CriticalAreaFinding[] = [
+    { hazardType: "priority_habitat", mappedIntersectionResult: "NO_INTERSECTION", advisoryStatus: "MAP_DISPOSITIVE", toleranceBasis: "test" },
+    { hazardType: "peat_settlement", mappedIntersectionResult: "NO_INTERSECTION", advisoryStatus: "MAP_DISPOSITIVE", toleranceBasis: "test" },
+    ecaFinding({ hazardType: "wetland" }),
+  ];
+  function run(project: Partial<ShedProjectDetails>, rules = mvpRules, findings = ecaFindings) {
+    return evaluateProject({
+      propertyContext,
+      project: { ...cleanShed, ...project } as ShedProjectDetails,
+      candidateActiveRules: rules,
+      ecaFindings: findings,
+      candidateActiveInferencePolicies: [],
+    });
+  }
+
+  it("the outcome-dependency declaration excludes P6 from the deterministic set but keeps it in the constituent set", () => {
+    // Behavioral proof rather than reaching into module internals: with the 8 deterministic rules the
+    // aggregate renders; with P6 added and everything else identical it ALSO renders (P6 only adds
+    // the ability to reach LIKELY_EXEMPT).
+    expect(run({}).permitRequirement).toBeDefined();
+    expect(run({}, [...mvpRules, activeShedRule(ShedPermitRuleType.ECA_CRITERION)]).permitRequirement).toBeDefined();
+  });
+
+  it.each([
+    ["roof area above the exemption threshold", { widthFt: 12, depthFt: 12 }],
+    ["attachment", { attachment: "ATTACHED" as const }],
+    ["disqualifying foundation", { foundationType: "PILES" as const }],
+    ["structural span", { widthFt: 12, depthFt: 12, structuralSpanInfo: { structuralSpanFt: 20 } }],
+  ])("a conclusive deterministic disqualifier (%s) + inactive P6 -> permit-required still renders", (_label, override) => {
+    const outcome = run(override as Partial<ShedProjectDetails>);
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRED");
+  });
+
+  it("a single active disqualifier is sufficient even if every OTHER permit rule is inactive (REQUIRED needs only the rules for that claim)", () => {
+    const outcome = run({ widthFt: 12, depthFt: 12 }, [activeShedRule(ShedPermitRuleType.ROOF_AREA)]);
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRED");
+    // Only the roof criterion and the deferred ECA consideration are listed - nothing is claimed for unevaluated criteria.
+    expect(outcome.permitRequirement?.criteria.map((c) => c.criterionId).sort()).toEqual(["ECA", "ROOF_AREA"]);
+    expect(outcome.permitRequirement?.reviewPath).toBe("REQUIRES_VERIFICATION");
+  });
+
+  it("all Tier-1 exemption criteria met + inactive P6 -> REQUIRES_VERIFICATION, never LIKELY_EXEMPT, with the ECA-only explanation", () => {
+    const outcome = run({});
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRES_VERIFICATION");
+    expect(outcome.permitRequirement?.buildingPermit).not.toBe("LIKELY_EXEMPT");
+    expect(outcome.permitRequirement?.reviewPath).toBe("REQUIRES_VERIFICATION");
+    expect(outcome.permitRequirement?.ecaDeferral?.allOtherExemptionCriteriaMet).toBe(true);
+    expect(outcome.permitRequirement?.ecaDeferral?.note).toBe(
+      "All other screened building-permit exemption criteria are met. The remaining question is whether the site is in or near an environmentally critical area. Permit Preflight cannot determine that conclusively from Seattle's advisory mapping; SDCI makes that determination."
+    );
+    const eca = outcome.permitRequirement?.criteria.find((c) => c.criterionId === "ECA");
+    expect(eca?.status).toBe("REQUIRES_VERIFICATION");
+  });
+
+  it("LIKELY_EXEMPT is never reachable without P6, even when every ECA layer is map-dispositive and clear", () => {
+    const outcome = run({}, mvpRules, ecaFindings.slice(0, 2));
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRES_VERIFICATION");
+  });
+
+  it("P6 inactive is not evaluated as if ACTIVE: a dispositive priority-habitat intersection does NOT manufacture NOT_MET / FULL_REVIEW (disclosed as context only)", () => {
+    const habitat: CriticalAreaFinding[] = [{ hazardType: "priority_habitat", mappedIntersectionResult: "INTERSECTS", advisoryStatus: "MAP_DISPOSITIVE", toleranceBasis: "test" }];
+    const outcome = run({}, mvpRules, habitat);
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRES_VERIFICATION");
+    const eca = outcome.permitRequirement?.criteria.find((c) => c.criterionId === "ECA");
+    expect(eca?.status).toBe("REQUIRES_VERIFICATION");
+    expect(eca?.explanationBasis).toContain("priority habitat");
+    expect(eca?.explanationBasis).toContain("context only; not used to decide this criterion");
+  });
+
+  it("with P6 ACTIVE the exact previous behavior is preserved (LIKELY_EXEMPT reachable; dispositive intersection -> REQUIRED / FULL_REVIEW)", () => {
+    const withP6 = [...mvpRules, activeShedRule(ShedPermitRuleType.ECA_CRITERION)];
+    const clear = run({}, withP6, ecaFindings.slice(0, 2));
+    expect(clear.permitRequirement?.buildingPermit).toBe("LIKELY_EXEMPT");
+    expect(clear.permitRequirement?.ecaDeferral).toBeUndefined();
+    const habitat: CriticalAreaFinding[] = [{ hazardType: "priority_habitat", mappedIntersectionResult: "INTERSECTS", advisoryStatus: "MAP_DISPOSITIVE", toleranceBasis: "test" }];
+    const hit = run({}, withP6, habitat);
+    expect(hit.permitRequirement?.buildingPermit).toBe("REQUIRED");
+    expect(hit.permitRequirement?.reviewPath).toBe("FULL_REVIEW_LIKELY");
+  });
+
+  it("deterministic review path remains available where independently supported, with P6 inactive (STFI and FULL)", () => {
+    expect(run({ widthFt: 12, depthFt: 12 }).permitRequirement?.reviewPath).toBe("STFI_LIKELY");
+    expect(run({ widthFt: 12, depthFt: 12, foundationType: "WOOD_FOUNDATION" }).permitRequirement?.reviewPath).toBe("FULL_REVIEW_LIKELY");
+    expect(run({ widthFt: 30, depthFt: 30 }).permitRequirement?.reviewPath).toBe("FULL_REVIEW_LIKELY");
+  });
+
+  it("a review-path conclusion resting on P3b needs P3b ACTIVE: without it the disqualifying foundation still makes the permit REQUIRED (P3a) but the review path is not claimed", () => {
+    const withoutP3b = MVP_PERMIT_RULE_TYPES.filter((rt) => rt !== ShedPermitRuleType.FOUNDATION_STFI_DISQUALIFIER).map((rt) => activeShedRule(rt));
+    const outcome = run({ widthFt: 12, depthFt: 12, foundationType: "PILES" }, withoutP3b);
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRED");
+    expect(outcome.permitRequirement?.reviewPath).toBe("REQUIRES_VERIFICATION");
+  });
+
+  it("without a conclusive disqualifier, any inactive deterministic permit rule keeps the aggregate dormant (inactive rules never generate conclusions)", () => {
+    const missingUse = MVP_PERMIT_RULE_TYPES.filter((rt) => rt !== ShedPermitRuleType.USE).map((rt) => activeShedRule(rt));
+    expect(run({}, missingUse).permitRequirement).toBeUndefined();
+  });
+
+  it("a non-ECA REQUIRES_VERIFICATION keeps the ECA consideration but does not claim all other criteria are met", () => {
+    const outcome = run({ intendedUse: "OCCUPIABLE" });
+    expect(outcome.permitRequirement?.buildingPermit).toBe("REQUIRES_VERIFICATION");
+    expect(outcome.permitRequirement?.ecaDeferral?.allOtherExemptionCriteriaMet).toBe(false);
+    expect(outcome.permitRequirement?.ecaDeferral?.note).toBeUndefined();
+  });
+});
+
+describe("Outcome-specific gating - Capability C (C1e-director inactive)", () => {
+  const FIVE = ALL_LOT_COVERAGE_RULE_TYPES.filter((rt) => rt !== ShedLotCoverageRuleType.DIRECTOR_ALTERNATIVE);
+  const shedProject = { projectType: "shed" as const, widthFt: 8, depthFt: 8, heightFt: 8, alleyAdjacent: false };
+  const unresolved: EcaLotAreaAdjustment = { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: [], reason: "test" };
+  function run(rules: RegulatoryRule[], overrides: { parcelAreaSqFt?: number; existing?: number; adjustment?: EcaLotAreaAdjustment } = {}) {
+    return evaluateProject({
+      propertyContext,
+      project: shedProject,
+      candidateActiveRules: rules,
+      ecaFindings: [],
+      candidateActiveInferencePolicies: [],
+      shedLotCoverageFacts: {
+        parcelAreaSqFt: overrides.parcelAreaSqFt ?? 5000,
+        existingMappedCoverageSqFt: overrides.existing ?? 1500,
+        proposedShedFootprintSqFt: 64,
+        ecaAdjustment: overrides.adjustment ?? unresolved,
+      },
+    });
+  }
+
+  it("C1e-director inactive does not suppress estimated coverage", () => {
+    const outcome = run(FIVE.map((rt) => activeShedRule(rt)));
+    expect(outcome.shedLotCoverage).toBeDefined();
+    expect(outcome.shedLotCoverage?.estimatedCoverageSqFt).toBe(1564);
+  });
+
+  it("each of the five deterministic rules is still required: any one missing keeps Capability C dormant", () => {
+    for (const missing of FIVE) {
+      const outcome = run(FIVE.filter((rt) => rt !== missing).map((rt) => activeShedRule(rt)));
+      expect(outcome.shedLotCoverage).toBeUndefined();
+    }
+  });
+
+  it("no result claims a Director alternative applies while C1e-director is inactive, even with a mapped indication and coverage above the ceiling", () => {
+    const outcome = run(FIVE.map((rt) => activeShedRule(rt)), {
+      existing: 3100,
+      adjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: ["WETLAND_AND_BUFFER"], reason: "test" },
+    });
+    expect(outcome.shedLotCoverage?.status).toBe("EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE");
+    expect(JSON.stringify(outcome.shedLotCoverage)).not.toMatch(/DIRECTOR_APPROVED_ALTERNATIVE/);
+    expect(outcome.shedLotCoverage?.facts.allowanceFacts.c1eDirectorAlternativeRelevant).toBe(false);
+  });
+
+  it("a Director-alternative claim IS available once C1e-director is ACTIVE (the claim, not the calculation, depends on it)", () => {
+    const outcome = run(ALL_LOT_COVERAGE_RULE_TYPES.map((rt) => activeShedRule(rt)), {
+      existing: 3100,
+      adjustment: { status: "REQUIRES_VERIFICATION", intersectingCategories: ["WETLAND_AND_BUFFER"], mapIndicatedCategories: ["WETLAND_AND_BUFFER"], reason: "test" },
+    });
+    const result = outcome.shedLotCoverage;
+    expect(result?.status).toBe("REQUIRES_VERIFICATION");
+    if (result?.status === "REQUIRES_VERIFICATION") expect(result.reason).toBe("POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE");
+  });
+
+  it("the generic parcel-specific-approval disclosure appears on unresolved results without C1e-director being active", () => {
+    const outcome = run(FIVE.map((rt) => activeShedRule(rt)));
+    const result = outcome.shedLotCoverage;
+    if (result?.status !== "REQUIRES_VERIFICATION" || result.reason !== "LOT_AREA_ADJUSTMENT_UNRESOLVED") throw new Error("expected unresolved");
+    expect(result.parcelSpecificApprovalDisclosure).toBe(
+      "Parcel-specific SDCI approvals, reductions, waivers, or modifications are not evaluated by Permit Preflight and could affect the final allowable coverage."
+    );
+  });
+
+  it("the unresolved result carries the tolerance for the 5,000 sq ft / 1,564 sq ft example (50%: 1,872 sq ft exact)", () => {
+    const result = run(FIVE.map((rt) => activeShedRule(rt))).shedLotCoverage;
+    if (result?.status !== "REQUIRES_VERIFICATION" || result.reason !== "LOT_AREA_ADJUSTMENT_UNRESOLVED") throw new Error("expected unresolved");
+    expect(result.exclusionTolerance.at50).toMatchObject({ kind: "WITHIN_UNLESS_EXCLUDED_AREA_EXCEEDS", maxExcludedAreaSqFt: 1872 });
   });
 });

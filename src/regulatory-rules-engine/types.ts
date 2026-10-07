@@ -275,19 +275,21 @@ export interface EvaluationOutcome {
    * show NoActiveRuleCoverageNotice rather than presenting an empty findings array as a clean
    * screening result - the distinct failure mode this unit introduces. */
   uncoveredConstraintTypes: string[];
-  /** Unit 6B addition - shed-only, undefined for garage. Present on the outcome only once EVERY
-   * constituent rule this finding depends on is ACTIVE (business-logic-model.md Flow 3,
-   * code-generation-plan.md §4.14 - a partial-activation aggregate is never shown, so a
-   * customer-visible REQUIRES_VERIFICATION inside it can never be a governance artifact, only a
-   * genuine evidence gap). P2b's own height Finding is NOT part of this - see
-   * accessoryHeightLimitFinding below. */
+  /** Unit 6B addition - shed-only, undefined for garage. Present once every rule REQUIRED FOR THE
+   * SPECIFIC CLAIM it makes is ACTIVE (outcome-dependency model, evaluate.ts; 2026-10-07): REQUIRED
+   * needs one conclusive active disqualifier, REQUIRES_VERIFICATION needs every deterministic permit
+   * rule, LIKELY_EXEMPT additionally needs the discretionary P6. A customer-visible
+   * REQUIRES_VERIFICATION inside it is therefore a genuine evidence gap or the explicit
+   * SDCI-determines ECA consideration (`ecaDeferral`), never a rule-activation artifact. P2b's own
+   * height Finding is NOT part of this - see accessoryHeightLimitFinding below. */
   permitRequirement?: PermitRequirementFinding;
   /** Unit 6B addition - the standalone P2b zoning-height finding (domain-entities.md §3a note) -
    * an ordinary Finding, never nested inside permitRequirement, never implied by
    * permitRequirement.buildingPermit === LIKELY_EXEMPT (BR-U6B-9). */
   accessoryHeightLimitFinding?: Finding;
-  /** Unit 6B addition - shed-only, undefined for garage, and undefined until every constituent
-   * C1a/c/d(/b/e where relevant) rule this result depends on is ACTIVE. */
+  /** Unit 6B addition - shed-only, undefined for garage, and undefined until the five deterministic
+   * C1a/b/c/d/e-floor rules are ACTIVE. The discretionary C1e-director rule is NOT a prerequisite;
+   * it gates only claims about a Director-approved alternative (2026-10-07). */
   shedLotCoverage?: ShedLotCoverageResult;
 }
 
@@ -346,11 +348,26 @@ export interface TradePermitDisclosure {
   explanationBasis: string;
 }
 
+/** Present only while the discretionary ECA criterion (P6) is not ACTIVE: the criterion is then
+ * never evaluated (an inactive rule cannot generate a deterministic conclusion), and the
+ * aggregate carries this fixed "SDCI determines" consideration instead. 2026-10-07 founder
+ * decision: discretionary Tier-2 rules no longer gate deterministic value that does not depend on
+ * resolving them. */
+export interface DeferredEcaDetermination {
+  /** True when every other screened exemption criterion (roof area, story height, foundation,
+   * attachment, use) is MET - i.e. the exemption turns only on the ECA question. */
+  allOtherExemptionCriteriaMet: boolean;
+  /** Customer-facing statement; defined only when allOtherExemptionCriteriaMet. */
+  note?: string;
+}
+
 export interface PermitRequirementFinding {
   buildingPermit: BuildingPermitStatus;
   reviewPath: PermitReviewPath;
   criteria: PermitCriterionResult[];
   tradePermitDisclosures: TradePermitDisclosure[];
+  /** Absent whenever P6 is ACTIVE (the ECA criterion is then evaluated like any other). */
+  ecaDeferral?: DeferredEcaDetermination;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -427,7 +444,16 @@ export type ShedLotCoverageResult =
       potentialSpecialAllowanceSqFt: number;
       facts: ShedLotCoverageFacts;
     }
-  | { status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE"; estimatedCoverageSqFt: number; potentialSpecialAllowanceSqFt: number; facts: ShedLotCoverageFacts }
+  | {
+      status: "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE";
+      estimatedCoverageSqFt: number;
+      potentialSpecialAllowanceSqFt: number;
+      facts: ShedLotCoverageFacts;
+      /** Present only when the lot-area denominator is unresolved (C1b), which is the only path on
+       * which a Director-approved alternative could exist. */
+      exclusionTolerance?: LotCoverageExclusionTolerance;
+      parcelSpecificApprovalDisclosure?: string;
+    }
   | {
       status: "REQUIRES_VERIFICATION";
       reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE";
@@ -435,4 +461,52 @@ export type ShedLotCoverageResult =
       potentialSpecialAllowanceSqFt: number;
       facts: ShedLotCoverageFacts;
     }
-  | { status: "REQUIRES_VERIFICATION"; reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED"; estimatedCoverageSqFt: number; facts: ShedLotCoverageFacts };
+  | {
+      status: "REQUIRES_VERIFICATION";
+      reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED";
+      estimatedCoverageSqFt: number;
+      facts: ShedLotCoverageFacts;
+      exclusionTolerance: LotCoverageExclusionTolerance;
+      parcelSpecificApprovalDisclosure: string;
+    };
+
+/** How a coverage estimate relates to one threshold (50% base / 60% special) as a function of the
+ * unknown excluded area X (SMC 23.44.080.B), with the 625 sq ft minimum (23.44.080.D) that applies
+ * whenever an exclusion area exists. Pure arithmetic of the approved rules - claims nothing about
+ * any mapped condition. */
+export type LotCoverageThresholdTolerance =
+  | {
+      /** Within the threshold with no exclusions AND the estimate exceeds 625 sq ft: within only
+       * while the excluded area stays at or below maxExcludedAreaSqFt (exact, unrounded; 0 means any
+       * excluded area puts the estimate over). */
+      kind: "WITHIN_UNLESS_EXCLUDED_AREA_EXCEEDS";
+      thresholdPercent: 50 | 60;
+      maxExcludedAreaSqFt: number;
+      maxExcludedPercentOfParcel: number;
+    }
+  | {
+      /** Within the threshold with no exclusions and the estimate is at most the 625 sq ft minimum,
+       * so it stays within however much area is excluded. */
+      kind: "WITHIN_REGARDLESS_OF_EXCLUDED_AREA";
+      thresholdPercent: 50 | 60;
+      floorSqFt: 625;
+    }
+  | {
+      /** Above the threshold with no exclusions, but at most the 625 sq ft minimum: within only if a
+       * qualifying exclusion area exists (which brings the minimum into play). */
+      kind: "EXCEEDS_UNLESS_EXCLUSION_AREA_EXISTS";
+      thresholdPercent: 50 | 60;
+      floorSqFt: 625;
+    }
+  | {
+      /** Above the threshold with no exclusions and above 625 sq ft: excluding area can only make it worse. */
+      kind: "EXCEEDS_REGARDLESS_OF_EXCLUDED_AREA";
+      thresholdPercent: 50 | 60;
+    };
+
+export interface LotCoverageExclusionTolerance {
+  at50: LotCoverageThresholdTolerance;
+  at60: LotCoverageThresholdTolerance;
+  /** Customer-facing paragraphs, generated here so the web and PDF renderings print identical text. */
+  explanation: string[];
+}

@@ -13,6 +13,7 @@ import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
 import { EvidenceQuality, LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { InferencePolicy, RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { deriveEcaRegulatoryImplication } from "./eca-implication.js";
+import { PARCEL_SPECIFIC_APPROVAL_DISCLOSURE, computeLotCoverageExclusionTolerance } from "./lot-coverage-tolerance.js";
 import {
   ComplianceOutcome,
   EvaluationStatus,
@@ -106,39 +107,79 @@ export const ShedLotCoverageRuleType = {
 } as const;
 export type ShedLotCoverageRuleType = (typeof ShedLotCoverageRuleType)[keyof typeof ShedLotCoverageRuleType];
 
-/** code-generation-plan.md §4.14 - `permitRequirement` depends on all 9 permit-criterion rows
- * (P9's framing disclaimer is report-layer-only, BR-U6B-9, and does not gate this computed
- * result). `accessoryHeightLimitFinding` depends on both P2b rows, since either branch may apply
- * to a given shed and partial activation must never surface only one branch's worth of rule
- * coverage. `shedLotCoverage` depends on all 6 "C" rows that feed the CASE A/B/C banding (C2 is
- * absorbed into the existing-structure-coverage fact's own caveat, never consumed here - see
- * domain-entities.md §3c). */
+/**
+ * OUTCOME-DEPENDENCY MODEL (2026-10-07 founder decision, superseding the all-or-nothing
+ * constituent gating of code-generation-plan.md §4.14).
+ *
+ * An outcome renders when every rule REQUIRED FOR THAT SPECIFIC CLAIM is ACTIVE. A rule that is not
+ * ACTIVE is never evaluated and never contributes a deterministic conclusion (the general lifecycle
+ * rule is unchanged); what changed is that an inactive discretionary Tier-2 rule no longer blocks
+ * deterministic value that does not depend on resolving it.
+ *
+ * Capability B (`permitRequirement`):
+ *  - criterion X is evaluated only if every rule in PERMIT_CRITERION_RULE_DEPENDENCIES[X] is ACTIVE;
+ *  - buildingPermit REQUIRED needs just ONE active criterion that is conclusively NOT_MET;
+ *  - buildingPermit REQUIRES_VERIFICATION (the "all deterministic criteria pass, ECA unresolved"
+ *    result) needs every DETERMINISTIC permit rule ACTIVE (DETERMINISTIC_PERMIT_RULE_TYPES);
+ *  - buildingPermit LIKELY_EXEMPT additionally needs the discretionary P6 ACTIVE and MET, so it is
+ *    unreachable while P6 is inactive - by construction, not by a special case;
+ *  - a review-path conclusion that rests on P3b (foundation disqualifier) needs P3b ACTIVE.
+ * Capability C (`shedLotCoverage`):
+ *  - the calculation needs the five deterministic rules in SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES;
+ *  - any claim about a Director-approved alternative (POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE) needs
+ *    the discretionary C1e-director ACTIVE (SHED_LOT_COVERAGE_DIRECTOR_ALTERNATIVE_RULE_TYPES).
+ * `accessoryHeightLimitFinding` depends on both P2b rows (either branch may apply to a given shed).
+ */
+const PERMIT_CRITERION_RULE_DEPENDENCIES: Readonly<Record<PermitCriterionId, readonly string[]>> = {
+  [PermitCriterionId.ROOF_AREA]: [ShedPermitRuleType.ROOF_AREA],
+  [PermitCriterionId.STORY_HEIGHT]: [ShedPermitRuleType.STORY_HEIGHT],
+  [PermitCriterionId.FOUNDATION]: [ShedPermitRuleType.FOUNDATION_EXEMPTION],
+  [PermitCriterionId.ATTACHMENT]: [ShedPermitRuleType.ATTACHMENT],
+  [PermitCriterionId.USE]: [ShedPermitRuleType.USE],
+  [PermitCriterionId.ECA]: [ShedPermitRuleType.ECA_CRITERION],
+  [PermitCriterionId.SIZE_SPAN]: [ShedPermitRuleType.SIZE_SPAN_FOOTPRINT, ShedPermitRuleType.SIZE_SPAN_STRUCTURAL],
+};
+/** Criteria whose rule is an inherently discretionary (Director-determined) Tier-2 rule: while
+ * inactive they are never evaluated and are represented as an explicit SDCI-determines
+ * consideration rather than omitted or inferred. */
+const DISCRETIONARY_PERMIT_CRITERIA: ReadonlySet<PermitCriterionId> = new Set([PermitCriterionId.ECA]);
+const PERMIT_REVIEW_PATH_FOUNDATION_DISQUALIFIER_RULE_TYPES: readonly string[] = [ShedPermitRuleType.FOUNDATION_STFI_DISQUALIFIER];
+/** Every permit rule except the discretionary ones (the 8 Tier-1 rules incl. P3b). */
+const DETERMINISTIC_PERMIT_RULE_TYPES: readonly string[] = [
+  ...Object.entries(PERMIT_CRITERION_RULE_DEPENDENCIES)
+    .filter(([criterionId]) => !DISCRETIONARY_PERMIT_CRITERIA.has(criterionId as PermitCriterionId))
+    .flatMap(([, ruleTypes]) => ruleTypes),
+  ...PERMIT_REVIEW_PATH_FOUNDATION_DISQUALIFIER_RULE_TYPES,
+];
 const PERMIT_REQUIREMENT_CONSTITUENT_RULE_TYPES: readonly string[] = [
-  ShedPermitRuleType.ROOF_AREA,
-  ShedPermitRuleType.STORY_HEIGHT,
-  ShedPermitRuleType.FOUNDATION_EXEMPTION,
-  ShedPermitRuleType.FOUNDATION_STFI_DISQUALIFIER,
-  ShedPermitRuleType.ATTACHMENT,
-  ShedPermitRuleType.USE,
-  ShedPermitRuleType.ECA_CRITERION,
-  ShedPermitRuleType.SIZE_SPAN_FOOTPRINT,
-  ShedPermitRuleType.SIZE_SPAN_STRUCTURAL,
+  ...DETERMINISTIC_PERMIT_RULE_TYPES,
+  ...Object.entries(PERMIT_CRITERION_RULE_DEPENDENCIES)
+    .filter(([criterionId]) => DISCRETIONARY_PERMIT_CRITERIA.has(criterionId as PermitCriterionId))
+    .flatMap(([, ruleTypes]) => ruleTypes),
 ];
 const ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES: readonly string[] = [
   ShedPermitRuleType.ACCESSORY_HEIGHT_LIMIT_IN_SETBACK,
   ShedPermitRuleType.ACCESSORY_HEIGHT_LIMIT_OUTSIDE_SETBACK,
 ];
+/** C2 is absorbed into the existing-structure-coverage fact's own caveat, never consumed here (domain-entities.md §3c). */
 const SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES: readonly string[] = [
   ShedLotCoverageRuleType.BASE_MAXIMUM,
   ShedLotCoverageRuleType.ECA_LOT_AREA_EXCLUSION,
   ShedLotCoverageRuleType.TRANSIT_BONUS,
   ShedLotCoverageRuleType.STACKED_BONUS,
   ShedLotCoverageRuleType.MINIMUM_FLOOR,
-  ShedLotCoverageRuleType.DIRECTOR_ALTERNATIVE,
 ];
+const SHED_LOT_COVERAGE_DIRECTOR_ALTERNATIVE_RULE_TYPES: readonly string[] = [ShedLotCoverageRuleType.DIRECTOR_ALTERNATIVE];
 
 function allRuleTypesActive(activeRules: RegulatoryRule[], requiredRuleTypes: readonly string[]): boolean {
-  const activeRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
+  return ruleTypesAllIn(activeRuleTypeSet(activeRules), requiredRuleTypes);
+}
+
+function activeRuleTypeSet(activeRules: RegulatoryRule[]): ReadonlySet<string> {
+  return new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType).filter((rt): rt is string => rt !== undefined));
+}
+
+function ruleTypesAllIn(activeRuleTypes: ReadonlySet<string>, requiredRuleTypes: readonly string[]): boolean {
   return requiredRuleTypes.every((rt) => activeRuleTypes.has(rt));
 }
 
@@ -152,6 +193,7 @@ const UNIT_6B_AGGREGATE_ONLY_RULE_TYPES: ReadonlySet<string> = new Set([
   ...PERMIT_REQUIREMENT_CONSTITUENT_RULE_TYPES,
   ...ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES,
   ...SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES,
+  ...SHED_LOT_COVERAGE_DIRECTOR_ALTERNATIVE_RULE_TYPES,
   ShedPermitRuleType.EXEMPTION_NOT_ZONING_COMPLIANCE,
   ShedLotCoverageRuleType.ESTIMATE_CAVEAT,
 ]);
@@ -290,14 +332,16 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   };
 
   if (input.project.projectType === "shed") {
-    if (allRuleTypesActive(activeRules, PERMIT_REQUIREMENT_CONSTITUENT_RULE_TYPES)) {
-      outcome.permitRequirement = evaluateShedPermitRequirement(input.project, input.ecaFindings);
-    }
+    const activeRuleTypes = activeRuleTypeSet(activeRules);
+    const permitRequirement = evaluateShedPermitRequirementForActiveRules(input.project, input.ecaFindings, activeRuleTypes);
+    if (permitRequirement) outcome.permitRequirement = permitRequirement;
     if (allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
       outcome.accessoryHeightLimitFinding = evaluateAccessoryHeightLimit(input.project);
     }
-    if (input.shedLotCoverageFacts && allRuleTypesActive(activeRules, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
-      outcome.shedLotCoverage = evaluateShedLotCoverage(input.shedLotCoverageFacts);
+    if (input.shedLotCoverageFacts && ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
+      outcome.shedLotCoverage = evaluateShedLotCoverage(input.shedLotCoverageFacts, {
+        directorAlternativeRuleActive: ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_DIRECTOR_ALTERNATIVE_RULE_TYPES),
+      });
     }
   }
 
@@ -975,7 +1019,10 @@ function foundationStfiDisqualification(foundationType: ShedProjectDetails["foun
 /** Flow 3's two-dimensional buildingPermit/reviewPath derivation, verbatim. */
 function deriveBuildingPermitState(
   criteria: PermitCriterionResult[],
-  foundationType: ShedProjectDetails["foundationType"]
+  foundationType: ShedProjectDetails["foundationType"],
+  /** P3b not ACTIVE => the foundation disqualifier is not evaluated (treated as unknown). Default true
+   * preserves the all-rules-active semantics every existing caller assumes. */
+  foundationDisqualifierRuleActive = true
 ): { buildingPermit: BuildingPermitStatus; reviewPath: PermitReviewPath } {
   const byId = new Map(criteria.map((c) => [c.criterionId, c.status]));
   const exemptionCriteriaIds: PermitCriterionId[] = [
@@ -1006,7 +1053,7 @@ function deriveBuildingPermitState(
 
   // buildingPermit === REQUIRED
   const sizeSpanStatus = byId.get(PermitCriterionId.SIZE_SPAN);
-  const foundationDisqualification = foundationStfiDisqualification(foundationType);
+  const foundationDisqualification = foundationDisqualifierRuleActive ? foundationStfiDisqualification(foundationType) : "UNKNOWN";
 
   if (byId.get(PermitCriterionId.ECA) === PermitCriterionStatus.NOT_MET) {
     return { buildingPermit, reviewPath: PermitReviewPath.FULL_REVIEW_LIKELY };
@@ -1036,6 +1083,9 @@ function buildTradePermitDisclosures(utilityIntent: ShedProjectDetails["utilityI
   return disclosures;
 }
 
+/** Everything-active evaluation (the shape every criterion/aggregate test exercises directly). The
+ * production path is evaluateShedPermitRequirementForActiveRules, which applies the outcome-dependency
+ * model above; with every permit rule active the two are identical. */
 function evaluateShedPermitRequirement(project: ShedProjectDetails, ecaFindings: CriticalAreaFinding[]): PermitRequirementFinding {
   const criteria: PermitCriterionResult[] = [
     evaluateRoofArea(project),
@@ -1053,6 +1103,87 @@ function evaluateShedPermitRequirement(project: ShedProjectDetails, ecaFindings:
     criteria,
     tradePermitDisclosures: buildTradePermitDisclosures(project.utilityIntent),
   };
+}
+
+const ECA_DETERMINATION_NOTE =
+  "All other screened building-permit exemption criteria are met. The remaining question is whether the site is in or near an environmentally critical area. Permit Preflight cannot determine that conclusively from Seattle's advisory mapping; SDCI makes that determination.";
+
+/** The ECA criterion while P6 is not ACTIVE: never evaluated, never MET or NOT_MET. Mapped layers that
+ * indicate an intersection are disclosed as context only - they do not decide the criterion. */
+function deferredEcaCriterion(ecaFindings: CriticalAreaFinding[]): PermitCriterionResult {
+  const indicated = ecaFindings.filter((f) => f.mappedIntersectionResult === MappedIntersectionResult.INTERSECTS).map((f) => f.hazardType.replace(/_/g, " "));
+  const context = indicated.length > 0 ? ` Mapped layers that show a possible intersection with this parcel (context only; not used to decide this criterion): ${indicated.join(", ")}.` : "";
+  return {
+    criterionId: PermitCriterionId.ECA,
+    status: PermitCriterionStatus.REQUIRES_VERIFICATION,
+    explanationBasis: `Whether the site is in or near an environmentally critical area is a determination SDCI makes; Permit Preflight does not make it from Seattle's advisory mapping.${context}`,
+  };
+}
+
+/**
+ * Production entry point for Capability B - applies the outcome-dependency model documented above.
+ * Returns undefined (dormant) when no claim can be made: no active criterion is conclusively NOT_MET
+ * AND some deterministic permit rule is not ACTIVE.
+ */
+function evaluateShedPermitRequirementForActiveRules(
+  project: ShedProjectDetails,
+  ecaFindings: CriticalAreaFinding[],
+  activeRuleTypes: ReadonlySet<string>
+): PermitRequirementFinding | undefined {
+  const evaluators: Record<PermitCriterionId, () => PermitCriterionResult> = {
+    [PermitCriterionId.ROOF_AREA]: () => evaluateRoofArea(project),
+    [PermitCriterionId.STORY_HEIGHT]: () => evaluateStoryHeight(),
+    [PermitCriterionId.FOUNDATION]: () => evaluateFoundationExemption(project),
+    [PermitCriterionId.ATTACHMENT]: () => evaluateAttachment(project),
+    [PermitCriterionId.USE]: () => evaluateUse(project),
+    [PermitCriterionId.ECA]: () => evaluateEcaPermitCriterion(ecaFindings),
+    [PermitCriterionId.SIZE_SPAN]: () => evaluateSizeSpan(project),
+  };
+  const presentationOrder: PermitCriterionId[] = [
+    PermitCriterionId.ROOF_AREA,
+    PermitCriterionId.STORY_HEIGHT,
+    PermitCriterionId.FOUNDATION,
+    PermitCriterionId.ATTACHMENT,
+    PermitCriterionId.USE,
+    PermitCriterionId.ECA,
+    PermitCriterionId.SIZE_SPAN,
+  ];
+
+  const criteria: PermitCriterionResult[] = [];
+  for (const id of presentationOrder) {
+    if (ruleTypesAllIn(activeRuleTypes, PERMIT_CRITERION_RULE_DEPENDENCIES[id])) criteria.push(evaluators[id]());
+    else if (DISCRETIONARY_PERMIT_CRITERIA.has(id)) criteria.push(deferredEcaCriterion(ecaFindings));
+    // A non-discretionary criterion whose rule is not ACTIVE is simply not evaluated or listed.
+  }
+
+  const { buildingPermit, reviewPath } = deriveBuildingPermitState(
+    criteria,
+    project.foundationType,
+    ruleTypesAllIn(activeRuleTypes, PERMIT_REVIEW_PATH_FOUNDATION_DISQUALIFIER_RULE_TYPES)
+  );
+  // REQUIRED stands on any single conclusive active disqualifier; every other conclusion needs the
+  // full deterministic set (otherwise an unevaluated criterion could hide a disqualifier).
+  if (buildingPermit !== BuildingPermitStatus.REQUIRED && !ruleTypesAllIn(activeRuleTypes, DETERMINISTIC_PERMIT_RULE_TYPES)) return undefined;
+
+  const finding: PermitRequirementFinding = {
+    buildingPermit,
+    reviewPath,
+    criteria,
+    tradePermitDisclosures: buildTradePermitDisclosures(project.utilityIntent),
+  };
+  if (!ruleTypesAllIn(activeRuleTypes, PERMIT_CRITERION_RULE_DEPENDENCIES[PermitCriterionId.ECA])) {
+    const otherExemptionCriteria: PermitCriterionId[] = [
+      PermitCriterionId.ROOF_AREA,
+      PermitCriterionId.STORY_HEIGHT,
+      PermitCriterionId.FOUNDATION,
+      PermitCriterionId.ATTACHMENT,
+      PermitCriterionId.USE,
+    ];
+    const byId = new Map(criteria.map((c) => [c.criterionId, c.status]));
+    const allOtherExemptionCriteriaMet = otherExemptionCriteria.every((id) => byId.get(id) === PermitCriterionStatus.MET);
+    finding.ecaDeferral = { allOtherExemptionCriteriaMet, ...(allOtherExemptionCriteriaMet ? { note: ECA_DETERMINATION_NOTE } : {}) };
+  }
+  return finding;
 }
 
 /** P2b - a separate, ordinary, location-sensitive zoning Finding, never nested inside
@@ -1185,8 +1316,15 @@ function evaluateEcaLotAreaAdjustment(
  * 60%) allowances, including the asymmetric fail-closed override for an unresolved C1b
  * denominator. `allowanceFacts` is computed here, not supplied by the caller - a pure derivation
  * of `ecaAdjustment`/`parcelAreaSqFt` (domain-entities.md §3c). */
-function evaluateShedLotCoverage(input: Omit<ShedLotCoverageFacts, "allowanceFacts">): ShedLotCoverageResult {
+function evaluateShedLotCoverage(
+  input: Omit<ShedLotCoverageFacts, "allowanceFacts">,
+  /** Any claim that a Director-approved alternative may be relevant depends on C1e-director being
+   * ACTIVE. Defaults to false (fail-closed): without it only the neutral parcel-specific-approval
+   * disclosure is emitted and no result mentions a Director alternative. */
+  options: { directorAlternativeRuleActive?: boolean } = {}
+): ShedLotCoverageResult {
   const { ecaAdjustment, parcelAreaSqFt, existingMappedCoverageSqFt, proposedShedFootprintSqFt } = input;
+  const directorAlternativeRuleActive = options.directorAlternativeRuleActive === true;
 
   let adjustedLotAreaSqFt = parcelAreaSqFt;
   let c1eFloorSqFt: 625 | undefined;
@@ -1197,7 +1335,7 @@ function evaluateShedLotCoverage(input: Omit<ShedLotCoverageFacts, "allowanceFac
     if (ecaAdjustment.minimumCoverageFloor.status === "KNOWN") {
       c1eFloorSqFt = 625;
     }
-    c1eDirectorAlternativeRelevant = ecaAdjustment.minimumCoverageFloor.status === "REQUIRES_VERIFICATION";
+    c1eDirectorAlternativeRelevant = directorAlternativeRuleActive && ecaAdjustment.minimumCoverageFloor.status === "REQUIRES_VERIFICATION";
   }
 
   const facts: ShedLotCoverageFacts = {
@@ -1219,7 +1357,7 @@ function evaluateShedLotCoverage(input: Omit<ShedLotCoverageFacts, "allowanceFac
       // exists only on lots with a 23.44.080.B area. When a mapped layer positively indicates one,
       // the alternative MAY be relevant (never "applies"); with no map indication the existing
       // hedged "appears exceeded" result stands.
-      if ((ecaAdjustment.mapIndicatedCategories?.length ?? 0) > 0) {
+      if (directorAlternativeRuleActive && (ecaAdjustment.mapIndicatedCategories?.length ?? 0) > 0) {
         return {
           status: "REQUIRES_VERIFICATION",
           reason: "POSSIBLE_DIRECTOR_APPROVED_ALTERNATIVE",
@@ -1233,9 +1371,18 @@ function evaluateShedLotCoverage(input: Omit<ShedLotCoverageFacts, "allowanceFac
         estimatedCoverageSqFt,
         potentialSpecialAllowanceSqFt: optimisticPotentialSpecialAllowanceSqFt,
         facts,
+        exclusionTolerance: computeLotCoverageExclusionTolerance(parcelAreaSqFt, estimatedCoverageSqFt),
+        parcelSpecificApprovalDisclosure: PARCEL_SPECIFIC_APPROVAL_DISCLOSURE,
       };
     }
-    return { status: "REQUIRES_VERIFICATION", reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED", estimatedCoverageSqFt, facts };
+    return {
+      status: "REQUIRES_VERIFICATION",
+      reason: "LOT_AREA_ADJUSTMENT_UNRESOLVED",
+      estimatedCoverageSqFt,
+      facts,
+      exclusionTolerance: computeLotCoverageExclusionTolerance(parcelAreaSqFt, estimatedCoverageSqFt),
+      parcelSpecificApprovalDisclosure: PARCEL_SPECIFIC_APPROVAL_DISCLOSURE,
+    };
   }
 
   if (estimatedCoverageSqFt <= baseAllowanceSqFt) {
@@ -1275,6 +1422,7 @@ export {
   deriveBuildingPermitState,
   buildTradePermitDisclosures,
   evaluateShedPermitRequirement,
+  evaluateShedPermitRequirementForActiveRules,
   evaluateAccessoryHeightLimit,
   evaluateEcaLotAreaAdjustment,
   evaluateShedLotCoverage,

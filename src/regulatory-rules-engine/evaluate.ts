@@ -42,7 +42,14 @@ import type {
   ShedLotCoverageResult,
 } from "./types.js";
 
-export interface RearSetbackRuleSpec {
+/**
+ * Screening tolerance for distances measured from county parcel mapping (not a survey). Optional on a spec: when present, a
+ * distance within this many feet of a threshold is REQUIRES_VERIFICATION and only a distance clearly beyond it is a definite
+ * PASS or FAIL. Absent => the original exact comparison (the staging fixtures and their tests rely on that).
+ */
+export type MappingTolerance = { mappingToleranceFt?: number };
+
+export interface RearSetbackRuleSpec extends MappingTolerance {
   ruleType: "REAR_SETBACK";
   minFt: number;
   minFtIfAlleyAdjacent: number;
@@ -51,16 +58,30 @@ export interface HeightRuleSpec {
   ruleType: "HEIGHT_LIMIT";
   maxFt: number;
 }
-export interface DwellingSeparationRuleSpec {
+export interface DwellingSeparationRuleSpec extends MappingTolerance {
   ruleType: "DWELLING_SEPARATION";
   minFt: number;
+  /** Optional: the separation required of a structure outside the rear setback (SMC 23.44.100.A). Between minFt and this the result is REQUIRES_VERIFICATION. */
+  outsideRearSetbackFt?: number;
 }
-export interface SideFrontSetbackRuleSpec {
+export interface SideFrontSetbackRuleSpec extends MappingTolerance {
   ruleType: "SIDE_FRONT_SETBACK_STANDARD";
   sideAverageFt: number;
   sideMinFt: number;
   frontFt: number;
+  /** Optional: the reduced front setback for lots with three or more dwelling units. Between this and frontFt the result is REQUIRES_VERIFICATION. */
+  frontReducedFt?: number;
+  /** Optional: when present, a distance clearly short of a requirement is REQUIRES_VERIFICATION carrying this note (the code allows exceptions, for example garages and carports in a setback), never a definite FAIL. */
+  exceptionNote?: string;
 }
+
+/** Where a mapped distance lies against a minimum, given a screening tolerance. */
+function againstMinimum(distanceFt: number, minimumFt: number, toleranceFt: number): "CLEARS" | "SHORT" | "NEAR" {
+  if (distanceFt >= minimumFt + toleranceFt) return "CLEARS";
+  if (distanceFt < minimumFt - toleranceFt) return "SHORT";
+  return "NEAR";
+}
+const NOT_A_SURVEY = "Distances are measured from county parcel mapping, which is not a survey.";
 
 /** Unit 4 - net-new ruleType (no lot-coverage evaluator existed for any project type before this
  * unit). No numeric threshold lives on the spec itself - the percentage/floor/denominator logic
@@ -246,14 +267,18 @@ export interface EvaluateProjectInput {
 function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"]): { constraintType: string; ruleTypes: string[] }[] {
   switch (projectType) {
     case "shed":
-      // BR-U4-5 is a failure mode this unit (Unit 4) introduces for a newly-supported project
-      // type with no ACTIVE coverage yet - shed has had ACTIVE coverage since Unit 1 and is not
-      // retroactively subject to this disclosure.
-      return [];
+      // The shed's position-dependent claims each rest on a governed rule; when none is ACTIVE the report must say so
+      // ("Not yet automatically screenable") instead of silently omitting the finding and reading as screened clean.
+      // (Reverses the earlier "shed has had coverage since Unit 1" exemption: that coverage was staging fixtures only.)
+      return [
+        { constraintType: "setback", ruleTypes: ["REAR_SETBACK", "SIDE_FRONT_SETBACK_STANDARD"] },
+        { constraintType: "height", ruleTypes: ["HEIGHT_LIMIT", ...ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES] },
+        { constraintType: "separation from the house", ruleTypes: ["DWELLING_SEPARATION"] },
+      ];
     case "garage":
       return [
         { constraintType: "setback", ruleTypes: ["REAR_SETBACK", "SIDE_FRONT_SETBACK_STANDARD"] },
-        { constraintType: "height", ruleTypes: ["HEIGHT_LIMIT"] },
+        { constraintType: "height", ruleTypes: ["HEIGHT_LIMIT", ...ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES] },
         { constraintType: "lot coverage", ruleTypes: ["LOT_COVERAGE"] },
       ];
     default: {
@@ -357,6 +382,11 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
     }
   }
 
+  // A detached garage shares the location-sensitive accessory height limit (12 ft in a required setback, 32 ft outside; SMC 23.44.070.A).
+  if (input.project.projectType === "garage" && !notNr && allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
+    outcome.accessoryHeightLimitFinding = evaluateAccessoryHeightLimit(input.project);
+  }
+
   return outcome;
 }
 
@@ -433,7 +463,20 @@ function evaluateRearSetback(
     };
   }
   const required = project.alleyAdjacent ? spec.minFtIfAlleyAdjacent : spec.minFt;
-  const pass = project.distanceToRearLotLineFt >= required;
+  let pass = project.distanceToRearLotLineFt >= required;
+  if (spec.mappingToleranceFt !== undefined && required > 0) {
+    const where = againstMinimum(project.distanceToRearLotLineFt, required, spec.mappingToleranceFt);
+    if (where === "NEAR") {
+      return {
+        classification: FindingClassification.REQUIRES_VERIFICATION,
+        subject: rule.subject,
+        appliedRule,
+        supportingEvidence: [`distanceToRearLotLineFt=${project.distanceToRearLotLineFt}`, `alleyAdjacent=${project.alleyAdjacent}`],
+        explanationBasis: `Rear setback ${roundToTenthFt(project.distanceToRearLotLineFt)}ft against the required ${required}ft is within ${spec.mappingToleranceFt}ft of the requirement, so it is not treated as a definite result. ${NOT_A_SURVEY}`,
+      };
+    }
+    pass = where === "CLEARS";
+  }
   return classifySpatialFinding({
     rule,
     appliedRule,
@@ -478,7 +521,24 @@ function evaluateDwellingSeparation(
   if (project.distanceToDwellingFt === undefined) {
     return missingEvidenceFinding(rule.subject, appliedRule, project.dwellingSeparationEvidenceGapReason ?? "distanceToDwellingFt is not available.");
   }
-  const pass = project.distanceToDwellingFt >= spec.minFt;
+  let pass = project.distanceToDwellingFt >= spec.minFt;
+  if (spec.mappingToleranceFt !== undefined) {
+    const where = againstMinimum(project.distanceToDwellingFt, spec.minFt, spec.mappingToleranceFt);
+    const outsideNote =
+      spec.outsideRearSetbackFt !== undefined && project.distanceToDwellingFt < spec.outsideRearSetbackFt + spec.mappingToleranceFt
+        ? ` The ${spec.minFt}ft separation applies within the rear setback; outside it a structure containing floor area must be ${spec.outsideRearSetbackFt}ft from the house (SMC 23.44.100.A), so whether this distance is enough depends on where the shed stands.`
+        : "";
+    if (where === "NEAR" || (where === "CLEARS" && outsideNote)) {
+      return {
+        classification: FindingClassification.REQUIRES_VERIFICATION,
+        subject: rule.subject,
+        appliedRule,
+        supportingEvidence: [`distanceToDwellingFt=${project.distanceToDwellingFt}`],
+        explanationBasis: `Dwelling separation ${roundToTenthFt(project.distanceToDwellingFt)}ft against the required ${spec.minFt}ft${where === "NEAR" ? ` is within ${spec.mappingToleranceFt}ft of the requirement, so it is not treated as a definite result. ${NOT_A_SURVEY}` : "."}${outsideNote}`,
+      };
+    }
+    pass = where === "CLEARS";
+  }
   return {
     classification: FindingClassification.KNOWN,
     subject: rule.subject,
@@ -512,6 +572,16 @@ function evaluateSideFrontSetback(
       appliedRule,
       supportingEvidence: [`distanceToSideLotLineFt=${project.distanceToSideLotLineFt}`],
       explanationBasis: `The distance to your nearest indicated side property line is a known ${roundToTenthFt(project.distanceToSideLotLineFt)}ft, but ${project.sideRoleEvidenceGapReason}`,
+    });
+  } else if (spec.mappingToleranceFt !== undefined && (spec.exceptionNote !== undefined || project.distanceToSideLotLineFt >= spec.sideMinFt - spec.mappingToleranceFt) && project.distanceToSideLotLineFt < spec.sideAverageFt + spec.mappingToleranceFt) {
+    // Not clearly short of the minimum and not clearly beyond the average: the side setback is 5 ft on average with a 3 ft minimum, and a structure
+    // inside the side setback is allowed only with a recorded neighbor agreement (SMC 23.44.090.I.1), so the result is not a definite one.
+    findings.push({
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: `${rule.subject} (side)`,
+      appliedRule,
+      supportingEvidence: [`distanceToSideLotLineFt=${project.distanceToSideLotLineFt}`],
+      explanationBasis: `Side setback ${roundToTenthFt(project.distanceToSideLotLineFt)}ft: the standard side setback is ${spec.sideAverageFt}ft on average with a ${spec.sideMinFt}ft minimum (a reduced ${spec.sideMinFt}ft setback applies on some small lots near frequent transit), and an accessory structure in a required side setback needs a recorded agreement with the neighbor (SMC 23.44.090.I.1). This distance is not clearly beyond the ${spec.sideAverageFt}ft average, so it is not treated as a definite result.${spec.exceptionNote ? ` ${spec.exceptionNote}` : ""} ${NOT_A_SURVEY}`,
     });
   } else {
     const pass = project.distanceToSideLotLineFt >= spec.sideMinFt;
@@ -547,6 +617,18 @@ function evaluateSideFrontSetback(
       appliedRule,
       supportingEvidence: [`distanceToFrontLotLineFt=${project.distanceToFrontLotLineFt}`],
       explanationBasis: `The distance to your indicated front property line is a known ${roundToTenthFt(project.distanceToFrontLotLineFt)}ft, but ${project.frontRoleEvidenceGapReason}`,
+    });
+  } else if (
+    spec.mappingToleranceFt !== undefined &&
+    project.distanceToFrontLotLineFt < spec.frontFt + spec.mappingToleranceFt &&
+    (spec.exceptionNote !== undefined || project.distanceToFrontLotLineFt >= (spec.frontReducedFt ?? spec.frontFt) - spec.mappingToleranceFt)
+  ) {
+    findings.push({
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: `${rule.subject} (front)`,
+      appliedRule,
+      supportingEvidence: [`distanceToFrontLotLineFt=${project.distanceToFrontLotLineFt}`],
+      explanationBasis: `Front setback ${roundToTenthFt(project.distanceToFrontLotLineFt)}ft against the ${spec.frontFt}ft requirement${spec.frontReducedFt !== undefined ? ` (${spec.frontReducedFt}ft on lots with three or more dwelling units)` : ""} is not clearly beyond it, so it is not treated as a definite result.${spec.exceptionNote ? ` ${spec.exceptionNote}` : ""} ${NOT_A_SURVEY}`,
     });
   } else {
     const pass = project.distanceToFrontLotLineFt >= spec.frontFt;
@@ -1226,7 +1308,8 @@ function evaluateShedPermitRequirementForActiveRules(
 
 /** P2b - a separate, ordinary, location-sensitive zoning Finding, never nested inside
  * PermitRequirementFinding and never implied by buildingPermit === LIKELY_EXEMPT (BR-U6B-9). */
-function evaluateAccessoryHeightLimit(project: ShedProjectDetails): Finding {
+function evaluateAccessoryHeightLimit(project: Pick<ShedProjectDetails | GarageProjectDetails, "projectType" | "heightFt" | "isInRequiredSetback" | "requiredSetbackEvidenceGapReasons">): Finding {
+  const noun = project.projectType === "garage" ? "garage" : "shed";
   const subject = "Accessory structure height limit";
   let limit: AccessoryStructureHeightLimit;
   if (project.isInRequiredSetback === undefined) {
@@ -1237,8 +1320,8 @@ function evaluateAccessoryHeightLimit(project: ShedProjectDetails): Finding {
     const reasons = project.requiredSetbackEvidenceGapReasons;
     const reason =
       reasons && reasons.length > 0
-        ? `Whether the shed's proposed placement falls inside a required setback is unresolved: ${reasons.join("; ")}.`
-        : "Whether the shed's proposed placement falls inside a required setback is unresolved.";
+        ? `Whether the ${noun}'s proposed placement falls inside a required setback is unresolved: ${reasons.join("; ")}.`
+        : `Whether the ${noun}'s proposed placement falls inside a required setback is unresolved.`;
     limit = { basis: "REQUIRES_VERIFICATION", reason };
   } else if (project.isInRequiredSetback) {
     limit = { basis: "IN_REQUIRED_SETBACK", limitFt: 12, roofMayNotExceedLimit: true };
@@ -1263,7 +1346,7 @@ function evaluateAccessoryHeightLimit(project: ShedProjectDetails): Finding {
       subject,
       complianceOutcome: ComplianceOutcome.PASS,
       supportingEvidence,
-      explanationBasis: `Height ${project.heightFt}ft meets the ${limit.limitFt}ft limit that applies (${limit.basis === "IN_REQUIRED_SETBACK" ? "shed is in a required setback, SMC 23.44.070" : "shed is outside every required setback, SMC 23.44.070"}).`,
+      explanationBasis: `Height ${project.heightFt}ft meets the ${limit.limitFt}ft limit that applies (${limit.basis === "IN_REQUIRED_SETBACK" ? `${noun} is in a required setback, SMC 23.44.070` : `${noun} is outside every required setback, SMC 23.44.070`}).`,
     };
   }
   return {

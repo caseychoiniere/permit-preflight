@@ -36,10 +36,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, type Db } from "../../src/db/client.js";
 import { screeningRequests, reportGenerationJobs, evidenceReportArtifacts, regulatoryRules } from "../../src/db/schema.js";
-import type { ExistingPropertyScreeningRequestSnapshot, ShedProjectConfiguration } from "../../src/screening-request/types.js";
+import type { ExistingPropertyScreeningRequestSnapshot, GarageProjectConfiguration, ShedProjectConfiguration } from "../../src/screening-request/types.js";
 import { createReportGenerationJob, claimQueuedJob } from "../../src/report-generation-job/repository.js";
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
+import { garageAccessoryCandidates } from "../fixtures/accessory-candidates.js";
 import { toNewRegulatoryRuleRow, STAGING_TEST_RULES } from "../../scripts/staging-test-rules.js";
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
@@ -215,6 +216,67 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
     }
     expect(findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
   }, 90_000);
+
+  it("[footprint containment, garage] a garage placed in the street is a mis-placement too: every setback finding is REQUIRES_VERIFICATION with the reason, the position-dependent height limit is not decided, no FAIL; a mid-yard garage still gets definite findings", async () => {
+    const garageRuleIds: string[] = [];
+    try {
+      // Test-only ACTIVE copies of the real garage candidates (random ids, removed in finally); nothing in the real database is activated.
+      await db.insert(regulatoryRules).values(
+        garageAccessoryCandidates.map((c) => {
+          const id = randomUUID();
+          garageRuleIds.push(id);
+          return {
+            id,
+            subject: `PIPELINE-INTEGRATION-TEST-ONLY: ${c.subject}`,
+            applicableProjectType: "garage",
+            applicableWorkflowType: "EXISTING_PROPERTY",
+            applicableZone: "NR",
+            ruleSpecification: c.ruleSpecification,
+            citation: c.citation,
+            lifecycleState: "ACTIVE",
+            tier: "TIER_1",
+            caveats: c.caveats,
+            testCases: c.testCases,
+            verificationHistory: [{ tier: "TIER_1", founderIdentity: "pipeline-integration-test@example.com", founderVerifiedAt: "2026-01-01T00:00:00.000Z" }],
+            isTestOnlyFixture: true,
+            acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"],
+          };
+        }) as never
+      );
+      const runGarage = async (placement: { anchor: { lat: number; lng: number }; orientationDeg: number }) => {
+        const details: GarageProjectConfiguration = { widthFt: 12, depthFt: 20, heightFt: 10, alleyAdjacent: false, proposedPlacement: placement, lotLineRoleAssignment: REAL_LOT_LINE_ROLES, existingStructuresFootprintSqFt: 1200 };
+        const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: TEST_PARCEL_PIN, projectType: "garage", projectDetails: details };
+        const [row] = await db.insert(screeningRequests).values({ workflowType: "EXISTING_PROPERTY", projectType: "garage", projectDetails: details, confirmedParcelId: TEST_PARCEL_PIN, snapshot }).returning({ id: screeningRequests.id });
+        cleanupScreeningRequestIds.push(row!.id);
+        const authorization: GenerationAuthorization = { type: GenerationAuthorizationType.INTERNAL_PROTOTYPE, screeningRequestId: row!.id, authorizedBy: "pipeline.integration.test.ts", authorizedAt: new Date().toISOString() };
+        const job = await createReportGenerationJob(db, row!.id, authorization);
+        const claimed = await claimQueuedJob(db, job.id);
+        if (!claimed) throw new Error("Failed to claim the freshly-created job.");
+        await runReportGenerationPipeline(db, claimed);
+        const [finished] = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.id, job.id));
+        const [artifact] = finished?.evidenceReportArtifactId ? await db.select().from(evidenceReportArtifacts).where(eq(evidenceReportArtifacts.id, finished.evidenceReportArtifactId)) : [];
+        return { job: finished, findings: (artifact?.findings ?? []) as { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string }[] };
+      };
+
+      const inStreet = { anchor: { lat: 47.58608874074506, lng: -122.3120200879064 }, orientationDeg: 0 };
+      const bad = await runGarage(inStreet);
+      expect(bad.job?.state).toBe("COMPLETE");
+      const positional = bad.findings.filter((f) => /rear|side|front|height/i.test(f.subject) && !f.subject.startsWith("Zoning") && !f.subject.startsWith("Critical area"));
+      expect(positional.length).toBeGreaterThan(0);
+      for (const f of positional) {
+        expect(f.classification, f.subject).toBe("REQUIRES_VERIFICATION");
+        expect(f.complianceOutcome, f.subject).toBeUndefined();
+      }
+      expect(bad.findings.filter((f) => /rear|side|front/i.test(f.subject) && /setback/i.test(f.subject)).every((f) => f.explanationBasis.includes("outside the property boundary"))).toBe(true);
+      expect(bad.findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+
+      const good = await runGarage(REAL_PLACEMENT);
+      expect(good.job?.state).toBe("COMPLETE");
+      expect(good.findings.some((f) => /rear/i.test(f.subject) && f.classification === "KNOWN")).toBe(true);
+    } finally {
+      if (garageRuleIds.length > 0) await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, garageRuleIds));
+    }
+  }, 180_000);
 
   it("[hard invariant] no primary-dwelling selection at all: dwelling separation is REQUIRES_VERIFICATION, but every other finding is still produced (missing dwelling identification affects ONLY that one finding)", async () => {
     const { artifact } = await generateRealShedReport(shedProjectDetails()); // no primaryDwellingSelection field at all

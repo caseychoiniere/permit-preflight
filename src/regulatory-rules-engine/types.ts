@@ -184,6 +184,9 @@ export interface GarageProjectDetails {
   rearRoleEvidenceGapReason?: string;
   /** Same as ShedProjectDetails - see that field's docstring. */
   sideRoleEvidenceGapReason?: string;
+  /** Same as ShedProjectDetails: whether the placement is inside a required setback (bounded-band derivation); undefined when unresolved. */
+  isInRequiredSetback?: boolean;
+  requiredSetbackEvidenceGapReasons?: string[];
 }
 
 export type ProjectDetails = ShedProjectDetails | GarageProjectDetails;

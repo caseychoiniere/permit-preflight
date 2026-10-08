@@ -546,3 +546,32 @@ describe("Regulatory Rules Engine - BR-4/BR-4a", () => {
     expect(outcome.deferralReason).toBeTruthy();
   });
 });
+
+describe("shed: 'Not yet automatically screenable' when the position-dependent rules are not ACTIVE", () => {
+  const evalShed = (rules: Parameters<typeof evaluateProject>[0]["candidateActiveRules"]) =>
+    evaluateProject({
+      propertyContext: propertyContext(),
+      project: { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 20, distanceToSideLotLineFt: 10, distanceToFrontLotLineFt: 40, distanceToDwellingFt: 15 },
+      candidateActiveRules: rules,
+      ecaFindings: [],
+      candidateActiveInferencePolicies: [],
+    });
+
+  it("with no rules ACTIVE every position-dependent constraint is reported as not screened (never silently omitted)", () => {
+    const o = evalShed([]);
+    expect(o.findings.filter((f) => f.appliedRule)).toEqual([]);
+    expect(o.uncoveredConstraintTypes).toEqual(["setback", "height", "separation from the house"]);
+  });
+
+  it("each constraint is covered by exactly its own rule types; with all of them ACTIVE nothing is uncovered", () => {
+    expect(evalShed([heightRule]).uncoveredConstraintTypes).toEqual(["setback", "separation from the house"]);
+    expect(evalShed([rearSetbackRule]).uncoveredConstraintTypes).toEqual(["height", "separation from the house"]);
+    expect(evalShed([sideFrontSetbackRule]).uncoveredConstraintTypes).toEqual(["height", "separation from the house"]);
+    expect(evalShed([dwellingSeparationRule]).uncoveredConstraintTypes).toEqual(["setback", "height"]);
+    expect(evalShed([rearSetbackRule, sideFrontSetbackRule, heightRule, dwellingSeparationRule]).uncoveredConstraintTypes).toEqual([]);
+  });
+
+  it("an inactive rule does not count as coverage", () => {
+    expect(evalShed([notYetActiveRule]).uncoveredConstraintTypes).toEqual(["setback", "height", "separation from the house"]);
+  });
+});

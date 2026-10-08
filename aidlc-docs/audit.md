@@ -1884,3 +1884,15 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: Founder-authorized; no new gate. Next: shed uncovered-notice, real shed/garage rules, shed/garage server-side footprint review.
 
 ---
+
+## Cleanup A/B/C - Shed Uncovered Notice, Real Shed and Garage Rules, Footprint Validation Review
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: "A. Shed uncovered-notice defect ... B. Real shed + garage rules (replace the four STAGING-TEST-ONLY shed fixtures; finish the real garage rule set; progress them through the normal lifecycle to APPROVED when justified; do not leave staging fixtures driving real customer conclusions). C. Review the already-added server-side footprint validation for shed/garage ..."
+**AI Response**:
+- A: `expectedConstraintTypesFor("shed")` now lists the real setback, height (incl. the Unit 6B accessory height rows) and dwelling-separation types; tests verify the "Not yet automatically screenable" notice when those rules are absent.
+- B: Read SMC 23.44.090 (Table A, G, I), 23.44.070.A, 23.44.100.A, 23.44.080 live on Municode (Ord. 127376). Eight real Tier-1 rows (`tests/fixtures/accessory-candidates.ts`): shed S1 rear, S2 side/front, S3 dwelling separation; garage G1 rear, G2 side/front (a garage short of a side or front requirement is never a definite FAIL, since SMC 23.44.090.G and 23.44.160.D exceptions cannot be ruled out), G3/G4 height in/outside a required setback, G5 lot coverage. 31 tests execute every declared case against the evaluator. `scripts/accessory-rules-governance.ts` advanced all eight to APPROVED (never ACTIVE). The four STAGING-TEST-ONLY shed rows were deleted from the live DB with `clear-staging-test-rules` (marker-scoped). Consequence until the shed rows are activated: shed reports show the "Not yet automatically screenable" notice for setbacks and separation (fail closed). Garage stays off the public list (`isGarageScreeningCoverageReady()` false).
+- C: Reviewed the shared footprint guard: an off-parcel footprint yields no distances, every position finding (rear/side/front/dwelling) is REQUIRES_VERIFICATION with the reason, and the position-dependent height limit stays unresolved (undefined distances make every required-setback band REQUIRES_VERIFICATION). Added a live garage test (mis-placed vs mid-yard) beside the existing shed one. Fixed a stale ADU integration assertion (the pipeline now also sees the 12 real ACTIVE ADU rows).
+**Reviewer**: ESCALATE (RESERVED_FOUNDER; decision 81bfd917-469c-4ef6-8834-3723f638f91e) on authority to create Tier-1 rows and advance them to APPROVED; recorded, since the founder's 2026-10-08 directive names this lifecycle step for these rows. Its substantive findings (a constrained auditable deletion procedure; rerun integration after removal) were met: marker-scoped deletion script, full integration rerun (all passing).
+**Context**: Open for the founder (not blocking): activate the three shed rows (restores setback/separation screening on shed reports) and later the garage set plus the garage public gate.
+
+---

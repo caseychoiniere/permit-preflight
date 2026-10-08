@@ -687,8 +687,19 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     let shedLotCoverageFacts: Omit<ShedLotCoverageFacts, "allowanceFacts"> | undefined;
     if (snapshot.projectType === ProjectType.GARAGE) {
       const garageDetails = accessoryDetails as GarageProjectConfiguration;
+      // Same bounded-band derivation the shed uses: needed for the location-sensitive accessory height limit (12 ft in a required setback, 32 ft outside).
+      const garageRequiredSetback = deriveIsInRequiredSetback({
+        distanceToFrontLotLineFt,
+        distanceToRearLotLineFt,
+        distanceToSideLotLineFt,
+        frontRoleEvidenceGapReason,
+        rearRoleEvidenceGapReason,
+        sideRoleEvidenceGapReason,
+      });
       project = {
         projectType: "garage",
+        isInRequiredSetback: garageRequiredSetback.isInRequiredSetback,
+        requiredSetbackEvidenceGapReasons: garageRequiredSetback.requiredSetbackEvidenceGapReasons,
         widthFt: garageDetails.widthFt,
         depthFt: garageDetails.depthFt,
         heightFt: garageDetails.heightFt,

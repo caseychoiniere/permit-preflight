@@ -155,7 +155,8 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
       expect(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value).toEqual([]);
       expect((evidence.find((e) => e.factType === "frequent-transit-service-area")!.value as { inFrequentTransitServiceArea: boolean }).inFrequentTransitServiceArea).toBe(true);
       expect(JSON.stringify(findings)).not.toContain("adu-feasibility");
-      expect((artifact!.ruleVersionsUsed as string[]).sort()).toEqual([...ruleIds].sort());
+      // The real ADU rules are ACTIVE too (activated 2026-10-08), so the artifact lists them alongside this test's own copies.
+      expect(artifact!.ruleVersionsUsed as string[]).toEqual(expect.arrayContaining(ruleIds));
     },
     120_000
   );

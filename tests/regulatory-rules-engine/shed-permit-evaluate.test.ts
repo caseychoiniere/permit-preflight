@@ -719,8 +719,8 @@ describe("Outcome-specific gating - Capability B (P6 inactive)", () => {
     expect(hit.permitRequirement?.reviewPath).toBe("FULL_REVIEW_LIKELY");
   });
 
-  it("deterministic review path remains available where independently supported, with P6 inactive (STFI and FULL)", () => {
-    expect(run({ widthFt: 12, depthFt: 12 }).permitRequirement?.reviewPath).toBe("STFI_LIKELY");
+  it("deterministic FULL review triggers still produce FULL_REVIEW_LIKELY with P6 inactive; an otherwise-STFI shed stays REQUIRES_VERIFICATION (ECA unresolved)", () => {
+    expect(run({ widthFt: 12, depthFt: 12 }).permitRequirement?.reviewPath).toBe("REQUIRES_VERIFICATION");
     expect(run({ widthFt: 12, depthFt: 12, foundationType: "WOOD_FOUNDATION" }).permitRequirement?.reviewPath).toBe("FULL_REVIEW_LIKELY");
     expect(run({ widthFt: 30, depthFt: 30 }).permitRequirement?.reviewPath).toBe("FULL_REVIEW_LIKELY");
   });
@@ -811,5 +811,56 @@ describe("Outcome-specific gating - Capability C (C1e-director inactive)", () =>
     const result = run(FIVE.map((rt) => activeShedRule(rt))).shedLotCoverage;
     if (result?.status !== "REQUIRES_VERIFICATION" || result.reason !== "LOT_AREA_ADJUSTMENT_UNRESOLVED") throw new Error("expected unresolved");
     expect(result.exclusionTolerance.at50).toMatchObject({ kind: "WITHIN_UNLESS_EXCLUDED_AREA_EXCEEDS", maxExcludedAreaSqFt: 1872 });
+  });
+});
+
+describe("STFI/ECA review-path correctness (2026-10-08 founder correction)", () => {
+  const met = (criterionId: string) => ({ criterionId, status: "MET" as const, explanationBasis: "" });
+  const notMet = (criterionId: string) => ({ criterionId, status: "NOT_MET" as const, explanationBasis: "" });
+  const rv = (criterionId: string) => ({ criterionId, status: "REQUIRES_VERIFICATION" as const, explanationBasis: "" });
+  const base = (eca: { criterionId: string; status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION"; explanationBasis: string }) => [notMet("ROOF_AREA"), met("STORY_HEIGHT"), met("FOUNDATION"), met("ATTACHMENT"), met("USE"), eca, met("SIZE_SPAN")];
+
+  it("STFI_LIKELY only when the ECA criterion is actually MET", () => {
+    expect(deriveBuildingPermitState(base(met("ECA")) as never, "SLAB_ON_GRADE")).toEqual({ buildingPermit: "REQUIRED", reviewPath: "STFI_LIKELY" });
+  });
+  it("an UNRESOLVED ECA keeps the review path REQUIRES_VERIFICATION while the permit stays REQUIRED (the permit result is not made less useful)", () => {
+    expect(deriveBuildingPermitState(base(rv("ECA")) as never, "SLAB_ON_GRADE")).toEqual({ buildingPermit: "REQUIRED", reviewPath: "REQUIRES_VERIFICATION" });
+  });
+  it("an absent ECA criterion (not evaluated) is not treated as MET", () => {
+    const criteria = base(met("ECA")).filter((c) => c.criterionId !== "ECA");
+    expect(deriveBuildingPermitState(criteria as never, "SLAB_ON_GRADE").reviewPath).toBe("REQUIRES_VERIFICATION");
+  });
+  it("deterministic full-review triggers still win over an unresolved ECA (span, foundation, dispositive ECA)", () => {
+    expect(deriveBuildingPermitState([notMet("ROOF_AREA"), met("STORY_HEIGHT"), met("FOUNDATION"), met("ATTACHMENT"), met("USE"), rv("ECA"), notMet("SIZE_SPAN")] as never, "SLAB_ON_GRADE").reviewPath).toBe("FULL_REVIEW_LIKELY");
+    expect(deriveBuildingPermitState(base(rv("ECA")) as never, "PILES").reviewPath).toBe("FULL_REVIEW_LIKELY");
+    expect(deriveBuildingPermitState(base(notMet("ECA")) as never, "SLAB_ON_GRADE").reviewPath).toBe("FULL_REVIEW_LIKELY");
+  });
+
+  const eca = (hit = false): CriticalAreaFinding[] => [
+    ecaFinding({ hazardType: "wetland" }),
+    { hazardType: "priority_habitat", mappedIntersectionResult: hit ? "INTERSECTS" : "NO_INTERSECTION", advisoryStatus: "MAP_DISPOSITIVE", toleranceBasis: "t" },
+  ];
+  const clean = { projectType: "shed" as const, widthFt: 12, depthFt: 12, heightFt: 8, alleyAdjacent: false, foundationType: "SLAB_ON_GRADE" as const, attachment: "DETACHED" as const, intendedUse: "STORAGE" as const, isInRequiredSetback: false, structuralSpanInfo: { structuralSpanFt: 10 } };
+
+  it("end to end (all permit rules ACTIVE, advisory ECA data): a 12x12 shed on a slab is REQUIRED with an UNCONFIRMED review path and the explanatory ECA note", () => {
+    const f = evaluateShedPermitRequirement(clean as ShedProjectDetails, eca());
+    expect(f.buildingPermit).toBe("REQUIRED");
+    expect(f.reviewPath).toBe("REQUIRES_VERIFICATION");
+    expect(f.reviewPathNote).toContain("unless the site is in or near an environmentally critical area, where SDCI requires a full review");
+  });
+  it("the note appears ONLY when the ECA is the sole open question (not for a disqualifying foundation, a span failure, or an unanswered foundation)", () => {
+    expect(evaluateShedPermitRequirement({ ...clean, foundationType: "PILES" } as ShedProjectDetails, eca()).reviewPathNote).toBeUndefined();
+    expect(evaluateShedPermitRequirement({ ...clean, widthFt: 30, depthFt: 30 } as ShedProjectDetails, eca()).reviewPathNote).toBeUndefined();
+    expect(evaluateShedPermitRequirement({ ...clean, foundationType: undefined } as ShedProjectDetails, eca()).reviewPathNote).toBeUndefined();
+  });
+  it("production path with P6 inactive: same result, and STFI_LIKELY is not producible for any ordinary shed", () => {
+    const rules = ALL_PERMIT_RULE_TYPES.filter((rt) => rt !== ShedPermitRuleType.ECA_CRITERION).map((rt) => activeShedRule(rt));
+    const o = evaluateProject({ propertyContext, project: clean as ShedProjectDetails, candidateActiveRules: rules, ecaFindings: eca(), candidateActiveInferencePolicies: [] });
+    expect(o.permitRequirement?.buildingPermit).toBe("REQUIRED");
+    expect(o.permitRequirement?.reviewPath).toBe("REQUIRES_VERIFICATION");
+    expect(o.permitRequirement?.reviewPathNote).toBeDefined();
+  });
+  it("a deterministic full-review shed (pile foundation) keeps FULL_REVIEW_LIKELY end to end", () => {
+    expect(evaluateShedPermitRequirement({ ...clean, foundationType: "PILES" } as ShedProjectDetails, eca()).reviewPath).toBe("FULL_REVIEW_LIKELY");
   });
 });

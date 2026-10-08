@@ -3851,3 +3851,9 @@ Design skipped (no new infrastructure or data source).
   reasoning applied to decks). Unit 6B activation explicitly listed that outcome, so it was left as authorized.
 - **To make decks customer-available (founder decisions, not done):** activate the 6 rules and flip `isDeckScreeningCoverageReady()`.
 
+## MVP CONSOLIDATION 2026-10-08 — fences and decks ACTIVE and publicly offered; shed STFI/ECA fixed; roadmap reordered to ADUs
+
+- **Founder decisions executed:** fence (8) and deck (6) rules APPROVED → ACTIVE via the normal lifecycle (14 `RULE_ACTIVATED` entries); `isFenceScreeningCoverageReady()` and `isDeckScreeningCoverageReady()` flipped to `true`; Units 9 (retaining walls), ADM-9 + Support Case and 10 (additions) deferred; **Unit 11 ADUs moved next**; the per-phase Founder Acceptance Gate removed from `CLAUDE.md` (replaced by the Continuous Autonomous Execution Policy; hands-on acceptance only before an actual external/public launch of materially new functionality or at a founder-only stop condition).
+- **Shed STFI/ECA correctness fix:** `STFI_LIKELY` is returned only when the ECA criterion is actually MET; an unresolved ECA now yields `REQUIRES_VERIFICATION` with an explanatory note while the permit stays `REQUIRED`; deterministic full-review triggers still yield `FULL_REVIEW_LIKELY`. Tests + web/PDF parity added.
+- **Consolidation record:** `aidlc-docs/decisions/2026-10-08-mvp-consolidation-readiness.md` (garage: not ready - zero real rules; shed setbacks are staging fixtures - folded into the ADU foundation).
+

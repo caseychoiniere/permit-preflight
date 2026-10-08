@@ -40,6 +40,8 @@ interface PermitRequirementFindingForPdf {
   tradePermitDisclosures: { trade: string; explanationBasis: string }[];
   /** Optional: absent on reports persisted before 2026-10-07 and whenever the ECA criterion is evaluated. */
   ecaDeferral?: { allOtherExemptionCriteriaMet: boolean; note?: string };
+  /** Optional: present only when the review path is unresolved solely because of the ECA question. */
+  reviewPathNote?: string;
 }
 
 /** frontend-components.md §2's exact 5-row headline table - same logic as ReportView.tsx's
@@ -240,6 +242,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     <ul>
       ${permitRequirement.criteria.map((c) => `<li>${permitCriterionIconForPdf(c.status)} ${escapeHtml(c.explanationBasis)}</li>`).join("\n      ")}
     </ul>
+    ${permitRequirement.reviewPathNote ? `<p>${escapeHtml(permitRequirement.reviewPathNote)}</p>` : ""}
     ${permitRequirement.tradePermitDisclosures.map((d) => `<p>⚠ ${escapeHtml(d.explanationBasis)}</p>`).join("\n    ")}
     ${
       permitRequirement.buildingPermit === "LIKELY_EXEMPT"

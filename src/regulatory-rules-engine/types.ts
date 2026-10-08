@@ -368,6 +368,9 @@ export interface PermitRequirementFinding {
   tradePermitDisclosures: TradePermitDisclosure[];
   /** Absent whenever P6 is ACTIVE (the ECA criterion is then evaluated like any other). */
   ecaDeferral?: DeferredEcaDetermination;
+  /** Defined only when the permit is REQUIRED and the review path is unresolved solely because the ECA
+   * question is open (STFI_LIKELY is never reported while it is - 2026-10-08). */
+  reviewPathNote?: string;
 }
 
 // ---------------------------------------------------------------------------------------------

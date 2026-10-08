@@ -92,6 +92,8 @@ interface PermitRequirementFindingDisplay {
   tradePermitDisclosures: TradePermitDisclosureDisplay[];
   /** Optional: absent on reports persisted before 2026-10-07 and whenever the ECA criterion is evaluated. */
   ecaDeferral?: { allOtherExemptionCriteriaMet: boolean; note?: string };
+  /** Optional: present only when the review path is unresolved solely because of the ECA question. */
+  reviewPathNote?: string;
 }
 /** Optional on persisted results: absent on reports generated before 2026-10-07. */
 interface LotCoverageToleranceDisplay {
@@ -401,6 +403,7 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
                   </li>
                 ))}
               </ul>
+              {permitRequirement.reviewPathNote && <p className="mt-3 text-sm text-amber-900">{permitRequirement.reviewPathNote}</p>}
               {permitRequirement.tradePermitDisclosures.length > 0 && (
                 <div className="mt-3 flex flex-col gap-2">
                   {permitRequirement.tradePermitDisclosures.map((d, i) => (

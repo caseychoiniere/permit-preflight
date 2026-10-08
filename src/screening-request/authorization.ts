@@ -255,13 +255,14 @@ export function checkGarageCheckoutEligibility(screeningRequest: { projectType: 
 /**
  * Fence Screening Coverage Readiness (Unit 7) - mirrors Garage Screening Coverage Readiness exactly
  * (same two-layer discipline: intake/evaluation support via SUPPORTED_PROJECT_TYPES is separate from
- * public advertisement and public checkout, which this predicate governs). Hardcoded `false`:
- * flipping it - like activating the eight fence rules - is a founder decision, never inferred from
- * rule lifecycle state. Fences are therefore creatable, validatable and internally generatable
- * (INTERNAL_PROTOTYPE) but not publicly offered or purchasable.
+ * public advertisement and public checkout, which this predicate governs). Flipped to `true` on
+ * 2026-10-08 on the founder's explicit decision, after the eight fence rules were activated and a real
+ * pipeline run against the live ACTIVE rules passed. Like garage's, it is a static flag, not derived
+ * from rule lifecycle state: if a fence rule is later disabled the report fails closed with a
+ * "not yet automatically screenable" notice rather than a conclusion.
  */
 export function isFenceScreeningCoverageReady(): boolean {
-  return false;
+  return true;
 }
 
 /** Checkout-time half of Fence Screening Coverage Readiness; `{ ready: true }` for non-fence requests. */
@@ -278,10 +279,12 @@ export function checkFenceCheckoutEligibility(screeningRequest: { projectType: s
 
 /**
  * Deck Screening Coverage Readiness (Unit 8) - identical two-layer discipline to garage and fence.
- * Hardcoded `false`: activating the six deck rules and flipping this are founder decisions.
+ * Flipped to `true` on 2026-10-08 on the founder's explicit decision, after the six deck rules were
+ * activated and a real pipeline run against the live ACTIVE rules passed (static flag, fail-closed
+ * reports if a rule is later disabled - see the fence predicate above).
  */
 export function isDeckScreeningCoverageReady(): boolean {
-  return false;
+  return true;
 }
 
 /** Checkout-time half of Deck Screening Coverage Readiness; `{ ready: true }` for non-deck requests. */

@@ -132,94 +132,33 @@ ESCALATE → ask the founder
 
 Founder interaction for internal AIDLC decisions should be the exception, not the default. See `tools/aidlc-reviewer/README.md` for the MCP server itself and `.ai/reviewer/system-prompt.md` for exactly what the reviewer is told.
 
-**This delegated-approval rule governs internal AIDLC workflow gates only.** It does not change the separate, mandatory hands-on founder testing checkpoint after each completed construction phase — see "MANDATORY: Founder Acceptance Gate After Each Construction Phase" immediately below, which this rule does not override.
+**This delegated-approval rule governs internal AIDLC workflow gates.** Founder hands-on acceptance is governed separately, and only narrowly, by "MANDATORY: Continuous Autonomous Execution Policy" immediately below (the former per-phase Founder Acceptance Gate was removed on 2026-10-08).
 
-## MANDATORY: Founder Acceptance Gate After Each Construction Phase
+## MANDATORY: Continuous Autonomous Execution Policy
 
-The delegated AIDLC reviewer above does **not** replace founder hands-on acceptance testing of completed construction phases. Permit Preflight must continue to be developed and validated incrementally. A completed user-facing construction phase must be runnable and manually tested by the founder before development proceeds into the next construction phase. **This is a mandatory human checkpoint that the reviewer cannot satisfy.**
+*(Founder decision, 2026-10-08. Supersedes the former "Founder Acceptance Gate After Each Construction Phase", which no longer blocks progression. Changes to this section are a founder-only decision.)*
 
-### Purpose
+**Default: CONTINUE.** The founder does not want to be consulted at ordinary checkpoints. Do not stop merely because a unit or construction phase completed, tests passed, a commit/push is ready, a lifecycle transition is ready, already-approved capabilities are ready to activate, the next AIDLC unit is ready, research is complete, an implementation choice exists, a source has one clearly safer reading, an edge case is awkward, a test is missing, or the reviewer found a routine defect. Make the safest reasonable choice, document it, test it, and continue. If an edge case cannot be resolved confidently, preserve the main deterministic path, return `REQUIRES_VERIFICATION` for the edge case, record the limitation, and keep building.
 
-Hands-on testing after each construction phase is required to discover issues that automated tests and AI review may not reveal, including: UX problems, confusing interactions, poor workflow sequencing, unexpected visual behavior, incorrect assumptions about how a user will interact with the feature, integration defects, state-management problems, awkward or incomplete error handling, usability issues, and behavior that technically satisfies requirements but feels wrong in actual use.
+Carry each unit autonomously through: research → requirements/customer questions → rule decomposition → implementation → targeted tests → adversarial review → fixes → lifecycle progression (to APPROVED through established criteria) → report/UI/PDF work → browser verification → full checkpoint verification → commit → push → next planned slice. Progress reports are informational, not approval gates. Do not ask "should I commit / activate / continue / move on?" unless a founder-only condition is actually present.
 
-These checkpoints intentionally prevent multiple unfinished or unvalidated product slices from accumulating before manual testing.
+**Founder hands-on acceptance is required only:**
+- before an actual external/public launch of materially new customer-facing functionality; or
+- when one of the standing founder-only stop conditions below is encountered.
 
-### Construction-phase acceptance is reserved to the founder
+Internal construction phases, lifecycle advancement, activation of already-approved capabilities, commits, pushes, and readiness work do **not** require founder acknowledgment. (Rule activation APPROVED → ACTIVE and public-availability gates are founder-controlled *decisions*: act on them when the founder has authorized them for a stated rule set, as for Units 6B-8 on 2026-10-08; do not infer authorization for a new rule set.)
 
-The AIDLC reviewer may approve: planning, functional design, component design, implementation approach, technical decisions, test plans, code changes, fixes, and readiness to present a completed phase for founder testing.
+**Founder-only stop conditions** (stop only if continued work requires one of these):
+1. A genuinely new regulatory interpretation with multiple materially different defensible customer-facing outcomes.
+2. A pricing, monetization, billing-model, or major product-scope decision.
+3. A meaningful payment, security, privacy, credential, destructive-data, or financial-liability decision.
+4. A major irreversible architecture/infrastructure commitment.
+5. An actual external/public-launch decision, or a material new promise/guarantee to customers.
 
-**The AIDLC reviewer may not approve the final acceptance of a completed user-facing construction phase. Only the founder may do that.** This is distinct from, and not satisfied by, normal delegated AIDLC approval above.
+**Reviewer role under this policy.** `aidlc-reviewer` is adversarial QA. Real bug → fix; missing test → add; overclaim → narrow; provenance gap → fix; reversible design disagreement → choose the safer reasonable path; repeated authority/authentication objection already covered by policy → record and continue. An `ESCALATE` is a stop only if its substance falls into a founder-only category above. Always read the findings list: real defects frequently sit beside an authority objection.
 
-### Mandatory stop
+**Product-opportunity sequencing (2026-10-08).** The numeric unit order no longer controls sequencing; product opportunity does. Roadmap now: finish the current consolidation/readiness work, then build **Unit 11 ADUs** (moved ahead of Unit 10). **Deferred** (founder decision, 2026-10-08): Unit 9 retaining walls (stays on the roadmap), ADM-9 + Support Case (design notes preserved), Unit 10 additions (evaluate after ADUs). No further horizontal project types until there is evidence of paid/customer demand from those already built.
 
-When a construction phase reaches a runnable, testable state: **STOP before beginning the next construction phase.** Do not automatically proceed merely because automated tests pass, type checking passes, the reviewer returns `APPROVE`, acceptance criteria appear satisfied, or implementation is technically complete. Instead, present the completed phase to the founder for hands-on testing.
-
-### What constitutes a construction phase
-
-A construction phase is a meaningful user-facing vertical slice of the product. For the current Permit Preflight development sequence, this includes project-type implementations such as sheds, detached garages, fences, decks, vacant-land screening, retaining walls, additions, and ADUs. A construction phase may also exist within one of these project types if the approved AIDLC unit-of-work intentionally divides the feature into separately runnable user-facing slices. Do not create artificial micro-checkpoints for individual files, components, migrations, or internal implementation steps — the goal is to test coherent product behavior, not interrupt normal coding.
-
-### Required founder handoff
-
-At the end of the phase, provide a concise testing handoff containing: (1) what was completed, (2) what user workflow is now available, (3) how to start/run the application if anything differs from normal, (4) exactly what the founder should test, (5) important edge cases worth trying, (6) any known limitations, (7) automated test/typecheck/build status. Prefer a short practical test checklist rather than a technical implementation dump. Example:
-
-```
-Detached Garage is ready for hands-on testing.
-
-Please test:
-1. Start a new screening.
-2. Select Detached Garage.
-3. Enter a garage footprint.
-4. Verify existing structures are included in lot coverage.
-5. Try a garage that clearly passes coverage.
-6. Try one that clearly exceeds it.
-7. Navigate backward and change dimensions.
-8. Refresh/revisit the result if that flow is supported.
-9. Check the report explanation and evidence.
-
-Also pay attention to anything that feels confusing or awkward,
-even if the calculated result is technically correct.
-
-Automated status:
-- tests: passing
-- typecheck: passing
-- build: passing
-```
-
-Then stop.
-
-### Founder feedback loop
-
-If the founder identifies defects, UX problems, or desired corrections: treat that feedback as part of the current construction phase, update requirements/design artifacts when necessary, implement the fixes, run automated validation again, and return the phase to the founder for another hands-on test. Do not begin the next construction phase while material founder feedback from the current phase remains unresolved. The AIDLC reviewer may autonomously approve technical plans and implementation decisions required to resolve that feedback.
-
-### Explicit acceptance required
-
-Proceed to the next construction phase only after the founder explicitly communicates acceptance of the current phase. Examples that count as acceptance: "Looks good," "Approved," "Move on," "This phase is done," or equivalent unambiguous approval. **Do not infer acceptance from silence. Do not treat the absence of additional feedback as acceptance. Do not allow the AIDLC reviewer to substitute for this approval.**
-
-### Relationship to delegated AIDLC approval
-
-```
-AIDLC planning/design gates
-→ aidlc-reviewer may approve automatically
-
-Implementation
-→ Claude works autonomously
-
-Technical completion
-→ aidlc-reviewer verifies readiness
-
-Runnable construction phase complete
-→ MANDATORY FOUNDER HANDS-ON TEST
-
-Founder finds issues
-→ Claude fixes them
-→ aidlc-reviewer handles routine technical gates
-→ founder tests again
-
-Founder accepts phase
-→ next construction phase begins
-```
-
-Founder interaction is exceptional for internal AIDLC decisions, but **mandatory** at completed construction-phase boundaries. **This rule overrides any other instruction — including the Delegated AIDLC Approval section above — that would permit the reviewer, Claude Code, or automated test results to advance directly from one completed user-facing construction phase into the next.**
 
 ## Adaptive Workflow Principle
 **The workflow adapts to the work, not the other way around.**

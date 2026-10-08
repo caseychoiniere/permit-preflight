@@ -55,11 +55,9 @@ describe("dispatch, hydration and the readiness gate", () => {
     expect(bad.outcome).toBe("INVALID");
     if (bad.outcome === "INVALID") expect(bad.issues.join(" ")).toContain("projectDetails.heightAboveGradeIn");
   });
-  it("Deck Screening Coverage Readiness is hardcoded false and blocks only deck checkouts", () => {
-    expect(isDeckScreeningCoverageReady()).toBe(false);
-    const blocked = checkDeckCheckoutEligibility({ projectType: ProjectType.DECK });
-    expect(blocked.ready).toBe(false);
-    if (!blocked.ready) expect(blocked.reason).toContain("Deck screening is not yet available for purchase");
+  it("Deck Screening Coverage Readiness is true after the founder's 2026-10-08 decision; the check is a no-op for every other type", () => {
+    expect(isDeckScreeningCoverageReady()).toBe(true);
+    expect(checkDeckCheckoutEligibility({ projectType: ProjectType.DECK })).toEqual({ ready: true });
     for (const t of [ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE, null]) expect(checkDeckCheckoutEligibility({ projectType: t })).toEqual({ ready: true });
     expect(REQUIRED_SOURCE_IDS_FOR_DECK).toEqual(REQUIRED_SOURCE_IDS_FOR_SHED);
   });

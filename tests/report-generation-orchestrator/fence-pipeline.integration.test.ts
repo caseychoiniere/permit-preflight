@@ -1,21 +1,21 @@
 /**
- * Unit 7 (Fences) - live end-to-end pipeline integration: real DB, real parcel, real ECA retrieval,
- * the actual runReportGenerationPipeline. Uses SYNTHETIC, randomly-id'd, isTestOnlyFixture ACTIVE
- * fence rows built from the real candidates' specifications and deletes only those ids afterward -
- * never the real fence governance rows (which stay APPROVED, not ACTIVE) and never touching shared
- * fixed-id rows (same discipline as pipeline.integration.test.ts's 2026-08-30 flake fix).
+ * Unit 7 (Fences) - live end-to-end pipeline integration against the REAL, ACTIVE governance rows
+ * (activated 2026-10-08): real DB, real parcel, real ECA retrieval, the actual
+ * runReportGenerationPipeline. Since activation this is a readiness regression test of what a
+ * customer would actually get, not a synthetic-rule exercise (the synthetic-row version was retired
+ * because real ACTIVE rows now exist). Only the screening request/job/artifact rows it creates are
+ * deleted afterward; no regulatory row is ever touched.
  */
 
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, type Db } from "../../src/db/client.js";
 import { screeningRequests, reportGenerationJobs, evidenceReportArtifacts, regulatoryRules } from "../../src/db/schema.js";
 import type { ExistingPropertyScreeningRequestSnapshot, FenceProjectConfiguration } from "../../src/screening-request/types.js";
 import { createReportGenerationJob, claimQueuedJob } from "../../src/report-generation-job/repository.js";
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
-import { realFenceCandidates } from "../fixtures/fence-candidates.js";
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
@@ -32,8 +32,7 @@ const DECLARED: FenceProjectConfiguration = {
 describe.skipIf(!hasDb)("Fence report generation pipeline - live end-to-end integration", () => {
   let db: Db;
   const screeningIds: string[] = [];
-  const ownRuleIds: string[] = [];
-  let healthSnapshot: DataSourceHealthSnapshot;
+    let healthSnapshot: DataSourceHealthSnapshot;
 
   beforeAll(async () => {
     db = getDb();
@@ -47,43 +46,10 @@ describe.skipIf(!hasDb)("Fence report generation pipeline - live end-to-end inte
         await db.delete(reportGenerationJobs).where(eq(reportGenerationJobs.screeningRequestId, id));
         await db.delete(screeningRequests).where(eq(screeningRequests.id, id));
       }
-      if (ownRuleIds.length > 0) await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, ownRuleIds));
     } finally {
       await restoreDataSourceHealth(db, healthSnapshot);
     }
   });
-
-  async function insertSyntheticActiveFenceRules(): Promise<string[]> {
-    const ids: string[] = [];
-    const rows = realFenceCandidates.map((c) => {
-      const id = randomUUID();
-      ids.push(id);
-      ownRuleIds.push(id);
-      return {
-        id,
-        subject: `FENCE-PIPELINE-INTEGRATION-TEST-ONLY: ${c.subject}`,
-        applicableProjectType: "fence",
-        applicableWorkflowType: "EXISTING_PROPERTY" as const,
-        applicableZone: c.applicableZone,
-        ruleSpecification: c.ruleSpecification,
-        citation: c.citation,
-        lifecycleState: "ACTIVE" as const,
-        tier: "TIER_1" as const,
-        caveats: c.caveats,
-        testCases: c.testCases,
-        verificationHistory: [],
-        isTestOnlyFixture: true,
-        acceptedEvidenceQuality: ["AUTHORITATIVE" as const],
-      };
-    });
-    await db.insert(regulatoryRules).values(rows);
-    return ids;
-  }
-
-  async function removeOwnRules() {
-    if (ownRuleIds.length > 0) await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, ownRuleIds));
-    ownRuleIds.length = 0;
-  }
 
   async function generate(details: FenceProjectConfiguration) {
     const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: TEST_PARCEL_PIN, projectType: "fence", projectDetails: details };
@@ -102,51 +68,58 @@ describe.skipIf(!hasDb)("Fence report generation pipeline - live end-to-end inte
     return { job: finished, artifact };
   }
 
-  it(
-    "with the eight fence rules ACTIVE: height findings per declared location, the permit aggregate as evidence only, declared inputs echoed, no shed evidence",
-    async () => {
-      const ruleIds = await insertSyntheticActiveFenceRules();
-      try {
-        const { job, artifact } = await generate(DECLARED);
-        expect(job?.state).toBe("COMPLETE");
-        const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string }[];
-        const bySubject = (n: string) => findings.find((f) => f.subject === n);
-        // 5 ft: over the 4-ft front zone, within the 6-ft side/rear zone.
-        expect(bySubject("Fence height (front setback)")).toMatchObject({ classification: "KNOWN", complianceOutcome: "FAIL" });
-        expect(bySubject("Fence height (side or rear setback)")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
-        expect(bySubject("Sight-distance requirements (corner lot, driveway, alley)")?.classification).toBe("REQUIRES_VERIFICATION");
 
-        const evidence = artifact!.evidence as { factType: string; value: unknown }[];
-        const factTypes = evidence.map((e) => e.factType);
-        expect(factTypes).toEqual(expect.arrayContaining(["fence-declared-inputs", "fence-permit-requirement", "uncovered-constraint-types", "environmental-constraints"]));
-        expect(factTypes).not.toContain("shed-permit-requirement");
-        expect(factTypes).not.toContain("shed-lot-coverage");
-        const permit = evidence.find((e) => e.factType === "fence-permit-requirement")!.value as { buildingPermit: string; turnsOnlyOnFloodProneStatus: boolean };
-        expect(permit.buildingPermit).toBe("REQUIRES_VERIFICATION");
-        expect(permit.turnsOnlyOnFloodProneStatus).toBe(true);
-        expect(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value).toEqual([]);
-        // The permit aggregate is evidence only - never in findings, so the explanation model cannot see it.
-        expect(JSON.stringify(findings)).not.toContain("fence-permit");
-        expect((artifact!.ruleVersionsUsed as string[]).sort()).toEqual([...ruleIds].sort());
-      } finally {
-        await removeOwnRules();
-      }
+  async function activeRealRuleIds(): Promise<string[]> {
+    const rows = await db
+      .select({ id: regulatoryRules.id })
+      .from(regulatoryRules)
+      .where(and(eq(regulatoryRules.applicableProjectType, "fence"), eq(regulatoryRules.lifecycleState, "ACTIVE"), eq(regulatoryRules.isTestOnlyFixture, false)));
+    return rows.map((r) => r.id);
+  }
+
+  it(
+    "REAL activated rules: all eight are ACTIVE; height findings per declared location, the permit aggregate as evidence only, declared inputs echoed, nothing uncovered, no shed/deck evidence",
+    async () => {
+      const realIds = await activeRealRuleIds();
+      expect(realIds).toHaveLength(8);
+      const { job, artifact } = await generate(DECLARED);
+      expect(job?.state).toBe("COMPLETE");
+      const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string }[];
+      const bySubject = (n: string) => findings.find((f) => f.subject === n);
+      // 5 ft: over the 4-ft front zone, within the 6-ft side/rear zone.
+      expect(bySubject("Fence height (front setback)")).toMatchObject({ classification: "KNOWN", complianceOutcome: "FAIL" });
+      expect(bySubject("Fence height (side or rear setback)")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+      expect(bySubject("Sight-distance requirements (corner lot, driveway, alley)")?.classification).toBe("REQUIRES_VERIFICATION");
+      expect(bySubject("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("REQUIRES_VERIFICATION");
+
+      const evidence = artifact!.evidence as { factType: string; value: unknown }[];
+      const factTypes = evidence.map((e) => e.factType);
+      expect(factTypes).toEqual(expect.arrayContaining(["fence-declared-inputs", "fence-permit-requirement", "uncovered-constraint-types", "environmental-constraints"]));
+      expect(factTypes).not.toContain("shed-permit-requirement");
+      expect(factTypes).not.toContain("deck-permit-requirement");
+      const permit = evidence.find((e) => e.factType === "fence-permit-requirement")!.value as { buildingPermit: string; turnsOnlyOnFloodProneStatus: boolean };
+      expect(permit.buildingPermit).toBe("REQUIRES_VERIFICATION");
+      expect(permit.turnsOnlyOnFloodProneStatus).toBe(true);
+      expect(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value).toEqual([]);
+      // The permit aggregate is evidence only - never in findings, so the explanation model cannot see it.
+      expect(JSON.stringify(findings)).not.toContain("fence-permit");
+      // The artifact records exactly the real governed rows it used.
+      expect((artifact!.ruleVersionsUsed as string[]).sort()).toEqual([...realIds].sort());
     },
     90_000
   );
 
   it(
-    "with NO fence rules ACTIVE the report still completes, with no height claims and every claim listed as uncovered",
+    "REAL rules: a 9 ft fence is REQUIRED (one conclusive disqualifier), never LIKELY_EXEMPT, and a fence on a sloping site without its tallest portion fails closed",
     async () => {
-      const { job, artifact } = await generate(DECLARED);
-      expect(job?.state).toBe("COMPLETE");
-      const findings = artifact!.findings as { subject: string }[];
-      expect(findings.map((f) => f.subject)).toEqual(["Sight-distance requirements (corner lot, driveway, alley)", "Zoning applicability (Neighborhood Residential zones)"]);
-      const evidence = artifact!.evidence as { factType: string; value: unknown }[];
-      expect(evidence.some((e) => e.factType === "fence-permit-requirement")).toBe(false);
-      expect(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value).toEqual(["fence height (front setback)", "fence height (side or rear setback)", "fence building permit"]);
-      expect(artifact!.ruleVersionsUsed).toEqual([]);
+      const over = await generate({ heightFt: 9, locations: ["OUTSIDE_REQUIRED_SETBACKS"], siteSlopes: false, wallRelation: "NONE", hasMasonryOrConcreteAbove6Ft: false });
+      const permit = (over.artifact!.evidence as { factType: string; value: unknown }[]).find((e) => e.factType === "fence-permit-requirement")!.value as { buildingPermit: string };
+      expect(permit.buildingPermit).toBe("REQUIRED");
+      const slope = await generate({ heightFt: 6, locations: ["OUTSIDE_REQUIRED_SETBACKS"], siteSlopes: true, wallRelation: "NONE" });
+      const f = (slope.artifact!.findings as { subject: string; classification: string }[]).find((x) => x.subject === "Fence height (outside required setbacks)");
+      expect(f?.classification).toBe("REQUIRES_VERIFICATION");
+      expect(JSON.stringify(slope.artifact!.evidence)).not.toContain("LIKELY_EXEMPT");
     },
-    90_000
+    120_000
   );
 });

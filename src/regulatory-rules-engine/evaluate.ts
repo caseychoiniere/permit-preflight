@@ -1064,10 +1064,35 @@ function deriveBuildingPermitState(
   if (sizeSpanStatus === PermitCriterionStatus.NOT_MET) {
     return { buildingPermit, reviewPath: PermitReviewPath.FULL_REVIEW_LIKELY };
   }
-  if (sizeSpanStatus === PermitCriterionStatus.MET && foundationDisqualification === "CLEAR") {
+  // STFI_LIKELY only when every fact that supports that path is resolved - including the ECA: SDCI
+  // requires a full review for a site in an environmentally critical area, so an UNRESOLVED ECA
+  // criterion (the production reality: the ECA maps are advisory, SMC 25.09.030.A) must keep the path
+  // REQUIRES_VERIFICATION rather than let "simple review likely" be reported (2026-10-08 founder
+  // correction). The permit requirement itself (REQUIRED) is unaffected.
+  if (sizeSpanStatus === PermitCriterionStatus.MET && foundationDisqualification === "CLEAR" && byId.get(PermitCriterionId.ECA) === PermitCriterionStatus.MET) {
     return { buildingPermit, reviewPath: PermitReviewPath.STFI_LIKELY };
   }
   return { buildingPermit, reviewPath: PermitReviewPath.REQUIRES_VERIFICATION };
+}
+
+const REVIEW_PATH_ECA_NOTE =
+  "A simple (subject-to-field-inspection) review would apply unless the site is in or near an environmentally critical area, where SDCI requires a full review. Permit Preflight cannot determine that conclusively from Seattle's advisory mapping, so the review path is not confirmed.";
+
+/** When the permit is REQUIRED and the ONLY thing keeping the review path unresolved is the ECA
+ * question (size/span met, foundation clear, ECA not decided), say so - so an unresolved path stays
+ * informative instead of a bare "needs verification". Undefined in every other case. */
+function reviewPathEcaNote(
+  criteria: PermitCriterionResult[],
+  foundationType: ShedProjectDetails["foundationType"],
+  foundationDisqualifierRuleActive: boolean,
+  derived: { buildingPermit: BuildingPermitStatus; reviewPath: PermitReviewPath }
+): string | undefined {
+  if (derived.buildingPermit !== BuildingPermitStatus.REQUIRED || derived.reviewPath !== PermitReviewPath.REQUIRES_VERIFICATION) return undefined;
+  const byId = new Map(criteria.map((c) => [c.criterionId, c.status]));
+  const eca = byId.get(PermitCriterionId.ECA);
+  const foundation = foundationDisqualifierRuleActive ? foundationStfiDisqualification(foundationType) : "UNKNOWN";
+  if (byId.get(PermitCriterionId.SIZE_SPAN) === PermitCriterionStatus.MET && foundation === "CLEAR" && eca === PermitCriterionStatus.REQUIRES_VERIFICATION) return REVIEW_PATH_ECA_NOTE;
+  return undefined;
 }
 
 const TRADE_PERMIT_DISCLOSURE_COPY =
@@ -1097,11 +1122,13 @@ function evaluateShedPermitRequirement(project: ShedProjectDetails, ecaFindings:
     evaluateSizeSpan(project),
   ];
   const { buildingPermit, reviewPath } = deriveBuildingPermitState(criteria, project.foundationType);
+  const reviewPathNote = reviewPathEcaNote(criteria, project.foundationType, true, { buildingPermit, reviewPath });
   return {
     buildingPermit,
     reviewPath,
     criteria,
     tradePermitDisclosures: buildTradePermitDisclosures(project.utilityIntent),
+    ...(reviewPathNote ? { reviewPathNote } : {}),
   };
 }
 
@@ -1156,11 +1183,8 @@ function evaluateShedPermitRequirementForActiveRules(
     // A non-discretionary criterion whose rule is not ACTIVE is simply not evaluated or listed.
   }
 
-  const { buildingPermit, reviewPath } = deriveBuildingPermitState(
-    criteria,
-    project.foundationType,
-    ruleTypesAllIn(activeRuleTypes, PERMIT_REVIEW_PATH_FOUNDATION_DISQUALIFIER_RULE_TYPES)
-  );
+  const foundationDisqualifierActive = ruleTypesAllIn(activeRuleTypes, PERMIT_REVIEW_PATH_FOUNDATION_DISQUALIFIER_RULE_TYPES);
+  const { buildingPermit, reviewPath } = deriveBuildingPermitState(criteria, project.foundationType, foundationDisqualifierActive);
   // REQUIRED stands on any single conclusive active disqualifier; every other conclusion needs the
   // full deterministic set (otherwise an unevaluated criterion could hide a disqualifier).
   if (buildingPermit !== BuildingPermitStatus.REQUIRED && !ruleTypesAllIn(activeRuleTypes, DETERMINISTIC_PERMIT_RULE_TYPES)) return undefined;
@@ -1171,6 +1195,8 @@ function evaluateShedPermitRequirementForActiveRules(
     criteria,
     tradePermitDisclosures: buildTradePermitDisclosures(project.utilityIntent),
   };
+  const reviewPathNote = reviewPathEcaNote(criteria, project.foundationType, foundationDisqualifierActive, { buildingPermit, reviewPath });
+  if (reviewPathNote) finding.reviewPathNote = reviewPathNote;
   if (!ruleTypesAllIn(activeRuleTypes, PERMIT_CRITERION_RULE_DEPENDENCIES[PermitCriterionId.ECA])) {
     const otherExemptionCriteria: PermitCriterionId[] = [
       PermitCriterionId.ROOF_AREA,

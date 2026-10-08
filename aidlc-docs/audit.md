@@ -1830,3 +1830,13 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 
 ---
 
+---
+
+## Fence/Deck Activation, Shed STFI Fix, CLAUDE.md Policy Update, Consolidation Pass; ADUs Prioritized
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: Founder/delegated product decisions: defer retaining walls (Unit 9), ADM-9 + Support Case and Units 10/11; activate the 8 fence and 6 deck rules and flip their public gates; fix the shed STFI/ECA review-path defect now; remove the Founder Acceptance Gate (hands-on acceptance only before an actual external launch or at a founder-only stop); one consolidation pass across shed/garage/fence/deck with browser smoke, integration and build; then a priority correction: ADUs are the next unit (ahead of additions), built autonomously with customer-question-first research, reusing the platform, REQUIRES_VERIFICATION for unresolved edge cases, reviewer as adversarial QA only.
+**AI Response**: Shed STFI fix (STFI only when ECA MET; unresolved ECA keeps the path REQUIRES_VERIFICATION with an explanatory note; permit stays REQUIRED) with tests and web/PDF parity. Fence (8) and deck (6) rules activated after a state preflight; real-pipeline smoke for shed/garage/fence/deck against the live DB; both public gates flipped; browser-verified the real /configure flow (address -> parcel -> fence and deck forms -> review) and a real Stripe sandbox Checkout Session for a fence; fence/deck pipeline integration tests rewritten against the real ACTIVE rules. CLAUDE.md: Founder Acceptance Gate replaced by the Continuous Autonomous Execution Policy and the new sequencing. Consolidation finding: garage has zero real rules (stays gated); shed setback/height/separation findings are staging fixtures - to be replaced by real governed accessory-structure rules as the ADU foundation.
+**Context**: No founder-only condition hit. A real public launch (deployment to customers, live payments) remains a founder decision.
+
+---
+

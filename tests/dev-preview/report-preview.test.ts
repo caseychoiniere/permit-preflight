@@ -155,6 +155,17 @@ describe("dev report-preview harness (Unit 6B dormant result sections)", () => {
     }
   });
 
+  it("[STFI/ECA correction] an unresolved ECA never reports 'simple review likely' on either surface, and the explanatory note is printed identically", () => {
+    for (const out of [renderWeb("permit-stfi-likely"), renderPdf("permit-stfi-likely")]) {
+      expect(out).toContain("Permit likely required - review path needs verification");
+      expect(out).not.toContain("simple review (STFI)");
+      expect(out).toContain("A simple (subject-to-field-inspection) review would apply unless the site is in or near an environmentally critical area, where SDCI requires a full review.");
+    }
+    // A deterministic full-review shed still says so.
+    expect(renderWeb("permit-full-review-likely")).toContain("Likely required - full review");
+    expect(renderPdf("permit-full-review-likely")).toContain("Likely required - full review");
+  });
+
   it("[standard case] never mentions the 60% allowance on either surface (founder UX principle)", () => {
     expect(renderWeb("coverage-standard")).not.toContain("60%");
     expect(renderPdf("coverage-standard")).not.toContain("60%");

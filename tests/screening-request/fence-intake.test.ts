@@ -89,11 +89,9 @@ describe("project-type dispatch and hydration", () => {
 });
 
 describe("Fence Screening Coverage Readiness (public availability gate)", () => {
-  it("is hardcoded false: fences are not publicly offered or purchasable until a founder decision", () => {
-    expect(isFenceScreeningCoverageReady()).toBe(false);
-    const blocked = checkFenceCheckoutEligibility({ projectType: ProjectType.FENCE });
-    expect(blocked.ready).toBe(false);
-    if (!blocked.ready) expect(blocked.reason).toContain("Fence screening is not yet available for purchase");
+  it("is true after the founder's 2026-10-08 decision: fences are offered and may proceed to checkout", () => {
+    expect(isFenceScreeningCoverageReady()).toBe(true);
+    expect(checkFenceCheckoutEligibility({ projectType: ProjectType.FENCE })).toEqual({ ready: true });
   });
   it("is a no-op for every other project type", () => {
     for (const t of [ProjectType.SHED, ProjectType.GARAGE, null]) expect(checkFenceCheckoutEligibility({ projectType: t })).toEqual({ ready: true });

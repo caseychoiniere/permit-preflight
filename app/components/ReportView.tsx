@@ -166,6 +166,22 @@ function fencePermitHeadline(buildingPermit: FencePermitRequirementDisplay["buil
   return buildingPermit === "REQUIRED" ? "Building permit likely required" : "Requires verification";
 }
 
+/** Unit 8 (Decks) - mirrors regulatory-rules-engine/deck-types.ts's DeckPermitRequirement; duplicated (not imported). */
+interface DeckPermitRequirementDisplay {
+  buildingPermit: "REQUIRED" | "REQUIRES_VERIFICATION";
+  criteria: { criterionId: string; status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION"; explanationBasis: string }[];
+  reviewPath?: "FULL_REVIEW_LIKELY" | "REQUIRES_VERIFICATION";
+  reviewPathReasons?: string[];
+  note?: string;
+  exemptionDisclaimer?: string;
+  disclosures: string[];
+}
+function deckPermitHeadline(p: DeckPermitRequirementDisplay): string {
+  if (p.buildingPermit === "REQUIRES_VERIFICATION") return "Requires verification";
+  if (p.reviewPath === "FULL_REVIEW_LIKELY") return "Building permit likely required - full review";
+  return "Building permit likely required";
+}
+
 function coveragePercent(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
   return Math.round((estimatedCoverageSqFt / parcelAreaSqFt) * 100);
 }
@@ -232,6 +248,9 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
   // finding), exactly like Unit 6B's; declared inputs are echoed so the customer sees what the result rests on.
   const fenceDeclaredInputs = report.evidence.find((e) => e.factType === "fence-declared-inputs")?.value as FenceDeclaredInputDisplay[] | undefined;
   const fencePermit = report.evidence.find((e) => e.factType === "fence-permit-requirement")?.value as FencePermitRequirementDisplay | undefined;
+  // Unit 8 (Decks) - same arrangement: declared inputs echoed, permit aggregate as evidence only.
+  const deckDeclaredInputs = report.evidence.find((e) => e.factType === "deck-declared-inputs")?.value as FenceDeclaredInputDisplay[] | undefined;
+  const deckPermit = report.evidence.find((e) => e.factType === "deck-permit-requirement")?.value as DeckPermitRequirementDisplay | undefined;
 
   return (
     <div>
@@ -269,6 +288,56 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
           </Card>
         ))}
       </div>
+
+      {deckDeclaredInputs && deckDeclaredInputs.length > 0 && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">What you told us</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              <p className="text-sm text-slate-500">This deck was evaluated from the details you entered, not from measurements of the site.</p>
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                {deckDeclaredInputs.map((d, i) => (
+                  <div key={i} className="flex gap-2">
+                    <dt className="text-slate-500">{d.label}:</dt>
+                    <dd className="text-slate-900">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {deckPermit && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">Building permit (deck)</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              <strong className="text-sm text-slate-900">{deckPermitHeadline(deckPermit)}</strong>
+              {deckPermit.note && <p className="mt-2 text-sm text-amber-900">{deckPermit.note}</p>}
+              <ul className="mt-3 flex flex-col gap-1">
+                {deckPermit.criteria.map((c, i) => (
+                  <li key={i} className="text-sm text-slate-600">
+                    {permitCriterionIcon(c.status)} {c.explanationBasis}
+                  </li>
+                ))}
+              </ul>
+              {(deckPermit.reviewPathReasons ?? []).map((r, i) => (
+                <p key={i} className="mt-3 text-sm text-slate-600">
+                  {r}
+                </p>
+              ))}
+              {deckPermit.exemptionDisclaimer && <p className="mt-3 text-sm text-slate-500">{deckPermit.exemptionDisclaimer}</p>}
+              {deckPermit.disclosures.map((d, i) => (
+                <p key={i} className="mt-3 text-sm text-slate-500">
+                  {d}
+                </p>
+              ))}
+              <p className="mt-3 text-xs text-slate-400">SDCI makes the final determination.</p>
+            </Card>
+          </div>
+        </>
+      )}
 
       {fenceDeclaredInputs && fenceDeclaredInputs.length > 0 && (
         <>

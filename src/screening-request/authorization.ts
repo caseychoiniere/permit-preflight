@@ -198,10 +198,14 @@ export const REQUIRED_SOURCE_IDS_FOR_VACANT_LAND = REQUIRED_SOURCE_IDS_FOR_SHED;
  * ECA layer for flood-prone context); no new data source is introduced anywhere in Unit 7. */
 export const REQUIRED_SOURCE_IDS_FOR_FENCE = REQUIRED_SOURCE_IDS_FOR_SHED;
 
+/** Unit 8 - identical to REQUIRED_SOURCE_IDS_FOR_SHED; no new data source (ECA is best-effort context only). */
+export const REQUIRED_SOURCE_IDS_FOR_DECK = REQUIRED_SOURCE_IDS_FOR_SHED;
+
 function requiredSourceIdsFor(workflowType: string, projectType: string | null): string[] {
   if (workflowType === WorkflowType.VACANT_LAND) return REQUIRED_SOURCE_IDS_FOR_VACANT_LAND;
   if (projectType === ProjectType.GARAGE) return REQUIRED_SOURCE_IDS_FOR_GARAGE;
   if (projectType === ProjectType.FENCE) return REQUIRED_SOURCE_IDS_FOR_FENCE;
+  if (projectType === ProjectType.DECK) return REQUIRED_SOURCE_IDS_FOR_DECK;
   return REQUIRED_SOURCE_IDS_FOR_SHED;
 }
 
@@ -267,6 +271,26 @@ export function checkFenceCheckoutEligibility(screeningRequest: { projectType: s
     return {
       ready: false,
       reason: "Fence screening is not yet available for purchase - the required regulatory rule coverage has not been activated.",
+    };
+  }
+  return { ready: true };
+}
+
+/**
+ * Deck Screening Coverage Readiness (Unit 8) - identical two-layer discipline to garage and fence.
+ * Hardcoded `false`: activating the six deck rules and flipping this are founder decisions.
+ */
+export function isDeckScreeningCoverageReady(): boolean {
+  return false;
+}
+
+/** Checkout-time half of Deck Screening Coverage Readiness; `{ ready: true }` for non-deck requests. */
+export function checkDeckCheckoutEligibility(screeningRequest: { projectType: string | null }): ReadinessResult {
+  if (screeningRequest.projectType !== ProjectType.DECK) return { ready: true };
+  if (!isDeckScreeningCoverageReady()) {
+    return {
+      ready: false,
+      reason: "Deck screening is not yet available for purchase - the required regulatory rule coverage has not been activated.",
     };
   }
   return { ready: true };

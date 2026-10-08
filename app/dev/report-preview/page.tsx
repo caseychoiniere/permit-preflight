@@ -10,6 +10,7 @@ import { notFound } from "next/navigation";
 import { ReportView, type Report } from "../../components/ReportView.js";
 import { PREVIEW_SCENARIOS, buildPreviewReport, toPreviewArtifactRow } from "../../../src/dev-preview/report-preview-fixtures.js";
 import { FENCE_PREVIEW_SCENARIOS, buildFencePreviewReport, toFencePreviewArtifactRow } from "../../../src/dev-preview/fence-preview-fixtures.js";
+import { DECK_PREVIEW_SCENARIOS, buildDeckPreviewReport, toDeckPreviewArtifactRow } from "../../../src/dev-preview/deck-preview-fixtures.js";
 import { renderReportHtml } from "../../../src/report-pdf-rendering/render.js";
 import type { EvidenceReportArtifactRow } from "../../../src/db/schema.js";
 
@@ -20,10 +21,17 @@ export default async function ReportPreviewPage({ searchParams }: { searchParams
 
   const { scenario: requested } = await searchParams;
   const fenceScenario = FENCE_PREVIEW_SCENARIOS.find((s) => s.id === requested);
-  const scenario = fenceScenario ?? PREVIEW_SCENARIOS.find((s) => s.id === requested) ?? PREVIEW_SCENARIOS[0]!;
-  const report = fenceScenario ? buildFencePreviewReport(fenceScenario) : buildPreviewReport(scenario as (typeof PREVIEW_SCENARIOS)[number]);
-  const pdfHtml = renderReportHtml((fenceScenario ? toFencePreviewArtifactRow(report as never) : toPreviewArtifactRow(report as never)) as unknown as EvidenceReportArtifactRow);
-  const allScenarios = [...PREVIEW_SCENARIOS, ...FENCE_PREVIEW_SCENARIOS];
+  const deckScenario = DECK_PREVIEW_SCENARIOS.find((s) => s.id === requested);
+  const scenario = fenceScenario ?? deckScenario ?? PREVIEW_SCENARIOS.find((s) => s.id === requested) ?? PREVIEW_SCENARIOS[0]!;
+  const report = fenceScenario
+    ? buildFencePreviewReport(fenceScenario)
+    : deckScenario
+      ? buildDeckPreviewReport(deckScenario)
+      : buildPreviewReport(scenario as (typeof PREVIEW_SCENARIOS)[number]);
+  const pdfHtml = renderReportHtml(
+    (fenceScenario ? toFencePreviewArtifactRow(report as never) : deckScenario ? toDeckPreviewArtifactRow(report as never) : toPreviewArtifactRow(report as never)) as unknown as EvidenceReportArtifactRow
+  );
+  const allScenarios = [...PREVIEW_SCENARIOS, ...FENCE_PREVIEW_SCENARIOS, ...DECK_PREVIEW_SCENARIOS];
   const groups = Array.from(new Set(allScenarios.map((s) => s.group)));
 
   return (

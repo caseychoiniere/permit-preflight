@@ -34,11 +34,13 @@ import { Button } from "../components/ui/Button.js";
 import { SampleReportPreview } from "../components/SampleReportPreview.js";
 import { ReviewPlacementMap } from "../components/ReviewPlacementMap.js";
 import { FenceDetailsForm } from "./FenceDetailsForm.js";
+import { DeckDetailsForm } from "./DeckDetailsForm.js";
+import { describeDeckDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-deck.js";
 import { describeFenceDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-fence.js";
-import type { FenceProjectConfiguration } from "../../src/screening-request/types.js";
+import type { DeckProjectConfiguration, FenceProjectConfiguration } from "../../src/screening-request/types.js";
 
 type Step = "ADDRESS" | "TYPE" | "DETAILS" | "PLACEMENT" | "SUMMARY";
-type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | null;
+type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | null;
 /** undefined = not answered (never coerced to a concrete value); tri-state matches
  * frontend-components.md's explicit 3-choice contract for both garage-only fields. */
 type TriState = boolean | undefined;
@@ -152,6 +154,8 @@ export default function ConfigurePage() {
   }>({ utilityElectrical: false, utilityPlumbing: false, utilityMechanical: false });
   // Unit 7 - the validated fence declaration (a fence has no placement step).
   const [fenceConfig, setFenceConfig] = useState<FenceProjectConfiguration | null>(null);
+  // Unit 8 - the validated deck declaration (also no placement step).
+  const [deckConfig, setDeckConfig] = useState<DeckProjectConfiguration | null>(null);
   const [placement, setPlacement] = useState<PlacementSelection | null>(null);
   const [lotLineSelection, setLotLineSelection] = useState<LotLineSelection | null>(null);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
@@ -275,7 +279,7 @@ export default function ConfigurePage() {
     }
   }
 
-  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE) {
+  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK) {
     const res = await fetch("/api/screening-requests", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -302,6 +306,24 @@ export default function ConfigurePage() {
       return;
     }
     setFenceConfig(config);
+    setStep("SUMMARY");
+  }
+
+  /** Unit 8 - a deck is declared, not placed: validate (server-side too) and go straight to review. */
+  async function submitDeck(config: DeckProjectConfiguration) {
+    if (!screeningRequestId) return;
+    setServerErrors([]);
+    const res = await fetch(`/api/screening-requests/${screeningRequestId}/project-details`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    const result = await res.json();
+    if (result.issues) {
+      setServerErrors(result.issues);
+      return;
+    }
+    setDeckConfig(config);
     setStep("SUMMARY");
   }
 
@@ -380,8 +402,8 @@ export default function ConfigurePage() {
     if (currentIndex > 0) setStep(visibleSteps[currentIndex - 1]!.key);
   }
 
-  // Unit 7 - a fence has no placement step, so its tracker and back-navigation skip it.
-  const visibleSteps = projectType === ProjectType.FENCE ? STEPS.filter((s) => s.key !== "PLACEMENT") : STEPS;
+  // Units 7-8 - a fence or deck has no placement step, so its tracker and back-navigation skip it.
+  const visibleSteps = projectType === ProjectType.FENCE || projectType === ProjectType.DECK ? STEPS.filter((s) => s.key !== "PLACEMENT") : STEPS;
 
   return (
     // Layout pass (2026-08-30) - the Placement step specifically needs more horizontal room than
@@ -477,6 +499,11 @@ export default function ConfigurePage() {
                 Screen a fence
               </Button>
             )}
+            {availableProjectTypes.includes(ProjectType.DECK) && (
+              <Button variant="primary" onClick={() => selectProjectType(ProjectType.DECK)}>
+                Screen a deck
+              </Button>
+            )}
           </div>
           <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
             &larr; Previous
@@ -486,7 +513,9 @@ export default function ConfigurePage() {
 
       {step === "DETAILS" && projectType === ProjectType.FENCE && <FenceDetailsForm onSubmit={submitFence} onBack={goToPreviousStep} serverErrors={serverErrors} />}
 
-      {step === "DETAILS" && projectType !== ProjectType.FENCE && (
+      {step === "DETAILS" && projectType === ProjectType.DECK && <DeckDetailsForm onSubmit={submitDeck} onBack={goToPreviousStep} serverErrors={serverErrors} />}
+
+      {step === "DETAILS" && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && (
         <Card>
           <h1 className="text-lg font-semibold text-slate-900">{projectType === ProjectType.GARAGE ? "Detached garage details" : "Shed details"}</h1>
 
@@ -961,7 +990,41 @@ export default function ConfigurePage() {
         </>
       )}
 
-      {step === "SUMMARY" && projectType !== ProjectType.FENCE && (
+      {step === "SUMMARY" && projectType === ProjectType.DECK && deckConfig && (
+        <>
+          <Card>
+            <h1 className="text-lg font-semibold text-slate-900">Review</h1>
+            <p className="mt-1 text-sm text-slate-500">Your deck will be checked from these details, not from measurements of your site.</p>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Parcel</dt>
+                <dd className="font-medium text-slate-900">{parcelId}</dd>
+              </div>
+              {describeDeckDeclaredInputs({ projectType: "deck", ...deckConfig }).map((d) => (
+                <div key={d.label} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                  <dt className="text-slate-500">{d.label}</dt>
+                  <dd className="font-medium text-slate-900">{d.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-6 flex gap-2">
+              <Button variant="secondary" onClick={goToPreviousStep}>
+                &larr; Previous
+              </Button>
+              <Button variant="primary" onClick={checkout}>
+                Continue to payment
+              </Button>
+            </div>
+            {authorizedMessage && (
+              <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {authorizedMessage}
+              </p>
+            )}
+          </Card>
+        </>
+      )}
+
+      {step === "SUMMARY" && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && (
         <>
           <Card>
             <h1 className="text-lg font-semibold text-slate-900">Review</h1>

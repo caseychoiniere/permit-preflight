@@ -3832,3 +3832,22 @@ NFR Requirements / NFR Design / Infrastructure Design skipped (no new infrastruc
 - **To make fences customer-available (founder decisions, not done):** activate the 8 rules (`activateRule`, "ACTIVATE RULE") and flip
   `isFenceScreeningCoverageReady()`; both are outside this unit.
 
+## UNIT 8 (DECKS) — ✅ IMPLEMENTATION COMPLETE 2026-10-08 (rules APPROVED, not ACTIVE; not publicly available)
+
+Started automatically after Unit 7 under the Continuous Autonomous Execution Policy. Artifacts: `aidlc-docs/construction/unit-8-decks/functional-design.md`
+(live-sourced: SMC 23.44.090.H.1/H.8/E.4, SMC 23.44.080.C.3, 2021 SRC R105.1/R105.2 item 7, SDCI Decks page) and `code-generation-plan.md`. NFR / Infrastructure
+Design skipped (no new infrastructure or data source).
+
+- **Capability:** a declared-input deck evaluation: setback finding per declared location (a deck up to 18 in is allowed in a required setback; above that the product
+  **never reports a violation** - it attributes SDCI's stricter guidance to SDCI, names the code's further allowances, mechanically compares declared numbers to the
+  rear-setback allowance H.8, and leaves it to SDCI), a lot-coverage threshold finding (36 in; part-specific), an always-stated zoning-applicability finding, and a deck
+  building-permit determination (`REQUIRED` / `REQUIRES_VERIFICATION`, never LIKELY_EXEMPT) with a review path that is `FULL_REVIEW_LIKELY` on any known trigger and otherwise
+  `REQUIRES_VERIFICATION` (**never STFI-likely**, because SDCI lists an ECA as a full-review trigger).
+- **Source conflict recorded and left unresolved:** SDCI's page says a deck over 18 in cannot be in a required setback; the code text is narrower (H.8, E.4).
+- **Governance:** 6 Tier-1 rows (D1-D6) bootstrapped and advanced to APPROVED via the real lifecycle (audit: 6 each of RULE_BOOTSTRAPPED/SOURCE_VERIFIED/TESTED/APPROVED); **0 ACTIVE**.
+- **Gating:** `isDeckScreeningCoverageReady()` hardcoded `false`; decks creatable/internally generatable, absent from the public type list, blocked at checkout.
+- **Verification:** unit 1003/1003; integration 143 passed / 0 failed; typecheck and build clean; dev-only `/dev/deck-intake` browser-verified.
+- **Observation for the founder (not changed):** the live shed Capability B result "simple review (STFI) likely" does not account for an ECA being a full-review trigger (the fail-closed
+  reasoning applied to decks). Unit 6B activation explicitly listed that outcome, so it was left as authorized.
+- **To make decks customer-available (founder decisions, not done):** activate the 6 rules and flip `isDeckScreeningCoverageReady()`.
+

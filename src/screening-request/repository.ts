@@ -106,9 +106,9 @@ export async function updateProjectDetails(db: Db, screeningRequestId: string, p
  * present - dimensions plus a placement (map-based footprint+role, or the internal/testing
  * manual fallback). */
 function isConfigurationComplete(config: ProjectConfiguration): boolean {
-  // Unit 7 - a fence has no footprint or map placement; its schema's required fields (height,
+  // Units 7-8 - a fence or deck has no map placement; its schema's required fields (height,
   // locations, slope and wall answers) are the whole configuration, so a schema-valid fence is complete.
-  if ("locations" in config) return true;
+  if ("locations" in config || "setbackLocations" in config) return true;
   const hasDimensions = config.widthFt > 0 && config.depthFt > 0 && config.heightFt > 0;
   const hasPlacement = config.proposedPlacement !== undefined;
   return hasDimensions && hasPlacement;

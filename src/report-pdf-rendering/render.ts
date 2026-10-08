@@ -89,6 +89,22 @@ interface FencePermitRequirementForPdf {
   disclosures: string[];
 }
 
+/** Unit 8 (Decks) - mirrors ReportView.tsx's deck display shape; duplicated (not imported - src/ never imports from app/). */
+interface DeckPermitRequirementForPdf {
+  buildingPermit: "REQUIRED" | "REQUIRES_VERIFICATION";
+  criteria: { criterionId: string; status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION"; explanationBasis: string }[];
+  reviewPath?: "FULL_REVIEW_LIKELY" | "REQUIRES_VERIFICATION";
+  reviewPathReasons?: string[];
+  note?: string;
+  exemptionDisclaimer?: string;
+  disclosures: string[];
+}
+function deckPermitHeadlineForPdf(p: DeckPermitRequirementForPdf): string {
+  if (p.buildingPermit === "REQUIRES_VERIFICATION") return "Requires verification";
+  if (p.reviewPath === "FULL_REVIEW_LIKELY") return "Building permit likely required - full review";
+  return "Building permit likely required";
+}
+
 function coveragePercentForPdf(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
   return Math.round((estimatedCoverageSqFt / parcelAreaSqFt) * 100);
 }
@@ -120,6 +136,14 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     | undefined;
   const fencePermit = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "fence-permit-requirement")?.value as
     | FencePermitRequirementForPdf
+    | undefined;
+
+  // Unit 8 (Decks) - same persisted evidence entries ReportView.tsx reads, printed with identical text.
+  const deckDeclaredInputs = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "deck-declared-inputs")?.value as
+    | { label: string; value: string }[]
+    | undefined;
+  const deckPermit = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "deck-permit-requirement")?.value as
+    | DeckPermitRequirementForPdf
     | undefined;
 
   // BR-U6B-11 - the existing-structure coverage figure is always disclosed with its over-count/
@@ -166,6 +190,32 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     </ul>
   </div>`
       : "";
+
+  const deckDeclaredHtml =
+    deckDeclaredInputs && deckDeclaredInputs.length > 0
+      ? `<h2>What you told us</h2>
+  <div>
+    <p>This deck was evaluated from the details you entered, not from measurements of the site.</p>
+    <ul>
+      ${deckDeclaredInputs.map((d) => `<li>${escapeHtml(d.label)}: ${escapeHtml(d.value)}</li>`).join("\n      ")}
+    </ul>
+  </div>`
+      : "";
+
+  const deckPermitHtml = deckPermit
+    ? `<h2>Building permit (deck)</h2>
+  <div>
+    <strong>${escapeHtml(deckPermitHeadlineForPdf(deckPermit))}</strong>
+    ${deckPermit.note ? `<p>${escapeHtml(deckPermit.note)}</p>` : ""}
+    <ul>
+      ${deckPermit.criteria.map((c) => `<li>${permitCriterionIconForPdf(c.status)} ${escapeHtml(c.explanationBasis)}</li>`).join("\n      ")}
+    </ul>
+    ${(deckPermit.reviewPathReasons ?? []).map((r) => `<p>${escapeHtml(r)}</p>`).join("\n    ")}
+    ${deckPermit.exemptionDisclaimer ? `<p>${escapeHtml(deckPermit.exemptionDisclaimer)}</p>` : ""}
+    ${deckPermit.disclosures.map((d) => `<p>${escapeHtml(d)}</p>`).join("\n    ")}
+    <p>SDCI makes the final determination.</p>
+  </div>`
+    : "";
 
   const fencePermitHtml = fencePermit
     ? `<h2>Building permit (fence)</h2>
@@ -244,6 +294,8 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   ${findingsHtml}
   ${fenceDeclaredHtml}
   ${fencePermitHtml}
+  ${deckDeclaredHtml}
+  ${deckPermitHtml}
   ${uncoveredHtml}
   ${permitHtml}
   ${lotCoverageHtml}

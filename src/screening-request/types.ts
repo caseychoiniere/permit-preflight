@@ -237,13 +237,51 @@ export interface FenceProjectConfiguration {
   hasMasonryOrConcreteAbove6Ft?: boolean;
 }
 
+/** Unit 8 (Decks) - declared intake, same approach as fences (no map placement; nothing silently
+ * defaulted). aidlc-docs/construction/unit-8-decks/functional-design.md §3. */
+export const DeckAttachment = {
+  DETACHED: "DETACHED",
+  ATTACHED_TO_DWELLING: "ATTACHED_TO_DWELLING",
+} as const;
+export type DeckAttachment = (typeof DeckAttachment)[keyof typeof DeckAttachment];
+
+export const DeckBuildingRelation = {
+  OPEN_GROUND_BELOW: "OPEN_GROUND_BELOW",
+  OVER_BASEMENT_OR_STORY_BELOW: "OVER_BASEMENT_OR_STORY_BELOW",
+  ROOF_DECK: "ROOF_DECK",
+} as const;
+export type DeckBuildingRelation = (typeof DeckBuildingRelation)[keyof typeof DeckBuildingRelation];
+
+/** Where the deck lies relative to the required setbacks (SMC 23.44.090 Table A), USER-DECLARED. */
+export const DeckSetbackLocation = {
+  FRONT_SETBACK: "FRONT_SETBACK",
+  STREET_SIDE_SETBACK: "STREET_SIDE_SETBACK",
+  SIDE_SETBACK: "SIDE_SETBACK",
+  REAR_SETBACK: "REAR_SETBACK",
+  OUTSIDE_REQUIRED_SETBACKS: "OUTSIDE_REQUIRED_SETBACKS",
+} as const;
+export type DeckSetbackLocation = (typeof DeckSetbackLocation)[keyof typeof DeckSetbackLocation];
+
+export interface DeckProjectConfiguration {
+  heightAboveGradeIn: number;
+  widthFt: number;
+  depthFt: number;
+  attachment: DeckAttachment;
+  buildingRelation: DeckBuildingRelation;
+  setbackLocations: DeckSetbackLocation[];
+  solidFlooring?: boolean;
+  longestBeamFt?: number;
+  distanceFromRearLotLineFt?: number;
+  distanceFromDwellingFt?: number;
+}
+
 /** Unit 4 - `ProjectDetails` (domain-entities.md). Neither member carries its own `projectType`
  * discriminant field - the sibling `ScreeningRequest.projectType` column is the actual
  * discriminant (a plain `jsonb` column has no way to enforce a matching internal tag, so code
  * must consistently branch on the SIBLING field, then narrow/cast - never trust an internal tag
  * inside untrusted JSON as authoritative on its own). See `screening-request/repository.ts` and
  * `report-generation-orchestrator/pipeline.ts` for the actual branch points. */
-export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration | FenceProjectConfiguration;
+export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration | FenceProjectConfiguration | DeckProjectConfiguration;
 
 export const ValidationState = {
   DRAFT: "DRAFT",
@@ -265,6 +303,7 @@ export const ProjectType = {
   SHED: "shed",
   GARAGE: "garage",
   FENCE: "fence",
+  DECK: "deck",
 } as const;
 export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
 
@@ -274,7 +313,7 @@ export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
  * Coverage Readiness check). Every call site that previously redeclared its own copy of this set
  * (screening-request/repository.ts, screening-request/authorization.ts,
  * checkout-fulfillment/index.ts, app/api/screening-requests/route.ts) now imports this one. */
-export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE]);
+export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE, ProjectType.DECK]);
 
 export const VacantLandScreeningIntent = {
   VACANT_PARCEL: "VACANT_PARCEL",
@@ -587,6 +626,50 @@ export const FenceProjectConfigurationSchema = z
 
 export type FenceProjectConfigurationInput = z.infer<typeof FenceProjectConfigurationSchema>;
 
+/** Unit 8's Boundary Validator schema for deck intake. Cross-field refinements keep an internally
+ * inconsistent declaration from ever becoming VALID. Optional answers stay `undefined` when not
+ * answered (no defaults). */
+export const DeckProjectConfigurationSchema = z
+  .object({
+    heightAboveGradeIn: z.number().finite().positive().max(240),
+    widthFt: z.number().finite().positive().max(100),
+    depthFt: z.number().finite().positive().max(100),
+    attachment: z.enum([DeckAttachment.DETACHED, DeckAttachment.ATTACHED_TO_DWELLING]),
+    buildingRelation: z.enum([DeckBuildingRelation.OPEN_GROUND_BELOW, DeckBuildingRelation.OVER_BASEMENT_OR_STORY_BELOW, DeckBuildingRelation.ROOF_DECK]),
+    setbackLocations: z
+      .array(
+        z.enum([
+          DeckSetbackLocation.FRONT_SETBACK,
+          DeckSetbackLocation.STREET_SIDE_SETBACK,
+          DeckSetbackLocation.SIDE_SETBACK,
+          DeckSetbackLocation.REAR_SETBACK,
+          DeckSetbackLocation.OUTSIDE_REQUIRED_SETBACKS,
+        ])
+      )
+      .min(1)
+      .max(5),
+    solidFlooring: z.boolean().optional(),
+    longestBeamFt: z.number().finite().positive().max(100).optional(),
+    distanceFromRearLotLineFt: z.number().finite().nonnegative().max(500).optional(),
+    distanceFromDwellingFt: z.number().finite().nonnegative().max(500).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (new Set(value.setbackLocations).size !== value.setbackLocations.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "setbackLocations must not repeat.", path: ["setbackLocations"] });
+    }
+    if (value.distanceFromRearLotLineFt !== undefined && !value.setbackLocations.includes(DeckSetbackLocation.REAR_SETBACK)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "distanceFromRearLotLineFt applies only when the deck is in the rear setback.", path: ["distanceFromRearLotLineFt"] });
+    }
+    if (value.distanceFromDwellingFt !== undefined && value.attachment === DeckAttachment.ATTACHED_TO_DWELLING) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "distanceFromDwellingFt applies only to a detached deck.", path: ["distanceFromDwellingFt"] });
+    }
+    if (value.buildingRelation === DeckBuildingRelation.ROOF_DECK && value.attachment === DeckAttachment.DETACHED) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A roof deck is part of the building; it cannot be detached from the dwelling.", path: ["attachment"] });
+    }
+  });
+
+export type DeckProjectConfigurationInput = z.infer<typeof DeckProjectConfigurationSchema>;
+
 /** Single dispatch point from the sibling `projectType` column to the project-details schema (the
  * column, never a tag inside the untrusted JSON, is the discriminant). Exhaustive over ProjectType. */
 export function projectDetailsSchemaFor(projectType: string): z.ZodType<ProjectConfiguration> {
@@ -595,6 +678,8 @@ export function projectDetailsSchemaFor(projectType: string): z.ZodType<ProjectC
       return GarageProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
     case ProjectType.FENCE:
       return FenceProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
+    case ProjectType.DECK:
+      return DeckProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
     default:
       return ShedProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
   }

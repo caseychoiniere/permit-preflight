@@ -1820,3 +1820,13 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 
 ---
 
+---
+
+## Unit 8 (Decks) Built Under the Continuous Autonomous Execution Policy
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (Standing) Continuous Autonomous Execution Policy: begin the next planned AIDLC unit automatically after a unit completes; stop only for the five founder-only conditions.
+**AI Response**: Researched live (SMC 23.44.090.H.1/H.8/E.4, SMC 23.44.080.C.3, 2021 SRC R105.1/R105.2 item 7 from the SDCI PDF, SDCI Decks page); recorded an unresolved SDCI-vs-code conflict on tall decks in setbacks; built a declared-input deck evaluation, six Tier-1 rules D1-D6 (advanced to APPROVED only), intake form, pipeline branch, web/PDF parity, dev-only preview, hardcoded-false readiness gate. Reviewer decision fb0ec2e9-c780-4a86-846f-326ed2d73620: authority objection recorded; four engineering findings fixed (interpretive setback wording, STFI-likely ignoring the ECA trigger, ECA wording, part-specific lot coverage). Unit 7's lessons were applied up front.
+**Context**: Decks are NOT activated and NOT publicly available. Founder decisions left: activating the 6 deck rules and flipping isDeckScreeningCoverageReady(). Informational: the live shed result "STFI likely" has the same ECA caveat gap the reviewer found for decks; left as authorized in the Unit 6B activation.
+
+---
+

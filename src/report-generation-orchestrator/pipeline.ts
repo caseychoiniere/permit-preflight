@@ -8,7 +8,7 @@
 import { eq, and } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { screeningRequests, regulatoryRules, inferencePolicies, type ReportGenerationJobRow } from "../db/schema.js";
-import type { ExistingPropertyScreeningRequestSnapshot, FenceProjectConfiguration, GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
+import type { DeckProjectConfiguration, ExistingPropertyScreeningRequestSnapshot, FenceProjectConfiguration, GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
 import { LotLineRoleStatus, MultipleFrontageAnswer, ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestSnapshot } from "../screening-request/hydrate.js";
 import { assemblePropertyContext, type FactRetriever } from "../property-intelligence/assemble.js";
@@ -41,6 +41,9 @@ import {
 import { evaluateProject, isCriticalAreaFinding, evaluateEcaLotAreaAdjustment } from "../regulatory-rules-engine/evaluate.js";
 import { evaluateFence } from "../regulatory-rules-engine/evaluate-fence.js";
 import { assembleFenceEvidence } from "./fence-evidence.js";
+import { evaluateDeck } from "../regulatory-rules-engine/evaluate-deck.js";
+import type { DeckProjectDetails } from "../regulatory-rules-engine/deck-types.js";
+import { assembleDeckEvidence } from "./deck-evidence.js";
 import type { FenceEvaluationOutcome, FenceProjectDetails } from "../regulatory-rules-engine/fence-types.js";
 import { evaluateVacantLand, findActiveScenarioRule, SCENARIO_DEFINITIONS, toAppliedRuleRef } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import type { VacantLandSetbackRuleSpec } from "../regulatory-rules-engine/evaluate-vacant-land.js";
@@ -376,6 +379,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.FENCE) {
       retrievers.push(createSeattleEcaRetriever());
     }
+    // Unit 8 - a deck also needs no Building Outlines; the ECA layer is retrieved only so the report can
+    // show the mapped context beside SDCI's (undecided) ECA permit condition.
+    if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.DECK) {
+      retrievers.push(createSeattleEcaRetriever());
+    }
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
       retrievers.push(createSeattleBuildingOutlinesRetriever());
       // Unit 6B - ECA screening (capability A) is shed-scoped for this unit's approved scope
@@ -470,7 +478,12 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       await runFencePipeline(db, job, snapshot, screeningRequest.id, propertyContext, environmentalConstraintsFact?.value ?? [], deps);
       return;
     }
-    // From here on the request is a shed or garage (the vacant-land and fence branches returned above).
+    // Unit 8 - same sibling-branch discipline as fences: a deck is declared, not placed.
+    if (snapshot.projectType === ProjectType.DECK) {
+      await runDeckPipeline(db, job, snapshot, screeningRequest.id, propertyContext, deps);
+      return;
+    }
+    // From here on the request is a shed or garage (the vacant-land, fence and deck branches returned above).
     const accessoryDetails = snapshot.projectDetails as ShedProjectConfiguration | GarageProjectConfiguration;
 
     // Spatial Analysis (real PostGIS) - only when the parcel geometry was actually retrieved and
@@ -942,6 +955,54 @@ async function runFencePipeline(
   const evidence = [
     ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
     ...assembleFenceEvidence(outcome),
+  ];
+
+  const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>
+    createEvidenceReportArtifact(db, {
+      screeningRequestId,
+      reportGenerationJobId: job.id,
+      findings: outcome.findings,
+      evidence,
+      explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
+      ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+      dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
+    })
+  );
+
+  await markJobComplete(db, job.id, artifact.id);
+  logger.info("JOB_COMPLETE", { reportGenerationJobId: job.id, evidenceReportArtifactId: artifact.id });
+}
+
+/**
+ * Unit 8 (Decks) - Workflow D-1, mirroring runFencePipeline: evaluates the declared deck configuration
+ * against the ACTIVE `deck` rules (a structurally separate query), persists ordinary findings plus the
+ * deck-specific evidence entries, and asks Report Explanation to narrate the findings only. No spatial
+ * analysis, no PostGIS, no Building Outlines.
+ */
+async function runDeckPipeline(
+  db: Db,
+  job: ReportGenerationJobRow,
+  snapshot: ExistingPropertyScreeningRequestSnapshot,
+  screeningRequestId: string,
+  propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
+  deps: PipelineDependencies
+): Promise<void> {
+  const project: DeckProjectDetails = { projectType: "deck", ...(snapshot.projectDetails as DeckProjectConfiguration) };
+
+  const activeRuleRows = await db
+    .select()
+    .from(regulatoryRules)
+    .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.DECK)));
+
+  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows) }));
+
+  const explanationResult = deps.generateExplanation
+    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
+    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+
+  const evidence = [
+    ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
+    ...assembleDeckEvidence(outcome),
   ];
 
   const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>

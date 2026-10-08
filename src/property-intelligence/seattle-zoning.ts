@@ -166,7 +166,12 @@ export function createSeattleZoningRetriever(timeoutMs: number = TIMEOUT_MS): Fa
         inSR: String(AUTHORITATIVE_PARCEL_SRID),
         spatialRel: "esriSpatialRelIntersects",
       });
-      const response = await fetchLayerWithTimeout(`${ORG_BASE_URL}/${ZONING_SERVICE}/FeatureServer/0/query?${params.toString()}`, timeoutMs);
+      // POST, not GET: a large or complex parcel polygon makes the query string too long for the service (a campus parcel returned 404 as a GET).
+      const response = await fetchLayerWithTimeout(`${ORG_BASE_URL}/${ZONING_SERVICE}/FeatureServer/0/query`, timeoutMs, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
       if (!response.ok) throw new Error(`Seattle zoning request failed: ${response.status} ${response.statusText}`);
       const parsed = ZoningResponseSchema.safeParse(await response.json());
       if (!parsed.success || parsed.data.error) throw new Error("Seattle zoning response failed shape validation.");

@@ -1876,3 +1876,11 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: No founder-only condition hit. Open for the founder: activate the twelve ADU rules and flip `isAduScreeningCoverageReady()`. The ADU unit is now customer-ready in the sense of slice 1-5 scope; next: evaluate Unit 10 (general additions) per the roadmap, and Slice 2 (real shed/garage accessory rules).
 
 ---
+
+## Unit 11 (ADUs) Activation and Readiness Flag (founder decision relayed 2026-10-08)
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: "ACTIVATE all 12 APPROVED ADU rules. Flip isAduScreeningCoverageReady() to true after activation verification. KEEP the 2 ft GIS mapping margin for MVP. KEEP the fail-closed zoning behavior..."
+**AI Response**: Verified exactly 12 ADU rows APPROVED and none ACTIVE; activated through `activateRule` ("ACTIVATE RULE"); verified 12 ACTIVE, 12 RULE_ACTIVATED audit entries, non-ADU rows unchanged (Unit 6B 17 ACTIVE, P6/C1e-director TRIAGED, fence 8, deck 6, shed fixtures untouched). Flipped the readiness flag; ADU is advertised. Real-rules smoke passed (six cases, web/PDF consistent) after fixing the zoning query (GET -> POST for large parcels). Margin and zoning policy documented in slice-status.md.
+**Context**: Founder-authorized; no new gate. Next: shed uncovered-notice, real shed/garage rules, shed/garage server-side footprint review.
+
+---

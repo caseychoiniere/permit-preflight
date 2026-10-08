@@ -31,3 +31,9 @@
 ## Founder decisions still pending (none block continued building)
 1. **Activate the twelve ADU rules and flip `isAduScreeningCoverageReady()`** (public availability).
 2. The 2 ft mapping margin and the "any material second zone = unresolved" zoning policy are conservative product choices recorded in the rule caveats; the reviewer flagged them as reserved and they are open to founder override.
+
+## Activation (founder decision, 2026-10-08, relayed)
+- All 12 ADU rules ACTIVE via `scripts/unit-11-adu-activate.ts` (pre-checks: 12 APPROVED, 0 ACTIVE; post-checks: 12 ACTIVE, 12 RULE_ACTIVATED audit entries, every non-ADU rule's state unchanged). `isAduScreeningCoverageReady()` = true; ADU is advertised and purchasable.
+- **2 ft mapping margin: kept for MVP.** It is a screening tolerance on distances measured from King County's general-location parcel polygon and Seattle's 2023 building outlines, not a survey or legal boundary, and not a statement about those sources' accuracy. A distance inside the margin of a threshold is REQUIRES_VERIFICATION; the report says the mapping is not a survey. Not being tuned further now.
+- **Zoning: conservative multi-zone behavior kept.** Any material second zone makes the parcel unresolved for NR conclusions (no "dominant zone" shortcut). Deterministic sliver tolerance: a zone under 2% of the parcel (grid-sampled, 80x80, deterministic) is discarded as boundary or topology noise; coverage under 90% is unresolved.
+- Real-rules smoke (`tests/report-generation-orchestrator/adu-real-rules-smoke.integration.test.ts`): detached, conversion, attached, Major-Institution-Overlay parcel (unresolved), split-zone parcel and a mis-placed footprint against the real ACTIVE rows; web and PDF text compared for each artifact. It exposed a real defect: the zoning query was a GET carrying the parcel polygon and returned 404 for a large campus parcel (silently "unresolved"); it is now a POST.

@@ -57,11 +57,11 @@ const COMBINED_LAYER = { serviceName: "Environmentally_Critical_Areas_ECA", laye
 
 /** Per-request timeout (nfr-design.md §1) - `AbortController`-based, scoped to this file only.
  * Not retrofitted onto any other existing retriever. */
-export async function fetchLayerWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+export async function fetchLayerWithTimeout(url: string, timeoutMs: number, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }

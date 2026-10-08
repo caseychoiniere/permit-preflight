@@ -304,13 +304,13 @@ export function checkDeckCheckoutEligibility(screeningRequest: { projectType: st
 }
 
 /**
- * ADU Screening Coverage Readiness (Unit 11) - identical two-layer discipline to garage, fence and deck.
- * Hardcoded `false`: the ten ADU rules are advanced to APPROVED only, and activating them (and so opening
- * ADU screening to customers) is a separate founder authorization that has not been given. Intake and
- * evaluation remain fully testable through SUPPORTED_PROJECT_TYPES and the internal prototype path.
+ * ADU Screening Coverage Readiness (Unit 11) - identical two-layer discipline to garage, fence and deck. Flipped to `true`
+ * on 2026-10-08 on the founder's decision, after the twelve ADU rules were activated through the normal lifecycle and a
+ * real pipeline smoke passed. Static flag, not derived from rule state: if a rule is later disabled the report fails
+ * closed with a "not yet automatically screenable" notice rather than a conclusion.
  */
 export function isAduScreeningCoverageReady(): boolean {
-  return false;
+  return true;
 }
 
 /** Checkout-time half of ADU Screening Coverage Readiness; `{ ready: true }` for non-ADU requests. */

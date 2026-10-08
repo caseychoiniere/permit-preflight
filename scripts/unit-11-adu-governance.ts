@@ -3,7 +3,7 @@
  * Policy ("lifecycle advancement where justified"). Uses only the existing mechanisms -
  * `bootstrapUnit6bGovernance` (insert-if-absent + RULE_BOOTSTRAPPED audit, TRIAGED only) and the real admin
  * lifecycle functions (sourceVerifyRule -> markRuleTested -> approveRule) - never a direct DB edit. Advances
- * the ten ADU rules to APPROVED and STOPS: it never calls activateRule (APPROVED -> ACTIVE is a founder
+ * the eleven ADU rules to APPROVED and STOPS: it never calls activateRule (APPROVED -> ACTIVE is a founder
  * decision, and ADU activation has NOT been authorized) and never touches any non-ADU row.
  *
  * Safe to re-run: bootstrap never overwrites; a row already APPROVED is skipped; any other unexpected state
@@ -34,6 +34,7 @@ const SOURCES: Record<string, string> = {
   "adu-a8-amenity-area-2026": `${BASE}: SMC 23.44.110.A, E, H`,
   "adu-a9-trees-2026": `${BASE}: SMC 23.44.120.A Table A and B`,
   "adu-a10-design-standards-2026": `${BASE}: SMC 23.44.140.A.2, C, D, E`,
+  "adu-a11-conversion-2026": `${BASE}: SMC 23.42.022.H.1-H.3 (conversion of an existing accessory structure), SMC 23.44.140.A.1; SMC 22.206.020-.140 named by H.3.b`,
 };
 const DESIGN = "aidlc-docs/construction/unit-11-adus/research-findings.md and customer-questions-and-scope.md";
 const TESTS =
@@ -47,7 +48,7 @@ const QUALITY: Record<string, ("AUTHORITATIVE" | "GENERAL_LOCATION_ONLY")[]> = {
 async function main() {
   const operatorId = requireOperatorId();
   if (!operatorId) throw new Error("ADMIN_OPERATOR_ID is not configured; pass it explicitly when invoking this script.");
-  if (realAduCandidates.length !== 10) throw new Error(`Expected exactly 10 ADU candidates, found ${realAduCandidates.length}.`);
+  if (realAduCandidates.length !== 11) throw new Error(`Expected exactly 11 ADU candidates, found ${realAduCandidates.length}.`);
   const db = getDb();
 
   const candidates: BootstrapCandidate[] = realAduCandidates.map((input) => {
@@ -60,7 +61,7 @@ async function main() {
 
   const ids = candidates.map((c) => c.fixedRowId);
   const rows = await db.select().from(regulatoryRules).where(inArray(regulatoryRules.id, ids));
-  if (rows.length !== 10) throw new Error(`Expected 10 ADU rows in the database, found ${rows.length}.`);
+  if (rows.length !== 11) throw new Error(`Expected 11 ADU rows in the database, found ${rows.length}.`);
   for (const row of rows) {
     if (row.lifecycleState === "ACTIVE") throw new Error("An ADU rule is ACTIVE - refusing to proceed.");
     if (row.lifecycleState !== "TRIAGED" && row.lifecycleState !== "APPROVED") {
@@ -80,7 +81,7 @@ async function main() {
       db,
       row.id,
       operatorId,
-      `Source verification (2026-10-08, Unit 11 under the Continuous Autonomous Execution Policy), Tier 1. Source: ${source}. Implementation checked against the quoted text in ${DESIGN}. Scope: rule validity of numeric thresholds in current code text; interpretive edges (averaged side setback, front setback with three units, whether a nearby mapped building has floor area, excluded critical-area land, tree-based height, site-plan-dependent standards) are not resolved by any rule and yield REQUIRES_VERIFICATION. The reviewer's authority objections (decisions 1d55de97-598c-4e24-82f2-38be71f249b0 and e781c605-1475-46be-b813-95e3d481422b) were recorded; its implementation findings (unresolved zoning suppresses ADU conclusions, partial rule coverage is never LOOKS_FEASIBLE, 0.85 rounding boundary, web/PDF parity) were fixed in code.`,
+      `Source verification (2026-10-08, Unit 11 under the Continuous Autonomous Execution Policy), Tier 1. Source: ${source}. Implementation checked against the quoted text in ${DESIGN}. Scope: rule validity of numeric thresholds in current code text; interpretive edges (averaged side setback, front setback with three units, whether a nearby mapped building has floor area, excluded critical-area land, tree-based height, site-plan-dependent standards) are not resolved by any rule and yield REQUIRES_VERIFICATION. The reviewer's authority objections (decisions 1d55de97-598c-4e24-82f2-38be71f249b0, e781c605-1475-46be-b813-95e3d481422b and ad374c35-b2de-4717-b1a6-4dbe34e12827) were recorded; its implementation findings (unresolved zoning suppresses ADU conclusions, partial rule coverage is never LOOKS_FEASIBLE, 0.85 rounding boundary, web/PDF parity) were fixed in code.`,
       "TIER_1"
     );
     if (sv.outcome !== "OK") throw new Error(`${candidate.input.id} source-verify: ${JSON.stringify(sv)}`);

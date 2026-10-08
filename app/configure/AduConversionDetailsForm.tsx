@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * Unit 11 (ADUs) - the ADU DETAILS step (a new detached ADU). The footprint's position is collected in the
- * next (map) step exactly as for a shed; this step collects what only the customer knows. Nothing is
- * silently defaulted: counts and size start unanswered, and "not sure" stays `undefined`. Client-side
- * validation reuses the exact server boundary schema (AduProjectConfigurationSchema).
+ * Unit 11 Slice 4 - the DETAILS step for converting an existing garage or shed into a detached ADU
+ * (SMC 23.42.022.H). The building itself is chosen on the map in the next step; this step collects what
+ * only the customer knows. Nothing is silently defaulted: counts start unanswered and "not sure" stays
+ * `undefined` (which the report treats as "the conversion allowance cannot be relied on"). Client-side
+ * validation reuses the server boundary schema.
  */
 
 import { useState } from "react";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { AduProjectConfigurationSchema, AduTypeValue } from "../../src/screening-request/types.js";
-import type { AduNewDetachedConfiguration } from "../../src/screening-request/types.js";
+import type { AduConversionConfiguration } from "../../src/screening-request/types.js";
 
 const INPUT_CLASS =
   "mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -24,37 +25,52 @@ function parseNumber(raw: string): number | undefined {
   const n = Number(raw);
   return Number.isFinite(n) ? n : undefined;
 }
-
-/** The declared part of an ADU configuration; placement, lot-line roles and dwelling selection are added by the map step. */
-export type AduDeclaredDetails = Omit<AduNewDetachedConfiguration, "proposedPlacement" | "lotLineRoleAssignment" | "distanceInputMode" | "primaryDwellingSelection">;
-
-export interface AduDetailsFormProps {
-  onSubmit: (details: AduDeclaredDetails) => void;
-  onBack: () => void;
-  serverErrors?: string[];
-  /** Restores the previous answers when the customer comes back to this step. */
-  initial?: AduDeclaredDetails;
+function toTri(v: boolean | undefined): YesNoUnsure {
+  return v === undefined ? "UNSURE" : v ? "YES" : "NO";
+}
+function fromTri(v: YesNoUnsure): boolean | undefined {
+  return v === "UNSURE" ? undefined : v === "YES";
 }
 
-export function AduDetailsForm({ onSubmit, onBack, serverErrors = [], initial }: AduDetailsFormProps) {
-  const [widthFt, setWidthFt] = useState(initial ? String(initial.widthFt) : "");
-  const [depthFt, setDepthFt] = useState(initial ? String(initial.depthFt) : "");
+function Tri({ name, value, onChange, labels }: { name: string; value: YesNoUnsure; onChange: (v: YesNoUnsure) => void; labels: [string, string, string] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-6">
+      {(["YES", "NO", "UNSURE"] as const).map((v, i) => (
+        <label key={v} className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} className={RADIO_CLASS} />
+          {labels[i]}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** The declared part of a conversion; the building choice, lot-line roles and main-house selection are added by the map step. */
+export type AduConversionDeclaredDetails = Omit<AduConversionConfiguration, "convertedStructure" | "lotLineRoleAssignment" | "distanceInputMode" | "primaryDwellingSelection">;
+
+export interface AduConversionDetailsFormProps {
+  onSubmit: (details: AduConversionDeclaredDetails) => void;
+  onBack: () => void;
+  serverErrors?: string[];
+  initial?: AduConversionDeclaredDetails;
+}
+
+export function AduConversionDetailsForm({ onSubmit, onBack, serverErrors = [], initial }: AduConversionDetailsFormProps) {
+  const [existed, setExisted] = useState<YesNoUnsure>(toTri(initial?.existedBeforeJuly2023));
+  const [keeps, setKeeps] = useState<YesNoUnsure>(toTri(initial?.keepsFootprintAndHeight));
   const [stories, setStories] = useState(initial ? String(initial.stories) : "");
   const [bedrooms, setBedrooms] = useState(initial ? String(initial.bedrooms) : "");
-  const [heightFt, setHeightFt] = useState(initial ? String(initial.heightFt) : "");
   const [alley, setAlley] = useState<boolean | undefined>(initial?.alleyAdjacent);
   const [principalUnits, setPrincipalUnits] = useState(initial ? String(initial.existingPrincipalDwellingUnits) : "");
   const [existingAdus, setExistingAdus] = useState(initial ? String(initial.existingAduCount) : "");
-  const [pre1982, setPre1982] = useState<YesNoUnsure>(initial?.existingHouseBuiltBefore1982 === undefined ? "UNSURE" : initial.existingHouseBuiltBefore1982 ? "YES" : "NO");
+  const [pre1982, setPre1982] = useState<YesNoUnsure>(toTri(initial?.existingHouseBuiltBefore1982));
   const [floorArea, setFloorArea] = useState(initial?.existingChargeableFloorAreaSqFt !== undefined ? String(initial.existingChargeableFloorAreaSqFt) : "");
   const [issues, setIssues] = useState<string[]>([]);
 
   function submit() {
     const missing: string[] = [];
-    if (parseNumber(widthFt) === undefined || parseNumber(depthFt) === undefined) missing.push("Enter the ADU's footprint width and depth in feet.");
-    if (parseNumber(stories) === undefined) missing.push("Enter how many stories above ground the ADU has.");
+    if (parseNumber(stories) === undefined) missing.push("Enter how many stories above ground the converted building would have.");
     if (parseNumber(bedrooms) === undefined) missing.push("Enter the number of bedrooms (0 for a studio).");
-    if (parseNumber(heightFt) === undefined) missing.push("Enter the ADU's height in feet.");
     if (alley === undefined) missing.push("Say whether the rear of the lot is on an alley.");
     if (parseNumber(principalUnits) === undefined) missing.push("Enter how many houses or dwelling units are already on the lot (not counting ADUs).");
     if (parseNumber(existingAdus) === undefined) missing.push("Enter how many ADUs are already on the lot (0 if none).");
@@ -62,21 +78,23 @@ export function AduDetailsForm({ onSubmit, onBack, serverErrors = [], initial }:
       setIssues(missing);
       return;
     }
+    const existedValue = fromTri(existed);
+    const keepsValue = fromTri(keeps);
+    const pre = fromTri(pre1982);
     const candidate = {
-      aduType: AduTypeValue.DETACHED_NEW,
-      widthFt: parseNumber(widthFt),
-      depthFt: parseNumber(depthFt),
+      aduType: AduTypeValue.CONVERSION_EXISTING,
       stories: parseNumber(stories),
       bedrooms: parseNumber(bedrooms),
-      heightFt: parseNumber(heightFt),
       alleyAdjacent: alley,
       existingPrincipalDwellingUnits: parseNumber(principalUnits),
       existingAduCount: parseNumber(existingAdus),
-      ...(pre1982 === "YES" ? { existingHouseBuiltBefore1982: true } : pre1982 === "NO" ? { existingHouseBuiltBefore1982: false } : {}),
+      ...(existedValue !== undefined ? { existedBeforeJuly2023: existedValue } : {}),
+      ...(keepsValue !== undefined ? { keepsFootprintAndHeight: keepsValue } : {}),
+      ...(pre !== undefined ? { existingHouseBuiltBefore1982: pre } : {}),
       ...(parseNumber(floorArea) !== undefined ? { existingChargeableFloorAreaSqFt: parseNumber(floorArea) } : {}),
     };
     const parsed = AduProjectConfigurationSchema.safeParse(candidate);
-    if (!parsed.success || parsed.data.aduType !== AduTypeValue.DETACHED_NEW) {
+    if (!parsed.success || parsed.data.aduType !== AduTypeValue.CONVERSION_EXISTING) {
       setIssues(parsed.success ? ["details: unexpected ADU type."] : parsed.error.issues.map((i) => `${i.path.join(".") || "details"}: ${i.message}`));
       return;
     }
@@ -86,34 +104,34 @@ export function AduDetailsForm({ onSubmit, onBack, serverErrors = [], initial }:
 
   return (
     <Card>
-      <h1 className="text-lg font-semibold text-slate-900">Detached ADU details</h1>
+      <h1 className="text-lg font-semibold text-slate-900">Convert an existing building to an ADU</h1>
       <p className="mt-1 text-sm text-slate-500">
-        This checks a new detached accessory dwelling unit (a backyard cottage) against Seattle&apos;s Neighborhood Residential rules. You&apos;ll place it on the map next. Please answer as accurately as you can; the report shows what it rests on.
+        Seattle lets an accessory building that existed before July 23, 2023 (a garage or shed, for example) become a detached ADU even if it doesn&apos;t meet today&apos;s setbacks or lot-coverage limit, provided it meets the Housing Code minimum standards. You&apos;ll choose the building on the map next.
       </p>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <fieldset className="mt-6 rounded-lg border border-slate-200 p-4">
+        <legend className="px-1 text-sm font-semibold text-slate-900">Did the building exist before July 23, 2023?</legend>
+        <p className="text-xs text-slate-500">Permit records and dated aerial photos can show this. If you&apos;re not sure, the report will say the allowance can&apos;t be relied on yet.</p>
+        <Tri name="existed" value={existed} onChange={setExisted} labels={["Yes", "No", "Not sure"]} />
+      </fieldset>
+
+      <fieldset className="mt-6 rounded-lg border border-slate-200 p-4">
+        <legend className="px-1 text-sm font-semibold text-slate-900">Will the conversion keep the building&apos;s footprint and height as they are?</legend>
+        <p className="text-xs text-slate-500">Rebuilding it in the same place at the same size counts as keeping it. Adding to it, enlarging it or moving it means the new part must meet the regular ADU standards.</p>
+        <Tri name="keeps" value={keeps} onChange={setKeeps} labels={["Yes, same footprint and height", "No, it would be added to, enlarged or moved", "Not sure"]} />
+      </fieldset>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-slate-700">
-          Footprint width (ft)
-          <input type="number" min={0} step="0.5" value={widthFt} onChange={(e) => setWidthFt(e.target.value)} aria-label="ADU footprint width in feet" className={INPUT_CLASS} />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Footprint depth (ft)
-          <input type="number" min={0} step="0.5" value={depthFt} onChange={(e) => setDepthFt(e.target.value)} aria-label="ADU footprint depth in feet" className={INPUT_CLASS} />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Height (ft)
-          <input type="number" min={0} step="0.5" value={heightFt} onChange={(e) => setHeightFt(e.target.value)} aria-label="ADU height in feet" className={INPUT_CLASS} />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Stories above ground
-          <input type="number" min={1} max={3} step="1" value={stories} onChange={(e) => setStories(e.target.value)} aria-label="ADU stories above ground" className={INPUT_CLASS} />
+          Stories above ground (after conversion)
+          <input type="number" min={1} max={3} step="1" value={stories} onChange={(e) => setStories(e.target.value)} aria-label="Converted building stories above ground" className={INPUT_CLASS} />
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Bedrooms
           <input type="number" min={0} step="1" value={bedrooms} onChange={(e) => setBedrooms(e.target.value)} aria-label="ADU bedrooms" className={INPUT_CLASS} />
         </label>
       </div>
-      <p className="mt-2 text-xs text-slate-500">Floor area is estimated as footprint times stories. An ADU may be up to 1,000 sq ft (up to two bedrooms) or 1,200 sq ft (three or more).</p>
+      <p className="mt-2 text-xs text-slate-500">Floor area is estimated as the building&apos;s mapped footprint times stories. An ADU may be up to 1,000 sq ft (up to two bedrooms) or 1,200 sq ft (three or more).</p>
 
       <fieldset className="mt-6 rounded-lg border border-slate-200 p-4">
         <legend className="px-1 text-sm font-semibold text-slate-900">Is the rear of the lot on an alley?</legend>
@@ -145,28 +163,13 @@ export function AduDetailsForm({ onSubmit, onBack, serverErrors = [], initial }:
       <fieldset className="mt-6 rounded-lg border border-slate-200 p-4">
         <legend className="px-1 text-sm font-semibold text-slate-900">Was the existing house built before 1982?</legend>
         <p className="text-xs text-slate-500">A single new unit added to a house that existed on January 1, 1982 does not need amenity area.</p>
-        <div className="mt-2 flex gap-6">
-          {(
-            [
-              ["YES", "Yes"],
-              ["NO", "No"],
-              ["UNSURE", "Not sure"],
-            ] as const
-          ).map(([value, label]) => (
-            <label key={value} className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="radio" name="pre1982" checked={pre1982 === value} onChange={() => setPre1982(value)} className={RADIO_CLASS} />
-              {label}
-            </label>
-          ))}
-        </div>
+        <Tri name="pre1982" value={pre1982} onChange={setPre1982} labels={["Yes", "No", "Not sure"]} />
       </fieldset>
 
       <label className="mt-6 block text-sm font-medium text-slate-700">
         Total floor area of everything already on the lot (sq ft) - optional
         <input type="number" min={0} step="10" value={floorArea} onChange={(e) => setFloorArea(e.target.value)} aria-label="Existing chargeable floor area in square feet" className={INPUT_CLASS} />
-        <span className="mt-1 block text-xs font-normal text-slate-500">
-          House plus any garage or other buildings, leaving out basements and underground floors. Without it the report can show your floor-area limit but not how much room is left.
-        </span>
+        <span className="mt-1 block text-xs font-normal text-slate-500">House plus the building you would convert and any others, leaving out basements and underground floors.</span>
       </label>
 
       {(issues.length > 0 || serverErrors.length > 0) && (
@@ -182,7 +185,7 @@ export function AduDetailsForm({ onSubmit, onBack, serverErrors = [], initial }:
           &larr; Previous
         </Button>
         <Button variant="primary" onClick={submit}>
-          Next: place on parcel
+          Next: choose the building
         </Button>
       </div>
     </Card>

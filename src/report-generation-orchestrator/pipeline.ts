@@ -39,6 +39,7 @@ import {
   computeParcelAreaSqFt,
   computeSetbackConstrainedArea,
   computeSetbackDistances,
+  computeSetbackDistancesForFootprint,
   transformPolygonToWgs84,
 } from "../spatial-analysis/postgis-adapter.js";
 import { evaluateProject, isCriticalAreaFinding, evaluateEcaLotAreaAdjustment } from "../regulatory-rules-engine/evaluate.js";
@@ -1090,6 +1091,8 @@ async function runAduPipeline(
   deps: PipelineDependencies
 ): Promise<void> {
   const details = snapshot.projectDetails as AduProjectConfiguration;
+  const conversionDetails = details.aduType === "CONVERSION_EXISTING" ? details : undefined;
+  const newDetails = details.aduType === "DETACHED_NEW" ? details : undefined;
   const frequentTransitFact = getFact<FrequentTransitFactValue>(propertyContext, "frequent-transit-service-area");
   const parcelGeometryAvailable = geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value !== undefined;
 
@@ -1105,26 +1108,8 @@ async function runAduPipeline(
   if (parcelGeometryAvailable) {
     rawParcelAreaSqFt = await computeParcelAreaSqFt(db, geometryFact!.value!);
   }
-  if (parcelGeometryAvailable && details.proposedPlacement && details.lotLineRoleAssignment) {
-    spatialEvidenceQuality = geometryFact!.provenance.evidenceQuality;
-    const computed = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
-      computeSetbackDistances(db, geometryFact!.value!, details.proposedPlacement!, { widthFt: details.widthFt, depthFt: details.depthFt }, details.lotLineRoleAssignment!)
-    );
-    distances = computed.distances;
-    footprintProjected = computed.footprintProjected;
-    if (details.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
-      setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
-    }
-    roleGaps = deriveStreetFrontageRoleGapReasons({
-      multipleFrontageAnswer: details.lotLineRoleAssignment.multipleFrontageAnswer,
-      rearAlsoFacesStreet: details.lotLineRoleAssignment.rearAlsoFacesStreet,
-      hasUnresolvedStreetFrontage: Boolean(distances.unresolvedStreetFrontageDistancesFt && Object.keys(distances.unresolvedStreetFrontageDistancesFt).length > 0),
-    });
-    boundaryPolygonWgs84 = await transformPolygonToWgs84(db, geometryFact!.value!);
-    if (footprintProjected) footprintWgs84 = await transformPolygonToWgs84(db, footprintProjected);
-  }
 
-  // Existing buildings: classify, find the customer-confirmed dwelling, measure to it and to the nearest other one.
+  // Existing buildings: classify (re-validating the customer's main-house selection against THIS fetch).
   let existingStructures: ExistingStructure[] | undefined;
   let existingStructuresWgs84Display: { outlineId: string; footprintWgs84: GeographicPoint[]; areaSqFt?: number; classification: string }[] | undefined;
   let existingStructureCoverageFact: ExistingStructureCoverageFact | undefined;
@@ -1132,27 +1117,86 @@ async function runAduPipeline(
   let nearestOtherStructure: AduProjectDetails["nearestOtherStructure"];
   let dwellingSelectionNotMatchedExplanation: string | undefined;
   let primaryDwellingFound = false;
-  const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
-  if (buildingFootprintsAvailable) {
-    const structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, details.primaryDwellingSelection);
+  let convertedStructure: ExistingStructure | undefined;
+  let structureNotMatchedReason: string | undefined;
+
+  const buildingsFetched = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value);
+  let structures: ExistingStructure[] | undefined;
+  if (buildingsFetched) structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, details.primaryDwellingSelection);
+  const primaryDwelling = structures ? findPrimaryDwelling(structures) : undefined;
+
+  if (conversionDetails) {
+    // The footprint of a conversion is the mapped outline of the building the customer chose, never a drawn rectangle.
+    if (!conversionDetails.convertedStructure) structureNotMatchedReason = "no building was chosen.";
+    else if (!buildingsFetched) structureNotMatchedReason = "Seattle's building outlines could not be retrieved for this parcel.";
+    else {
+      convertedStructure = structures!.find((st) => st.outlineId === conversionDetails.convertedStructure!.outlineId);
+      if (!convertedStructure) structureNotMatchedReason = "it is no longer among the mapped buildings on this parcel.";
+      else if (primaryDwelling && primaryDwelling.outlineId === convertedStructure.outlineId) {
+        structureNotMatchedReason = "it is the building you identified as your main house.";
+        convertedStructure = undefined;
+      }
+    }
+    if (convertedStructure) footprintProjected = convertedStructure.footprint;
+    if (parcelGeometryAvailable && footprintProjected && conversionDetails.lotLineRoleAssignment) {
+      spatialEvidenceQuality = geometryFact!.provenance.evidenceQuality;
+      const computed = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
+        computeSetbackDistancesForFootprint(db, geometryFact!.value!, footprintProjected!, conversionDetails.lotLineRoleAssignment!)
+      );
+      distances = computed.distances;
+    }
+  } else if (newDetails && parcelGeometryAvailable && newDetails.proposedPlacement && newDetails.lotLineRoleAssignment) {
+    spatialEvidenceQuality = geometryFact!.provenance.evidenceQuality;
+    const computed = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
+      computeSetbackDistances(db, geometryFact!.value!, newDetails.proposedPlacement!, { widthFt: newDetails.widthFt, depthFt: newDetails.depthFt }, newDetails.lotLineRoleAssignment!)
+    );
+    distances = computed.distances;
+    footprintProjected = computed.footprintProjected;
+  }
+
+  const roles = details.lotLineRoleAssignment;
+  if (distances !== undefined || (parcelGeometryAvailable && footprintProjected && roles)) {
+    if (roles?.status === LotLineRoleStatus.INSUFFICIENT) {
+      setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
+    }
+    if (roles) {
+      roleGaps = deriveStreetFrontageRoleGapReasons({
+        multipleFrontageAnswer: roles.multipleFrontageAnswer,
+        rearAlsoFacesStreet: roles.rearAlsoFacesStreet,
+        hasUnresolvedStreetFrontage: Boolean(distances?.unresolvedStreetFrontageDistancesFt && Object.keys(distances.unresolvedStreetFrontageDistancesFt).length > 0),
+      });
+    }
+  }
+  if (parcelGeometryAvailable) {
+    boundaryPolygonWgs84 = await transformPolygonToWgs84(db, geometryFact!.value!);
+    if (footprintProjected) footprintWgs84 = await transformPolygonToWgs84(db, footprintProjected);
+  }
+
+  const buildingFootprintsAvailable = buildingsFetched && Boolean(footprintProjected);
+  if (structures) {
     existingStructures = structures;
     existingStructuresWgs84Display = await Promise.all(
       structures.map(async (st) => ({ outlineId: st.outlineId, footprintWgs84: await transformPolygonToWgs84(db, st.footprint), areaSqFt: st.areaSqFt, classification: st.classification }))
     );
-    const primaryDwelling = findPrimaryDwelling(structures);
     primaryDwellingFound = Boolean(primaryDwelling);
-    if (primaryDwelling) {
-      distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
+    if (footprintProjected) {
+      if (primaryDwelling) {
+        distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
+      }
+      for (const st of structures) {
+        if (primaryDwelling && st.outlineId === primaryDwelling.outlineId) continue;
+        if (convertedStructure && st.outlineId === convertedStructure.outlineId) continue;
+        const d = await computeDistanceToDwelling(db, footprintProjected!, st.footprint);
+        if (!nearestOtherStructure || d < nearestOtherStructure.distanceFt) nearestOtherStructure = { distanceFt: d, areaSqFt: st.areaSqFt };
+      }
     }
-    for (const st of structures) {
-      if (primaryDwelling && st.outlineId === primaryDwelling.outlineId) continue;
-      const d = await computeDistanceToDwelling(db, footprintProjected!, st.footprint);
-      if (!nearestOtherStructure || d < nearestOtherStructure.distanceFt) nearestOtherStructure = { distanceFt: d, areaSqFt: st.areaSqFt };
+    // Coverage needs the parcel polygon: with building outlines but no parcel geometry there is no coverage fact (never a computation on nothing).
+    if (parcelGeometryAvailable) {
+      const coverage = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
+        computeExistingStructureCoverageSqFt(db, geometryFact!.value!, structures!.map((st) => st.footprint))
+      );
+      existingStructureCoverageFact = buildExistingStructureCoverageFact(coverage);
     }
-    const coverage = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
-      computeExistingStructureCoverageSqFt(db, geometryFact!.value!, structures.map((st) => st.footprint))
-    );
-    existingStructureCoverageFact = buildExistingStructureCoverageFact(coverage);
   }
   const dwellingGapCase = selectDwellingSeparationEvidenceGapCase({
     buildingFootprintsAvailable,
@@ -1166,11 +1210,19 @@ async function runAduPipeline(
   const project: AduProjectDetails = {
     projectType: "adu",
     aduType: details.aduType,
-    widthFt: details.widthFt,
-    depthFt: details.depthFt,
+    ...(newDetails ? { widthFt: newDetails.widthFt, depthFt: newDetails.depthFt, heightFt: newDetails.heightFt } : {}),
+    ...(conversionDetails
+      ? {
+          conversion: {
+            structureAreaSqFt: convertedStructure?.areaSqFt,
+            ...(structureNotMatchedReason !== undefined ? { structureNotMatchedReason } : {}),
+            existedBeforeJuly2023: conversionDetails.existedBeforeJuly2023,
+            keepsFootprintAndHeight: conversionDetails.keepsFootprintAndHeight,
+          },
+        }
+      : {}),
     stories: details.stories,
     bedrooms: details.bedrooms,
-    heightFt: details.heightFt,
     alleyAdjacent: details.alleyAdjacent,
     existingPrincipalDwellingUnits: details.existingPrincipalDwellingUnits,
     existingAduCount: details.existingAduCount,

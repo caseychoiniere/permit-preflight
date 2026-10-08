@@ -11,21 +11,36 @@ import type { Finding } from "./types.js";
 
 export const AduType = {
   DETACHED_NEW: "DETACHED_NEW",
+  CONVERSION_EXISTING: "CONVERSION_EXISTING",
 } as const;
 export type AduType = (typeof AduType)[keyof typeof AduType];
 
 /** The customer's declared facts plus the server-derived spatial measurements (same pattern as the shed's
  * ShedProjectDetails: distances come from PostGIS against the parcel polygon, never from the client). */
+/** Present only for the conversion of an existing accessory structure (SMC 23.42.022.H). */
+export interface AduConversionDetails {
+  /** The mapped outline's area (Seattle Building Outlines), undefined when the selected building could not be matched. */
+  structureAreaSqFt?: number;
+  /** Set when the customer selected a building that is not among the freshly retrieved outlines (or is the main house). */
+  structureNotMatchedReason?: string;
+  /** Declared: did the building exist before July 23, 2023? undefined = not sure. */
+  existedBeforeJuly2023?: boolean;
+  /** Declared: will the conversion keep the footprint and height as they are? undefined = not sure. */
+  keepsFootprintAndHeight?: boolean;
+}
+
 export interface AduProjectDetails {
   projectType: "adu";
   aduType: AduType;
-  widthFt: number;
-  depthFt: number;
+  /** The new ADU's footprint and height; absent for a conversion, whose footprint is the mapped outline. */
+  widthFt?: number;
+  depthFt?: number;
   /** Above-ground stories; the ADU's gross floor area is estimated as footprint x stories. */
   stories: number;
   bedrooms: number;
-  /** Greatest height of the ADU, in feet. */
-  heightFt: number;
+  /** Greatest height of a new ADU, in feet. */
+  heightFt?: number;
+  conversion?: AduConversionDetails;
   alleyAdjacent: boolean;
   /** Principal dwelling units already on the lot (not counting ADUs). */
   existingPrincipalDwellingUnits: number;
@@ -71,6 +86,7 @@ export const AduRuleType = {
   AMENITY_AREA: "ADU_A8_AMENITY_AREA",
   TREES: "ADU_A9_TREES",
   DESIGN_STANDARDS: "ADU_A10_DESIGN_STANDARDS",
+  CONVERSION: "ADU_A11_CONVERSION_OF_EXISTING_ACCESSORY_STRUCTURE",
 } as const;
 export type AduRuleType = (typeof AduRuleType)[keyof typeof AduRuleType];
 
@@ -154,6 +170,19 @@ export interface AduDesignStandardsSpec {
   streetFacingWithinFt: number;
   weatherProtectionFt: number;
   facadeOpeningsPercent: number;
+}
+
+export interface AduConversionSpec {
+  ruleType: typeof AduRuleType.CONVERSION;
+  /** An existing accessory structure is one that existed before this date (ISO date). */
+  existingBeforeDate: string;
+  /** First and last SMC 22.206 sections whose minimum standards a converted structure must meet. */
+  housingCodeFirstSection: string;
+  housingCodeLastSection: string;
+  /** The conversion is permitted notwithstanding lot coverage and yard or setback provisions (SMC 23.42.022.H.3.b). */
+  waivesSetbacksAndLotCoverage: boolean;
+  /** The Director may allow waivers and modifications as a Type I decision (SMC 23.42.022.H.3.a). */
+  directorMayWaiveAndModify: boolean;
 }
 
 export type AduFeasibilityHeadline = "BLOCKED" | "LIKELY_CONSTRAINED" | "LOOKS_FEASIBLE" | "CANNOT_TELL";

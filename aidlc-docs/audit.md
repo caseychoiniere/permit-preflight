@@ -1858,3 +1858,12 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: No founder-only condition hit. Open for the founder: activating the ten ADU rules and flipping `isAduScreeningCoverageReady()`. Next: Slice 4 (conversion), Slice 5 (attached), then the real shed/garage rules (Slice 2).
 
 ---
+
+## Unit 11 (ADUs) Slice 4 - Conversion of an Existing Garage or Shed; Rule A11 APPROVED (Not Activated)
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (Standing) "BUILD ADUs NEXT ... KEEP MOVING"; ADU rules advance to APPROVED only.
+**AI Response**: Read SMC 23.42.022.H live (conversion definition, "existing accessory structure" = before July 23, 2023, allowance notwithstanding lot coverage and yard or setback provisions, Director waivers, SMC 22.206.020-.140). Built the conversion path: schema discriminated on `aduType`, the building chosen on the map from the mapped outlines (placement controls hidden, review map highlights it), the allowance states YES/NO/PARTIAL/UNSURE, rule A11, evaluator branches, pipeline (`computeSetbackDistancesForFootprint` shared with the placed-rectangle path), previews and parity tests, three live conversion cases on parcel 0523049029 (a real 206 sq ft shed beside a 1,337 sq ft house). Browser-verified both ADU entry points, the conversion details form, the chooser, and the review map. Ran the governance script: A11 -> APPROVED (adu APPROVED 11; zero ACTIVE).
+**Reviewer**: ESCALATE (RESERVED_FOUNDER; decision ad374c35-b2de-4717-b1a6-4dbe34e12827) on authority; recorded. Real defects FIXED: the allowance was emitted as a KNOWN fact; an unmatched building still produced size/density/FAR conclusions; additions/relocations were not handled (coverage and FAR could be definite); height was not addressed; the Housing Code sentence characterized sections not quoted; coverage was computed without parcel geometry when outlines existed.
+**Context**: No founder-only condition hit. Open for the founder: activate the eleven ADU rules and flip `isAduScreeningCoverageReady()`. Next: Slice 5 (attached ADU).
+
+---

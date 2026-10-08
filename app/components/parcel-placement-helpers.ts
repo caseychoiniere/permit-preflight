@@ -211,6 +211,10 @@ export interface PlacementCompletenessInput {
   hasBuildingsToAskAbout: boolean;
   /** What is being placed, for the checklist wording only ("shed" when omitted). */
   structureNoun?: string;
+  /** Replaces the "Place the ... on the map" item (an ADU conversion chooses a mapped building instead of placing one). */
+  placementMissingMessage?: string;
+  /** True when the building chosen for conversion is also the one confirmed as the main house. */
+  convertedIsMainHouse?: boolean;
   /** dwellingSelection !== null - true for BOTH a real footprint pick AND an explicit "I'm not
    * sure/none of these." The initial largest-footprint SUGGESTION alone (never confirmed) must NOT
    * count as answered - callers must pass false here until the user actually interacts. */
@@ -241,7 +245,8 @@ export function checkPlacementCompleteness(input: PlacementCompletenessInput): P
   if (!input.lotLineDecided) missing.push("Confirm the front and rear lot lines");
   if (input.lotLineDecided && !input.multipleFrontageAnswered) missing.push("Answer whether this property has street frontage on more than one side");
   if (input.needsStreetFrontageEdges) missing.push("Select the additional street-facing property line(s)");
-  if (!input.hasPlacement) missing.push(`Place the ${input.structureNoun ?? "shed"} on the map`);
+  if (!input.hasPlacement) missing.push(input.placementMissingMessage ?? `Place the ${input.structureNoun ?? "shed"} on the map`);
+  if (input.convertedIsMainHouse) missing.push("Choose a building other than your main house to convert");
   if (input.hasBuildingsToAskAbout && !input.dwellingAnswered) missing.push('Confirm your main house, or choose "I\'m not sure"');
   return { complete: missing.length === 0, missing };
 }

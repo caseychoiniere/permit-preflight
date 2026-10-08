@@ -282,11 +282,38 @@ export interface DeckProjectConfiguration {
  * explicit answer. */
 export const AduTypeValue = {
   DETACHED_NEW: "DETACHED_NEW",
+  CONVERSION_EXISTING: "CONVERSION_EXISTING",
 } as const;
 export type AduTypeValue = (typeof AduTypeValue)[keyof typeof AduTypeValue];
 
-export interface AduProjectConfiguration {
-  aduType: AduTypeValue;
+/** Unit 11 Slice 4 - converting an existing accessory structure (a garage or shed) to a detached ADU
+ * (SMC 23.42.022.H). The building is chosen on the map from Seattle's building outlines (its footprint is the
+ * mapped outline, so no footprint is drawn); everything else is declared. */
+export interface ConvertedStructureSelection {
+  outlineId: string;
+  method: "USER_CONFIRMED";
+}
+export interface AduConversionConfiguration {
+  aduType: typeof AduTypeValue.CONVERSION_EXISTING;
+  convertedStructure?: ConvertedStructureSelection;
+  stories: number;
+  bedrooms: number;
+  alleyAdjacent: boolean;
+  existingPrincipalDwellingUnits: number;
+  existingAduCount: number;
+  /** Did the building exist before July 23, 2023 (SMC 23.42.022.H.2)? undefined = not sure. */
+  existedBeforeJuly2023?: boolean;
+  /** Will the conversion keep the building's footprint and height as they are (no addition, relocation or rebuild)? undefined = not sure. */
+  keepsFootprintAndHeight?: boolean;
+  existingHouseBuiltBefore1982?: boolean;
+  existingChargeableFloorAreaSqFt?: number;
+  lotLineRoleAssignment?: LotLineRoleAssignment;
+  distanceInputMode?: DistanceInputMode;
+  primaryDwellingSelection?: PrimaryDwellingSelection;
+}
+
+export interface AduNewDetachedConfiguration {
+  aduType: typeof AduTypeValue.DETACHED_NEW;
   widthFt: number;
   depthFt: number;
   stories: number;
@@ -302,6 +329,8 @@ export interface AduProjectConfiguration {
   distanceInputMode?: DistanceInputMode;
   primaryDwellingSelection?: PrimaryDwellingSelection;
 }
+
+export type AduProjectConfiguration = AduNewDetachedConfiguration | AduConversionConfiguration;
 
 /** Unit 4 - `ProjectDetails` (domain-entities.md). Neither member carries its own `projectType`
  * discriminant field - the sibling `ScreeningRequest.projectType` column is the actual
@@ -699,23 +728,44 @@ export const DeckProjectConfigurationSchema = z
 
 export type DeckProjectConfigurationInput = z.infer<typeof DeckProjectConfigurationSchema>;
 
-/** Unit 11's Boundary Validator schema for ADU intake. Counts are integers; nothing is defaulted. */
-export const AduProjectConfigurationSchema = z.object({
-  aduType: z.enum([AduTypeValue.DETACHED_NEW]),
-  widthFt: z.number().finite().positive().max(80),
-  depthFt: z.number().finite().positive().max(80),
+const AduCommonFields = {
   stories: z.number().int().min(1).max(3),
   bedrooms: z.number().int().min(0).max(8),
-  heightFt: z.number().finite().positive().max(60),
   alleyAdjacent: z.boolean(),
   existingPrincipalDwellingUnits: z.number().int().min(1).max(10),
   existingAduCount: z.number().int().min(0).max(10),
   existingHouseBuiltBefore1982: z.boolean().optional(),
   existingChargeableFloorAreaSqFt: z.number().finite().nonnegative().max(200_000).optional(),
-  proposedPlacement: ProposedPlacementSchema.optional(),
   lotLineRoleAssignment: LotLineRoleAssignmentSchema.optional(),
   distanceInputMode: z.enum([DistanceInputMode.MAP_PLACEMENT, DistanceInputMode.MANUAL_FALLBACK]).optional(),
   primaryDwellingSelection: PrimaryDwellingSelectionSchema.optional(),
+};
+
+const AduNewDetachedSchema = z.object({
+  aduType: z.literal(AduTypeValue.DETACHED_NEW),
+  widthFt: z.number().finite().positive().max(80),
+  depthFt: z.number().finite().positive().max(80),
+  heightFt: z.number().finite().positive().max(60),
+  proposedPlacement: ProposedPlacementSchema.optional(),
+  ...AduCommonFields,
+});
+
+const AduConversionSchema = z.object({
+  aduType: z.literal(AduTypeValue.CONVERSION_EXISTING),
+  convertedStructure: z.object({ outlineId: z.string().min(1), method: z.literal("USER_CONFIRMED") }).optional(),
+  existedBeforeJuly2023: z.boolean().optional(),
+  keepsFootprintAndHeight: z.boolean().optional(),
+  ...AduCommonFields,
+});
+
+/** Unit 11's Boundary Validator schema for ADU intake (a new detached ADU or the conversion of an existing
+ * accessory structure, discriminated by `aduType`). Counts are integers; nothing is defaulted. */
+export const AduProjectConfigurationSchema = z.discriminatedUnion("aduType", [AduNewDetachedSchema, AduConversionSchema]).superRefine((value, ctx) => {
+  if (value.aduType !== AduTypeValue.CONVERSION_EXISTING) return;
+  const dwelling = value.primaryDwellingSelection;
+  if (value.convertedStructure && dwelling?.status === PrimaryDwellingSelectionStatus.SELECTED && dwelling.outlineId === value.convertedStructure.outlineId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "The building to convert cannot also be the main house.", path: ["convertedStructure"] });
+  }
 });
 
 export type AduProjectConfigurationInput = z.infer<typeof AduProjectConfigurationSchema>;

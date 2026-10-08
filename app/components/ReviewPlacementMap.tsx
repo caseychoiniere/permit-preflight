@@ -28,10 +28,13 @@ import { edgeSegments } from "./parcel-placement-helpers.js";
 
 interface Props {
   boundaryPolygonWgs84: GeographicPoint[];
-  anchor: GeographicPoint;
-  orientationDeg: number;
-  widthFt: number;
-  depthFt: number;
+  /** The placed footprint; omitted for an ADU conversion, where `convertedOutlineId` marks the existing building instead. */
+  anchor?: GeographicPoint;
+  orientationDeg?: number;
+  widthFt?: number;
+  depthFt?: number;
+  /** The existing building chosen for conversion, drawn in the footprint color. */
+  convertedOutlineId?: string;
   /** Regression fix (2026-08-30) - the SAME existingStructures/selection state configure/page.tsx
    * already held from the Placement step (no new fetch here - "the Review screen should show the
    * currently configured source geometry" using the same in-memory configuration, never a second,
@@ -98,6 +101,11 @@ function footprintPreviewRing(anchor: GeographicPoint, widthFt: number, depthFt:
   return corners.map((c) => offsetByFeet(anchor, c.x * Math.cos(rad) - c.y * Math.sin(rad), c.x * Math.sin(rad) + c.y * Math.cos(rad)));
 }
 
+function mapCenter(boundary: GeographicPoint[]): [number, number] {
+  const n = boundary.length;
+  return [boundary.reduce((sum, p) => sum + p.lng, 0) / n, boundary.reduce((sum, p) => sum + p.lat, 0) / n];
+}
+
 function ringToCoords(points: GeographicPoint[]): [number, number][] {
   const coords = points.map((p): [number, number] => [p.lng, p.lat]);
   return [...coords, coords[0]!];
@@ -111,6 +119,7 @@ export function ReviewPlacementMap({
   depthFt,
   existingStructures = [],
   selectedDwellingOutlineId,
+  convertedOutlineId,
   frontEdgeRef,
   rearEdgeRef,
   streetFrontageEdgeRefs = [],
@@ -123,7 +132,7 @@ export function ReviewPlacementMap({
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: MAPTILER_STYLE_URL ?? { version: 8, sources: {}, layers: [] },
-      center: [anchor.lng, anchor.lat],
+      center: anchor ? [anchor.lng, anchor.lat] : mapCenter(boundaryPolygonWgs84),
       zoom: 19,
       interactive: true, // pan/zoom only, per this component's own read-only scope
     });
@@ -174,15 +183,17 @@ export function ReviewPlacementMap({
           geometry: { type: "Polygon", coordinates: [ringToCoords(s.footprintWgs84)] },
         }));
         map.addSource("existing-structures", { type: "geojson", data: { type: "FeatureCollection", features: buildingFeatures } });
-        const colorExpr: maplibregl.ExpressionSpecification = ["case", ["==", ["get", "outlineId"], selectedDwellingOutlineId ?? ""], BUILDING_SELECTED_COLOR, BUILDING_COLOR];
+        const colorExpr: maplibregl.ExpressionSpecification = ["case", ["==", ["get", "outlineId"], convertedOutlineId ?? ""], FOOTPRINT_COLOR, ["==", ["get", "outlineId"], selectedDwellingOutlineId ?? ""], BUILDING_SELECTED_COLOR, BUILDING_COLOR];
         map.addLayer({ id: "existing-structures-fill", type: "fill", source: "existing-structures", paint: { "fill-color": colorExpr, "fill-opacity": 0.35 } });
         map.addLayer({ id: "existing-structures-line", type: "line", source: "existing-structures", paint: { "line-color": colorExpr, "line-width": 2 } });
       }
 
-      const footprintRing = ringToCoords(footprintPreviewRing(anchor, widthFt, depthFt, orientationDeg));
-      map.addSource("shed-footprint", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [footprintRing] } } });
-      map.addLayer({ id: "shed-footprint-fill", type: "fill", source: "shed-footprint", paint: { "fill-color": FOOTPRINT_COLOR, "fill-opacity": 0.4 } });
-      map.addLayer({ id: "shed-footprint-line", type: "line", source: "shed-footprint", paint: { "line-color": FOOTPRINT_COLOR, "line-width": 2 } });
+      if (anchor && widthFt !== undefined && depthFt !== undefined) {
+        const footprintRing = ringToCoords(footprintPreviewRing(anchor, widthFt, depthFt, orientationDeg ?? 0));
+        map.addSource("shed-footprint", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [footprintRing] } } });
+        map.addLayer({ id: "shed-footprint-fill", type: "fill", source: "shed-footprint", paint: { "fill-color": FOOTPRINT_COLOR, "fill-opacity": 0.4 } });
+        map.addLayer({ id: "shed-footprint-line", type: "line", source: "shed-footprint", paint: { "line-color": FOOTPRINT_COLOR, "line-width": 2 } });
+      }
     });
 
     return () => map.remove();
@@ -190,6 +201,6 @@ export function ReviewPlacementMap({
   }, [boundaryPolygonWgs84]);
 
   return (
-    <div ref={mapContainerRef} className="h-64 w-full" role="img" aria-label="Map showing the parcel boundary, existing buildings, and your chosen shed placement" />
+    <div ref={mapContainerRef} className="h-64 w-full" role="img" aria-label="Map showing the parcel boundary, existing buildings, and your chosen placement" />
   );
 }

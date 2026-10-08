@@ -294,6 +294,23 @@ export async function computeSetbackDistances(
   const anchorProjected = await transformAnchorToProjectedCrs(db, proposedPlacement.anchor, boundaryPolygon.srid!);
   const footprint = buildFootprintInProjectedCrs(anchorProjected, shedDimensions.widthFt, shedDimensions.depthFt, proposedPlacement.orientationDeg);
 
+  return computeSetbackDistancesForFootprint(db, boundaryPolygon, footprint, lotLineRoleAssignment);
+}
+
+/**
+ * The lot-line distance computation proper (everything after the footprint exists), shared by a placed
+ * rectangle (`computeSetbackDistances`) and by an existing building's own mapped outline (an ADU
+ * conversion, Unit 11 Slice 4). Same fail-closed role handling and the same founder-corrected
+ * street-frontage treatment for both.
+ */
+export async function computeSetbackDistancesForFootprint(
+  db: Db,
+  boundaryPolygon: Polygon,
+  footprint: Polygon,
+  lotLineRoleAssignment: LotLineRoleAssignment
+): Promise<SetbackComputationResult> {
+  assertAuthoritativeSrid(boundaryPolygon);
+  assertAuthoritativeSrid(footprint);
   if (lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
     return { distances: {}, footprintProjected: footprint };
   }
@@ -370,6 +387,7 @@ export async function computeSetbackDistances(
 
   return { distances, footprintProjected: footprint };
 }
+
 
 /**
  * Building intelligence v1 - minimum polygon-to-polygon distance between the proposed shed

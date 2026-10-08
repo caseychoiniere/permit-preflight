@@ -43,6 +43,13 @@ export const ADU_PREVIEW_RULE_SPECS: Record<string, Record<string, unknown>> = {
     lotSqFtPerNewTree: 2500,
   },
   [AduRuleType.DESIGN_STANDARDS]: { pedestrianAccessMinWidthFt: 3, streetFacingWithinFt: 40, weatherProtectionFt: 3, facadeOpeningsPercent: 20 },
+  [AduRuleType.CONVERSION]: {
+    existingBeforeDate: "2023-07-23",
+    housingCodeFirstSection: "SMC 22.206.020",
+    housingCodeLastSection: "SMC 22.206.140",
+    waivesSetbacksAndLotCoverage: true,
+    directorMayWaiveAndModify: true,
+  },
 };
 
 const NO_OVERLAYS = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
@@ -72,6 +79,19 @@ export interface AduPreviewScenarioDefinition {
   steepSlopeMapped?: boolean;
   expected: { headline: string; subjects?: Record<string, string>; uncovered?: string[] };
 }
+
+/** Overrides that turn the base (new detached) project into the conversion of a 400 sq ft existing garage 2 ft from two lot lines. */
+const CONVERSION_PROJECT: Partial<AduProjectDetails> = {
+  aduType: "CONVERSION_EXISTING",
+  widthFt: undefined,
+  depthFt: undefined,
+  heightFt: undefined,
+  distanceToRearLotLineFt: 2,
+  distanceToSideLotLineFt: 2,
+  distanceToFrontLotLineFt: 90,
+  distanceToDwellingFt: 14,
+  conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true },
+};
 
 export const ADU_PREVIEW_SCENARIOS: AduPreviewScenarioDefinition[] = [
   {
@@ -109,6 +129,34 @@ export const ADU_PREVIEW_SCENARIOS: AduPreviewScenarioDefinition[] = [
     zoning: { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: { ...NO_OVERLAYS, shorelineDistrict: true } },
     steepSlopeMapped: true,
     expected: { headline: "LOOKS_FEASIBLE", subjects: { "Overlay districts (shoreline, historic, landmark)": "REQUIRES_VERIFICATION", "Environmentally critical areas": "REQUIRES_VERIFICATION" } },
+  },
+  {
+    id: "adu-conversion-intact",
+    group: "Unit 11 - ADUs",
+    title: "Convert an existing garage, kept as is (allowance applies)",
+    project: { ...CONVERSION_PROJECT },
+    expected: { headline: "LOOKS_FEASIBLE", subjects: { "Setbacks and lot coverage (conversion)": "REQUIRES_VERIFICATION", "Conversion of an existing accessory structure": "REQUIRES_VERIFICATION", "Minimum housing standards for the converted building": "REQUIRES_VERIFICATION" } },
+  },
+  {
+    id: "adu-conversion-no-allowance",
+    group: "Unit 11 - ADUs",
+    title: "Convert a building built after July 2023 (allowance does not apply)",
+    project: { ...CONVERSION_PROJECT, distanceToRearLotLineFt: 20, distanceToSideLotLineFt: 12, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: false, keepsFootprintAndHeight: true } },
+    expected: { headline: "LIKELY_CONSTRAINED", subjects: { "Conversion of an existing accessory structure": "REQUIRES_VERIFICATION", "ADU rear setback": "KNOWN/PASS" } },
+  },
+  {
+    id: "adu-conversion-near-house",
+    group: "Unit 11 - ADUs",
+    title: "Convert a garage 3 ft from the house (separation may need a waiver)",
+    project: { ...CONVERSION_PROJECT, distanceToDwellingFt: 3 },
+    expected: { headline: "LIKELY_CONSTRAINED", subjects: { "Separation from the existing dwelling": "REQUIRES_VERIFICATION" } },
+  },
+  {
+    id: "adu-conversion-not-matched",
+    group: "Unit 11 - ADUs",
+    title: "Building to convert could not be matched (cannot tell)",
+    project: { ...CONVERSION_PROJECT, conversion: { structureNotMatchedReason: "it is no longer among the mapped buildings on this parcel.", existedBeforeJuly2023: true, keepsFootprintAndHeight: true } },
+    expected: { headline: "CANNOT_TELL", subjects: { "Building to convert": "REQUIRES_VERIFICATION" } },
   },
   {
     id: "adu-uncovered-claims",

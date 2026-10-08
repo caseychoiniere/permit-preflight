@@ -25,7 +25,7 @@ describe("ADU intake boundary", () => {
     const parsed = AduProjectConfigurationSchema.parse(valid);
     expect(parsed.existingHouseBuiltBefore1982).toBeUndefined();
     expect(parsed.existingChargeableFloorAreaSqFt).toBeUndefined();
-    expect(parsed.proposedPlacement).toBeUndefined();
+    expect(parsed.aduType === "DETACHED_NEW" && parsed.proposedPlacement).toBeUndefined();
   });
 
   it.each([
@@ -50,5 +50,44 @@ describe("ADU intake boundary", () => {
     expect(ok.outcome).toBe("VALID");
     const bad = hydrateScreeningRequestSnapshot({ workflowType: "EXISTING_PROPERTY", confirmedParcelId: "1498301270", projectType: "adu", projectDetails: { ...valid, existingAduCount: undefined } });
     expect(bad.outcome).toBe("INVALID");
+  });
+});
+
+describe("ADU conversion intake boundary (Unit 11 Slice 4)", () => {
+  const conversion = {
+    aduType: "CONVERSION_EXISTING",
+    stories: 1,
+    bedrooms: 1,
+    alleyAdjacent: false,
+    existingPrincipalDwellingUnits: 1,
+    existingAduCount: 0,
+    convertedStructure: { outlineId: "1271023117", method: "USER_CONFIRMED" },
+  };
+
+  it("accepts a conversion with no footprint, height or placement (the footprint is the mapped outline) and leaves unanswered declarations undefined", () => {
+    const parsed = AduProjectConfigurationSchema.parse(conversion);
+    expect(parsed.aduType).toBe("CONVERSION_EXISTING");
+    if (parsed.aduType === "CONVERSION_EXISTING") {
+      expect(parsed.existedBeforeJuly2023).toBeUndefined();
+      expect(parsed.keepsFootprintAndHeight).toBeUndefined();
+    }
+  });
+
+  it.each([
+    ["a missing unit count", { existingAduCount: undefined }],
+    ["an empty building id", { convertedStructure: { outlineId: "", method: "USER_CONFIRMED" } }],
+    ["more than three stories", { stories: 7 }],
+    ["the chosen building also being the main house", { primaryDwellingSelection: { status: "SELECTED", outlineId: "1271023117", method: "USER_CONFIRMED" } }],
+  ])("rejects %s", (_name, over) => {
+    expect(AduProjectConfigurationSchema.safeParse({ ...conversion, ...over }).success).toBe(false);
+  });
+
+  it("a different main house is fine, and an unanswered building choice is allowed at the boundary (completeness is enforced when the request is finalized)", () => {
+    expect(AduProjectConfigurationSchema.safeParse({ ...conversion, primaryDwellingSelection: { status: "SELECTED", outlineId: "999", method: "USER_CONFIRMED" } }).success).toBe(true);
+    expect(AduProjectConfigurationSchema.safeParse({ ...conversion, convertedStructure: undefined }).success).toBe(true);
+  });
+
+  it("the discriminant must be one of the two ADU types", () => {
+    expect(AduProjectConfigurationSchema.safeParse({ ...conversion, aduType: "ATTACHED" }).success).toBe(false);
   });
 });

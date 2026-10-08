@@ -3864,3 +3864,7 @@ Design skipped (no new infrastructure or data source).
 - **Slice 3:** ADU evaluator, ten Tier-1 rules (APPROVED, zero ACTIVE), pipeline branch, intake, report/PDF, previews. `isAduScreeningCoverageReady()` = false; checkout blocked; ADU offered only in a local development build.
 - **Slice 2 (real shed/garage accessory rules)** deferred off the ADU path; **Slices 4 (conversion) and 5 (attached)** next. Status table: `aidlc-docs/construction/unit-11-adus/slice-status.md`.
 - **Founder decisions open (non-blocking):** activate the ADU rules / flip the availability flag; confirm or override the 2 ft mapping margin and the zoning policy.
+
+## UNIT 11 (ADUs) 2026-10-08 — Slice 4 (conversion of an existing garage or shed) built; A11 APPROVED, availability OFF
+
+- Conversion path: building chosen on the map (mapped outline = footprint), declarations (existed before July 23, 2023; keeps footprint and height), allowance states YES/NO/PARTIAL/UNSURE, no KNOWN fact about the allowance, separation never a KNOWN FAIL, height left to SDCI, Housing Code cited by range only. Rule `adu-a11-conversion-2026` APPROVED (adu APPROVED 11, ACTIVE 0). Next: Slice 5 (attached ADU), then Slice 2 (real shed/garage rules).

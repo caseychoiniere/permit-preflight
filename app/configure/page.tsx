@@ -36,6 +36,7 @@ import { ReviewPlacementMap } from "../components/ReviewPlacementMap.js";
 import { FenceDetailsForm } from "./FenceDetailsForm.js";
 import { DeckDetailsForm } from "./DeckDetailsForm.js";
 import { AduDetailsForm, type AduDeclaredDetails } from "./AduDetailsForm.js";
+import { AduConversionDetailsForm, type AduConversionDeclaredDetails } from "./AduConversionDetailsForm.js";
 import { describeAduDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-adu.js";
 import { describeDeckDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-deck.js";
 import { describeFenceDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-fence.js";
@@ -160,6 +161,11 @@ export default function ConfigurePage() {
   const [deckConfig, setDeckConfig] = useState<DeckProjectConfiguration | null>(null);
   // Unit 11 - the declared ADU details; the map step adds placement, lot-line roles and the dwelling selection.
   const [aduDetails, setAduDetails] = useState<AduDeclaredDetails | null>(null);
+  // Unit 11 Slice 4 - converting an existing building: its declared details, and which mapped building was chosen.
+  const [aduMode, setAduMode] = useState<"NEW" | "CONVERSION">("NEW");
+  const [aduConversion, setAduConversion] = useState<AduConversionDeclaredDetails | null>(null);
+  const [convertedOutlineId, setConvertedOutlineId] = useState<string | null>(null);
+  const isConversion = projectType === ProjectType.ADU && aduMode === "CONVERSION";
   const [placement, setPlacement] = useState<PlacementSelection | null>(null);
   const [lotLineSelection, setLotLineSelection] = useState<LotLineSelection | null>(null);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
@@ -175,7 +181,9 @@ export default function ConfigurePage() {
    * DWELLING_SEPARATION's own shed-only scope - existingStructures is always [] for garage. */
   const placementCompleteness = checkPlacementCompleteness({
     lotLineDecided: lotLineSelection !== null,
-    hasPlacement: placement !== null,
+    hasPlacement: isConversion ? convertedOutlineId !== null : placement !== null,
+    placementMissingMessage: isConversion ? "Choose the building you would convert" : undefined,
+    convertedIsMainHouse: isConversion && convertedOutlineId !== null && dwellingSelection?.status === "SELECTED" && dwellingSelection.outlineId === convertedOutlineId,
     hasBuildingsToAskAbout: (projectType === ProjectType.SHED || projectType === ProjectType.ADU) && existingStructures.length > 0,
     structureNoun: projectType === ProjectType.ADU ? "ADU" : projectType === ProjectType.GARAGE ? "garage" : "shed",
     dwellingAnswered: dwellingSelection !== null,
@@ -284,7 +292,8 @@ export default function ConfigurePage() {
     }
   }
 
-  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | typeof ProjectType.ADU) {
+  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | typeof ProjectType.ADU, mode: "NEW" | "CONVERSION" = "NEW") {
+    setAduMode(mode);
     const res = await fetch("/api/screening-requests", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -340,7 +349,36 @@ export default function ConfigurePage() {
     setStep("PLACEMENT");
   }
 
+  /** Unit 11 Slice 4 - the declared conversion details; the map step then collects the building, lot lines and main house. */
+  function submitAduConversionDetails(details: AduConversionDeclaredDetails) {
+    setServerErrors([]);
+    setAduConversion(details);
+    setStep("PLACEMENT");
+  }
+
   async function submitPlacement() {
+    if (isConversion) {
+      if (!screeningRequestId || !convertedOutlineId || !lotLineSelection || !aduConversion) return;
+      setServerErrors([]);
+      const res = await fetch(`/api/screening-requests/${screeningRequestId}/project-details`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...aduConversion,
+          convertedStructure: { outlineId: convertedOutlineId, method: "USER_CONFIRMED" },
+          lotLineRoleAssignment: { ...toPersistedLotLineRoleAssignment(lotLineSelection), method: "USER_INDICATED" },
+          distanceInputMode: DistanceInputMode.MAP_PLACEMENT,
+          ...(dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
+        }),
+      });
+      const result = await res.json();
+      if (result.issues) {
+        setServerErrors(result.issues);
+        return;
+      }
+      setStep("SUMMARY");
+      return;
+    }
     if (!screeningRequestId || !placement || !lotLineSelection) return;
     setServerErrors([]);
     const res = await fetch(`/api/screening-requests/${screeningRequestId}/project-details`, {
@@ -518,9 +556,14 @@ export default function ConfigurePage() {
               </Button>
             )}
             {availableProjectTypes.includes(ProjectType.ADU) && (
-              <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU)}>
-                Screen a detached ADU (backyard cottage)
-              </Button>
+              <>
+                <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "NEW")}>
+                  Screen a new detached ADU (backyard cottage)
+                </Button>
+                <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "CONVERSION")}>
+                  Screen converting an existing garage or shed into an ADU
+                </Button>
+              </>
             )}
           </div>
           <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
@@ -533,8 +576,12 @@ export default function ConfigurePage() {
 
       {step === "DETAILS" && projectType === ProjectType.DECK && <DeckDetailsForm onSubmit={submitDeck} onBack={goToPreviousStep} serverErrors={serverErrors} />}
 
-      {step === "DETAILS" && projectType === ProjectType.ADU && (
+      {step === "DETAILS" && projectType === ProjectType.ADU && !isConversion && (
         <AduDetailsForm onSubmit={submitAduDetails} onBack={goToPreviousStep} serverErrors={serverErrors} initial={aduDetails ?? undefined} />
+      )}
+
+      {step === "DETAILS" && isConversion && (
+        <AduConversionDetailsForm onSubmit={submitAduConversionDetails} onBack={goToPreviousStep} serverErrors={serverErrors} initial={aduConversion ?? undefined} />
       )}
 
       {step === "DETAILS" && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && projectType !== ProjectType.ADU && (
@@ -931,6 +978,7 @@ export default function ConfigurePage() {
               widthFt={dimensions.widthFt}
               depthFt={dimensions.depthFt}
               structureNoun={projectType === ProjectType.ADU ? "ADU" : projectType === ProjectType.GARAGE ? "garage" : "shed"}
+              hidePlacement={isConversion}
               onPlacementChange={setPlacement}
               onLotLineRolesChange={setLotLineSelection}
               initialPlacement={placement ?? undefined}
@@ -940,6 +988,31 @@ export default function ConfigurePage() {
               initialDwellingSelection={dwellingSelection ?? undefined}
             />
           </div>
+          {isConversion && (
+            <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+              <legend className="px-1 text-sm font-semibold text-slate-900">Which building would you convert?</legend>
+              {existingStructures.length === 0 ? (
+                <p className="text-sm text-slate-600">No buildings are mapped on this parcel, so a conversion can&apos;t be screened here.</p>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600">Choose the garage or shed (not your main house). Building numbers match the numbers shown on the map.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {existingStructures.map((st, i) => (
+                      <Button
+                        key={st.outlineId}
+                        variant={convertedOutlineId === st.outlineId ? "primary" : "secondary"}
+                        aria-pressed={convertedOutlineId === st.outlineId}
+                        onClick={() => setConvertedOutlineId(st.outlineId)}
+                      >
+                        Building {i + 1}
+                        {st.areaSqFt ? ` (about ${Math.round(st.areaSqFt).toLocaleString("en-US")} sq ft)` : ""}
+                      </Button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </fieldset>
+          )}
           {lotLineSelection?.status === LotLineRoleStatus.INSUFFICIENT && (
             <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               {lotLineSelection.frontEdgeRef && lotLineSelection.rearEdgeRef
@@ -1057,13 +1130,32 @@ export default function ConfigurePage() {
                 <dd className="font-medium text-slate-900">{parcelId}</dd>
               </div>
               <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <dt className="text-slate-500">{projectType === ProjectType.GARAGE ? "Detached garage" : projectType === ProjectType.ADU ? "Detached ADU" : "Shed"}</dt>
+                <dt className="text-slate-500">{projectType === ProjectType.GARAGE ? "Detached garage" : isConversion ? "Detached ADU (conversion)" : projectType === ProjectType.ADU ? "Detached ADU" : "Shed"}</dt>
                 <dd className="font-medium text-slate-900">
-                  {dimensions.widthFt}ft x {dimensions.depthFt}ft x {dimensions.heightFt}ft
-                  {dimensions.alleyAdjacent ? " (alley-adjacent)" : ""}
+                  {isConversion
+                    ? `Existing building ${existingStructures.findIndex((st) => st.outlineId === convertedOutlineId) + 1}`
+                    : `${dimensions.widthFt}ft x ${dimensions.depthFt}ft x ${dimensions.heightFt}ft${dimensions.alleyAdjacent ? " (alley-adjacent)" : ""}`}
                 </dd>
               </div>
-              {projectType === ProjectType.ADU && aduDetails &&
+              {isConversion &&
+                aduConversion &&
+                describeAduDeclaredInputs({
+                  projectType: "adu",
+                  ...aduConversion,
+                  conversion: {
+                    structureAreaSqFt: existingStructures.find((st) => st.outlineId === convertedOutlineId)?.areaSqFt,
+                    existedBeforeJuly2023: aduConversion.existedBeforeJuly2023,
+                    keepsFootprintAndHeight: aduConversion.keepsFootprintAndHeight,
+                  },
+                })
+                  .filter((row) => !["Type of ADU", "Rear lot line is on an alley"].includes(row.label))
+                  .map((row) => (
+                    <div key={row.label} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                      <dt className="text-slate-500">{row.label}</dt>
+                      <dd className="font-medium text-slate-900">{row.value}</dd>
+                    </div>
+                  ))}
+              {projectType === ProjectType.ADU && !isConversion && aduDetails &&
                 describeAduDeclaredInputs({ projectType: "adu", ...aduDetails })
                   .filter((row) => !["Type of ADU", "Footprint", "Height", "Rear lot line is on an alley"].includes(row.label))
                   .map((row) => (
@@ -1089,14 +1181,15 @@ export default function ConfigurePage() {
                 </>
               )}
             </dl>
-            {boundaryPolygonWgs84 && placement && (
+            {boundaryPolygonWgs84 && (placement || isConversion) && (
               <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
                 <ReviewPlacementMap
                   boundaryPolygonWgs84={boundaryPolygonWgs84}
-                  anchor={placement.anchor}
-                  orientationDeg={placement.orientationDeg}
-                  widthFt={dimensions.widthFt}
-                  depthFt={dimensions.depthFt}
+                  anchor={isConversion ? undefined : placement?.anchor}
+                  orientationDeg={isConversion ? undefined : placement?.orientationDeg}
+                  convertedOutlineId={isConversion ? convertedOutlineId ?? undefined : undefined}
+                  widthFt={isConversion ? undefined : dimensions.widthFt}
+                  depthFt={isConversion ? undefined : dimensions.depthFt}
                   existingStructures={projectType === ProjectType.SHED || projectType === ProjectType.ADU ? existingStructures : []}
                   selectedDwellingOutlineId={dwellingSelection?.status === "SELECTED" ? dwellingSelection.outlineId : undefined}
                   frontEdgeRef={lotLineSelection?.frontEdgeRef}

@@ -244,3 +244,146 @@ describe("lot coverage, amenity, design, ECA", () => {
     expect(get("Existing chargeable floor area (all structures)")).toBe("Not provided");
   });
 });
+
+describe("conversion of an existing accessory structure (Unit 11 Slice 4)", () => {
+  const conv = (over: Partial<AduProjectDetails> = {}, c: Partial<NonNullable<AduProjectDetails["conversion"]>> = {}): Partial<AduProjectDetails> => ({
+    aduType: "CONVERSION_EXISTING",
+    widthFt: undefined,
+    depthFt: undefined,
+    heightFt: undefined,
+    distanceToRearLotLineFt: 1,
+    distanceToSideLotLineFt: 1,
+    distanceToFrontLotLineFt: 90,
+    distanceToDwellingFt: 14,
+    conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true, ...c },
+    ...over,
+  });
+
+  it("an intact conversion of a pre-July-2023 building: no setback or lot-coverage standard is asserted, the allowance is described as REQUIRES_VERIFICATION, and nothing fails even at 1 ft from both lot lines", () => {
+    const o = run(conv());
+    expect(oc(by(o, "Conversion of an existing accessory structure"))).toBe("REQUIRES_VERIFICATION");
+    expect(oc(by(o, "Setbacks and lot coverage (conversion)"))).toBe("REQUIRES_VERIFICATION"); // never a KNOWN fact: SDCI confirms the building legally existed
+    expect(by(o, "ADU rear setback")).toBeUndefined();
+    expect(by(o, "Lot coverage")).toBeUndefined();
+    expect(by(o, "ADU height")).toBeUndefined();
+    expect(o.findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+    expect(by(o, "Setbacks and lot coverage (conversion)")!.explanationBasis).toContain("1 ft from the rear lot line");
+    expect(o.feasibility.headline).toBe("LOOKS_FEASIBLE");
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("July 23, 2023");
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("SMC 22.206.020 through 22.206.140");
+  });
+
+  it("the Housing Code disclosure and the existed-on-the-date question are always REQUIRES_VERIFICATION, never assessed", () => {
+    const o = run(conv());
+    const h = by(o, "Minimum housing standards for the converted building")!;
+    expect(h.classification).toBe("REQUIRES_VERIFICATION");
+    expect(h.explanationBasis).toContain("SMC 22.206.020 through 22.206.140");
+    expect(h.explanationBasis).toContain("does not assess");
+    expect(by(o, "Conversion of an existing accessory structure")!.explanationBasis).toContain("for SDCI to confirm");
+  });
+
+  it("when the building did not exist before July 23, 2023 the allowance does not apply: the new-ADU setbacks are evaluated against the building", () => {
+    const o = run(conv({}, { existedBeforeJuly2023: false }));
+    expect(by(o, "Setbacks and lot coverage (conversion)")).toBeUndefined();
+    expect(oc(by(o, "ADU rear setback"))).toBe("KNOWN/FAIL"); // 1 ft from the rear lot line
+    expect(by(o, "Lot coverage")).toBeDefined();
+    expect(o.feasibility.constraints.join(" ")).toContain("conversion allowances do not apply");
+    expect(o.feasibility.headline).toBe("BLOCKED");
+  });
+
+  it("a planned expansion, relocation or enlargement (H.1): the existing building is covered as it stands, the changed part is unmeasured, so no setback result and no definite coverage or floor-area result", () => {
+    const o = run(conv({ existingChargeableFloorAreaSqFt: 2000 }, { keepsFootprintAndHeight: false }));
+    expect(by(o, "ADU rear setback")).toBeUndefined();
+    expect(o.findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+    expect(by(o, "Setbacks and lot coverage (conversion)")!.explanationBasis).toContain("not covered and was not measured");
+    expect(oc(by(o, "Lot coverage"))).toBe("REQUIRES_VERIFICATION"); // in-limit for the existing buildings, but the addition is not measured
+    expect(by(o, "Lot coverage")!.explanationBasis).toContain("would add coverage that is not measured here");
+    const far = by(o, "Floor area ratio (FAR)")!;
+    expect(far.classification).toBe("REQUIRES_VERIFICATION");
+    expect(far.explanationBasis).toContain("Any addition's floor area was not collected");
+    expect(by(o, "Conversion of an existing accessory structure")!.explanationBasis).toContain("expand, move or enlarge");
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("Describe any addition or relocation");
+    expect(o.feasibility.headline).toBe("LOOKS_FEASIBLE");
+  });
+
+  it("height is never asserted for a conversion: the allowance does not mention it and none was collected", () => {
+    for (const c of [{}, { existedBeforeJuly2023: false }, { keepsFootprintAndHeight: false }]) {
+      const f = by(run(conv({}, c)), "Height of the converted building")!;
+      expect(f.classification).toBe("REQUIRES_VERIFICATION");
+      expect(f.explanationBasis).toContain("does not mention height");
+    }
+    expect(by(run(conv()), "ADU height")).toBeUndefined();
+  });
+
+  it("the Housing Code sentence cites only the section range - it does not characterize what those sections require", () => {
+    const text = by(run(conv()), "Minimum housing standards for the converted building")!.explanationBasis;
+    expect(text).toContain("SMC 22.206.020 through 22.206.140");
+    expect(text).not.toMatch(/insulation|ventilation|heating|egress|plumbing|occupancy|mechanical|security/i);
+  });
+
+  it("not sure about either declaration: the allowance is not asserted (REQUIRES_VERIFICATION) and no standard setback failure is claimed", () => {
+    for (const c of [{ existedBeforeJuly2023: undefined }, { keepsFootprintAndHeight: undefined }]) {
+      const o = run(conv({}, c));
+      expect(oc(by(o, "Setbacks and lot coverage (conversion)"))).toBe("REQUIRES_VERIFICATION");
+      expect(o.findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+      expect(by(o, "Conversion of an existing accessory structure")!.explanationBasis).toContain("is not known");
+    }
+  });
+
+  it("separation from the house is never a KNOWN FAIL for a conversion (the allowance names setbacks and coverage; the Director may waive), but is a stated constraint", () => {
+    const o = run(conv({ distanceToDwellingFt: 1.5 }));
+    const f = by(o, "Separation from the existing dwelling")!;
+    expect(f.classification).toBe("REQUIRES_VERIFICATION");
+    expect(f.explanationBasis).toContain("Director may allow waivers");
+    expect(o.feasibility.constraints.join(" ")).toContain("5 ft separation may need a waiver");
+    expect(o.feasibility.headline).toBe("LIKELY_CONSTRAINED");
+    expect(oc(by(run(conv({ distanceToDwellingFt: 20 })), "Separation from the existing dwelling"))).toBe("KNOWN/PASS");
+  });
+
+  it("size uses the mapped footprint times stories; count and density still bind; converting adds no floor area to the FAR total", () => {
+    const big = run(conv({ stories: 3, bedrooms: 2 }, { structureAreaSqFt: 400 })); // 1,200 sq ft over 1,000
+    expect(oc(by(big, "ADU size limit"))).toBe("KNOWN/FAIL");
+    expect(by(big, "ADU size limit")!.explanationBasis).toContain("mapped 400 sq ft footprint x 3 stories");
+    expect(oc(by(run(conv({ existingAduCount: 2 })), "Number of ADUs on the lot"))).toBe("KNOWN/FAIL");
+    const far = by(run(conv({ existingChargeableFloorAreaSqFt: 4790 }, {}), { parcelAreaSqFt: 6000 }), "Floor area ratio (FAR)")!;
+    expect(far.classification).toBe("KNOWN"); // limit 4,800: the existing 4,790 already includes the building; nothing is added
+    expect(far.explanationBasis).toContain("the conversion adds none");
+  });
+
+  it("an intact conversion: design standards appear not to apply (REQUIRES_VERIFICATION); a new-ADU design finding is used otherwise", () => {
+    expect(by(run(conv()), "Design standards (pedestrian access, street-facing entry)")!.explanationBasis).toContain("SMC 23.44.140.A.1");
+    expect(by(run(conv({}, { existedBeforeJuly2023: false })), "Design standards (pedestrian access, street-facing entry)")!.explanationBasis).toContain("pedestrian path");
+  });
+
+  it("a building that could not be matched (not mapped, or it is the main house) yields CANNOT_TELL with the reason and NO other conclusion - no size, density, separation, FAR, amenity, tree or design finding", () => {
+    const o = run(conv({}, { structureAreaSqFt: undefined, structureNotMatchedReason: "it is the building you identified as your main house." }));
+    expect(o.feasibility.headline).toBe("CANNOT_TELL");
+    expect(o.findings.filter((f) => f.appliedRule).map((f) => f.subject)).toEqual(["Building to convert"]);
+    expect(o.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
+    expect(o.feasibility.summary).toContain("could not be matched");
+    expect(by(o, "Building to convert")!.explanationBasis).toContain("main house");
+    expect(by(o, "Conversion of an existing accessory structure")).toBeUndefined();
+  });
+
+  it("conversion claims need the A11 rule: without it they are uncovered and the headline is not LOOKS_FEASIBLE", () => {
+    const o = run(conv(), {}, without(AduRuleType.CONVERSION));
+    expect(by(o, "Conversion of an existing accessory structure")).toBeUndefined();
+    expect(o.uncoveredConstraintTypes).toContain("conversion of an existing accessory structure");
+    expect(o.feasibility.headline).toBe("CANNOT_TELL");
+  });
+
+  it("zoning that is not verified NR suppresses a conversion exactly as it does a new ADU", () => {
+    const o = run(conv(), {}, ALL, { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays });
+    expect(o.feasibility.headline).toBe("CANNOT_TELL");
+    expect(o.findings.some((f) => f.complianceOutcome !== undefined || f.subject.startsWith("Conversion"))).toBe(false);
+  });
+
+  it("declared inputs for a conversion name the building, its mapped size and both declarations", () => {
+    const rows = run(conv({}, { existedBeforeJuly2023: undefined })).declaredInputs;
+    const get = (l: string) => rows.find((r) => r.label === l)?.value;
+    expect(get("Type of ADU")).toBe("Conversion of an existing garage or shed");
+    expect(get("Existing building's footprint")).toBe("400 sq ft (mapped outline)");
+    expect(get("Building existed before July 23, 2023")).toBe("Not sure");
+    expect(get("Conversion keeps the footprint and height")).toBe("Yes");
+  });
+});

@@ -25,6 +25,7 @@ import { ZONING_DATA_UNAVAILABLE_REASON, zoningApplicabilityFindings, type Zonin
 import { AduRuleType } from "./adu-types.js";
 import type {
   AduAmenitySpec,
+  AduConversionSpec,
   AduCountAndDensitySpec,
   AduDeclaredInput,
   AduDesignStandardsSpec,
@@ -56,6 +57,8 @@ export const ADU_OUTCOME_DEPENDENCIES = {
   AMENITY: [AduRuleType.AMENITY_AREA],
   TREES: [AduRuleType.TREES],
   DESIGN: [AduRuleType.DESIGN_STANDARDS],
+  /** Conversion claims (the setback and lot-coverage allowance, the eligibility finding, the Housing Code disclosure). */
+  CONVERSION: [AduRuleType.CONVERSION],
 } as const;
 
 export const ADU_NOT_EVALUATED: readonly string[] = [
@@ -105,6 +108,13 @@ const SPEC_GUARDS: Record<string, (s: Record<string, unknown>) => boolean> = {
   [AduRuleType.FLOOR_AREA_RATIO]: (s) => bandsOk(s["bands"], "far") && positiveFinite(s["denserFar"]) && positiveFinite(s["smallLotAreaSqFt"]) && positiveFinite(s["smallLotMinChargeableSqFt"]),
   [AduRuleType.AMENITY_AREA]: (s) => positiveFinite(s["requiredFractionOfLot"]) && positiveFinite(s["minSqFt"]) && positiveFinite(s["minDimensionFt"]),
   [AduRuleType.TREES]: (s) => bandsOk(s["bands"], "sqFtPerPoint") && positiveFinite(s["denserSqFtPerPoint"]) && positiveFinite(s["lotSqFtPerNewTree"]),
+  [AduRuleType.CONVERSION]: (s) =>
+    typeof s["existingBeforeDate"] === "string" &&
+    !Number.isNaN(Date.parse(s["existingBeforeDate"] as string)) &&
+    typeof s["housingCodeFirstSection"] === "string" &&
+    typeof s["housingCodeLastSection"] === "string" &&
+    typeof s["waivesSetbacksAndLotCoverage"] === "boolean" &&
+    typeof s["directorMayWaiveAndModify"] === "boolean",
   [AduRuleType.DESIGN_STANDARDS]: (s) =>
     positiveFinite(s["pedestrianAccessMinWidthFt"]) && positiveFinite(s["streetFacingWithinFt"]) && positiveFinite(s["weatherProtectionFt"]) && positiveFinite(s["facadeOpeningsPercent"]),
 };
@@ -151,24 +161,63 @@ function sf(v: number): string {
 }
 
 /** Gross floor area estimate: footprint x above-ground stories (underground floors are not counted). */
-export function estimateAduFloorAreaSqFt(project: Pick<AduProjectDetails, "widthFt" | "depthFt" | "stories">): number {
-  return project.widthFt * project.depthFt * project.stories;
+export function estimateAduFloorAreaSqFt(project: Pick<AduProjectDetails, "widthFt" | "depthFt" | "stories" | "conversion">): number {
+  return aduFootprintSqFt(project) * project.stories;
 }
-export function aduFootprintSqFt(project: Pick<AduProjectDetails, "widthFt" | "depthFt">): number {
-  return project.widthFt * project.depthFt;
+/** A new ADU's footprint is declared; a conversion's is the mapped outline of the existing building (0 when it could not be matched). */
+export function aduFootprintSqFt(project: Pick<AduProjectDetails, "widthFt" | "depthFt" | "conversion">): number {
+  if (project.conversion) return project.conversion.structureAreaSqFt ?? 0;
+  return (project.widthFt ?? 0) * (project.depthFt ?? 0);
+}
+export function isConversion(project: Pick<AduProjectDetails, "aduType">): boolean {
+  return project.aduType === "CONVERSION_EXISTING";
+}
+/**
+ * Whether the conversion allowance (SMC 23.42.022.H.3.b) can be relied on:
+ *  - YES: the building existed before the cutoff AND the conversion keeps its footprint and height (rebuilding in place at the same size counts);
+ *  - NO: the building did not exist before the cutoff, so it is not an "existing accessory structure" (H.2);
+ *  - PARTIAL: it existed but will be expanded, moved or enlarged: the existing building is covered as it stands, while the expansion or relocation must
+ *    meet the ADU and zone standards (H.1) and where that would be was not collected, so nothing about it is measured;
+ *  - UNSURE: either declaration is unknown.
+ */
+export type ConversionAllowance = "YES" | "NO" | "PARTIAL" | "UNSURE" | "NOT_A_CONVERSION";
+export function conversionAllowance(project: Pick<AduProjectDetails, "aduType" | "conversion">): ConversionAllowance {
+  if (project.aduType !== "CONVERSION_EXISTING" || !project.conversion) return "NOT_A_CONVERSION";
+  const c = project.conversion;
+  if (c.existedBeforeJuly2023 === false) return "NO";
+  if (c.keepsFootprintAndHeight === false) return "PARTIAL";
+  if (c.existedBeforeJuly2023 === true && c.keepsFootprintAndHeight === true) return "YES";
+  return "UNSURE";
 }
 export function unitsAfterAdu(project: Pick<AduProjectDetails, "existingPrincipalDwellingUnits" | "existingAduCount">): number {
   return project.existingPrincipalDwellingUnits + project.existingAduCount + 1;
 }
 
 export function describeAduDeclaredInputs(project: AduProjectDetails): AduDeclaredInput[] {
-  const rows: AduDeclaredInput[] = [
-    { label: "Type of ADU", value: "New detached ADU" },
-    { label: "Footprint", value: `${num(project.widthFt)} ft x ${num(project.depthFt)} ft (${sf(aduFootprintSqFt(project))} sq ft)` },
-    { label: "Above-ground stories", value: `${project.stories}` },
-    { label: "Estimated gross floor area", value: `${sf(estimateAduFloorAreaSqFt(project))} sq ft (footprint x stories)` },
-    { label: "Bedrooms", value: `${project.bedrooms}` },
-    { label: "Height", value: `${num(project.heightFt)} ft` },
+  const yesNo = (v: boolean | undefined, yes = "Yes", no = "No") => (v === undefined ? "Not sure" : v ? yes : no);
+  const rows: AduDeclaredInput[] = [];
+  if (isConversion(project)) {
+    const c = project.conversion;
+    rows.push(
+      { label: "Type of ADU", value: "Conversion of an existing garage or shed" },
+      { label: "Existing building's footprint", value: c?.structureAreaSqFt !== undefined ? `${sf(c.structureAreaSqFt)} sq ft (mapped outline)` : "Not matched to a mapped building" },
+      { label: "Building existed before July 23, 2023", value: yesNo(c?.existedBeforeJuly2023) },
+      { label: "Conversion keeps the footprint and height", value: yesNo(c?.keepsFootprintAndHeight) },
+      { label: "Above-ground stories", value: `${project.stories}` },
+      { label: "Estimated gross floor area", value: `${sf(estimateAduFloorAreaSqFt(project))} sq ft (footprint x stories)` },
+      { label: "Bedrooms", value: `${project.bedrooms}` }
+    );
+  } else {
+    rows.push(
+      { label: "Type of ADU", value: "New detached ADU" },
+      { label: "Footprint", value: `${num(project.widthFt ?? 0)} ft x ${num(project.depthFt ?? 0)} ft (${sf(aduFootprintSqFt(project))} sq ft)` },
+      { label: "Above-ground stories", value: `${project.stories}` },
+      { label: "Estimated gross floor area", value: `${sf(estimateAduFloorAreaSqFt(project))} sq ft (footprint x stories)` },
+      { label: "Bedrooms", value: `${project.bedrooms}` },
+      { label: "Height", value: `${num(project.heightFt ?? 0)} ft` }
+    );
+  }
+  rows.push(
     { label: "Rear lot line is on an alley", value: project.alleyAdjacent ? "Yes" : "No" },
     { label: "Existing principal dwelling units on the lot", value: `${project.existingPrincipalDwellingUnits}` },
     { label: "Existing ADUs on the lot", value: `${project.existingAduCount}` },
@@ -176,8 +225,8 @@ export function describeAduDeclaredInputs(project: AduProjectDetails): AduDeclar
     {
       label: "Existing chargeable floor area (all structures)",
       value: project.existingChargeableFloorAreaSqFt === undefined ? "Not provided" : `${sf(project.existingChargeableFloorAreaSqFt)} sq ft`,
-    },
-  ];
+    }
+  );
   return rows;
 }
 
@@ -202,6 +251,11 @@ const SUBJECT = {
   TREES: "Tree requirement",
   DESIGN: "Design standards (pedestrian access, street-facing entry)",
   ECA: "Environmentally critical areas",
+  CONVERSION: "Conversion of an existing accessory structure",
+  CONVERSION_SITING: "Setbacks and lot coverage (conversion)",
+  CONVERSION_STRUCTURE: "Building to convert",
+  CONVERSION_HEIGHT: "Height of the converted building",
+  HOUSING_CODE: "Minimum housing standards for the converted building",
 } as const;
 
 function known(subject: string, rule: RegulatoryRule, pass: boolean, supportingEvidence: string[], explanationBasis: string): Finding {
@@ -298,6 +352,11 @@ function evaluateDensity(project: AduProjectDetails, site: AduSiteFacts, rules: 
   };
 }
 
+function sizeBasis(project: AduProjectDetails): string {
+  const stories = `${project.stories} ${project.stories === 1 ? "story" : "stories"}`;
+  return isConversion(project) ? `the existing building's mapped ${sf(aduFootprintSqFt(project))} sq ft footprint x ${stories}` : `${num(project.widthFt ?? 0)} x ${num(project.depthFt ?? 0)} ft x ${stories}`;
+}
+
 function evaluateSize(project: AduProjectDetails, rules: ActiveRules): Evaluated {
   const r = rules.find<AduSizeLimitSpec>(AduRuleType.SIZE_LIMIT);
   if (!r) return { uncovered: "ADU size limit" };
@@ -305,8 +364,9 @@ function evaluateSize(project: AduProjectDetails, rules: ActiveRules): Evaluated
   const est = estimateAduFloorAreaSqFt(project);
   const evidence = [`estimatedGrossFloorAreaSqFt=${Math.round(est)}`, `bedrooms=${project.bedrooms}`, `capSqFt=${cap}`];
   const limitText = `${project.bedrooms >= 3 ? "An ADU with three or more bedrooms" : "An ADU with up to two bedrooms"} may have up to ${sf(cap)} sq ft of gross floor area (SMC 23.42.022.G)`;
+  const basis = sizeBasis(project);
   if (est <= cap) {
-    return { finding: known(SUBJECT.SIZE, r.rule, true, evidence, `${limitText}. Your ADU's estimated gross floor area is ${sf(est)} sq ft (${num(project.widthFt)} x ${num(project.depthFt)} ft x ${project.stories} ${project.stories === 1 ? "story" : "stories"}). ${DECLARED_BASIS}`) };
+    return { finding: known(SUBJECT.SIZE, r.rule, true, evidence, `${limitText}. Your ADU's estimated gross floor area is ${sf(est)} sq ft (${basis}). ${DECLARED_BASIS}`) };
   }
   if (est <= cap + r.spec.bikeParkingExclusionSqFt) {
     return {
@@ -315,7 +375,7 @@ function evaluateSize(project: AduProjectDetails, rules: ActiveRules): Evaluated
     };
   }
   return {
-    finding: known(SUBJECT.SIZE, r.rule, false, evidence, `${limitText}. Your ADU's estimated gross floor area is ${sf(est)} sq ft (${num(project.widthFt)} x ${num(project.depthFt)} ft x ${project.stories} ${project.stories === 1 ? "story" : "stories"}), over the limit by ${sf(est - cap)} sq ft. ${DECLARED_BASIS}`),
+    finding: known(SUBJECT.SIZE, r.rule, false, evidence, `${limitText}. Your ADU's estimated gross floor area is ${sf(est)} sq ft (${basis}), over the limit by ${sf(est - cap)} sq ft. ${DECLARED_BASIS}`),
     blocker: `The estimated floor area of ${sf(est)} sq ft is over the ${sf(cap)} sq ft limit by ${sf(est - cap)} sq ft`,
   };
 }
@@ -467,7 +527,7 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
   return out;
 }
 
-function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules): Evaluated[] {
+function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules, conversionRule?: { spec: AduConversionSpec }): Evaluated[] {
   const r = rules.find<AduSeparationSpec>(AduRuleType.SEPARATION);
   if (!r) return [{ uncovered: "separation between structures" }];
   const out: Evaluated[] = [];
@@ -480,7 +540,15 @@ function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules): Eva
   } else {
     const where = againstThreshold(d, r.spec.minFt, r.spec.mappingToleranceFt);
     const pass = where === "CLEARS";
-    if (where === "NEAR") {
+    if (isConversion(project) && where !== "CLEARS") {
+      // The conversion allowance names lot coverage and yard or setback provisions, not the separation between structures, and the
+      // Director may waive or modify standards to facilitate a conversion: so a short separation is never a known failure here.
+      out.push({
+        finding: verify(SUBJECT.SEPARATION, r.rule, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The building to convert is ${num(d)} ft from the existing dwelling; structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (SMC 23.44.100.A). The conversion allowance covers lot coverage and setbacks, not this separation${conversionRule?.spec.directorMayWaiveAndModify ? ", though the Director may allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a)" : ""}, so this is for SDCI to resolve.${where === "NEAR" ? ` ${nearText(d, r.spec.minFt, r.spec.mappingToleranceFt)}` : ""}`),
+        constraint: `The building to convert is ${num(d)} ft from the house; the 5 ft separation may need a waiver`,
+        verifyItem: "Ask SDCI whether the 5 ft separation applies to this conversion or can be waived.",
+      });
+    } else if (where === "NEAR") {
       out.push({
         finding: verify(SUBJECT.SEPARATION, r.rule, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The ADU would be ${num(d)} ft from the existing dwelling; structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (SMC 23.44.100.A). ${nearText(d, r.spec.minFt, r.spec.mappingToleranceFt)}`),
         verifyItem: "Measure the distance between the ADU and the house on a survey; it is close to the 5 ft separation.",
@@ -503,21 +571,22 @@ function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules): Eva
 function evaluateHeight(project: AduProjectDetails, rules: ActiveRules): Evaluated {
   const r = rules.find<AduHeightSpec>(AduRuleType.HEIGHT);
   if (!r) return { uncovered: "ADU height" };
+  const height = project.heightFt ?? 0;
   const base = r.spec.maxFt;
-  const evidence = [`heightFt=${project.heightFt}`, `limitFt=${base}`];
-  if (project.heightFt <= base) {
-    return { finding: known(SUBJECT.HEIGHT, r.rule, true, evidence, `The ADU's height of ${num(project.heightFt)} ft is within the ${num(base)} ft height limit (SMC 23.44.070.A). ${DECLARED_BASIS}`) };
+  const evidence = [`heightFt=${height}`, `limitFt=${base}`];
+  if (height <= base) {
+    return { finding: known(SUBJECT.HEIGHT, r.rule, true, evidence, `The ADU's height of ${num(height)} ft is within the ${num(base)} ft height limit (SMC 23.44.070.A). ${DECLARED_BASIS}`) };
   }
   const ceiling = r.spec.treeRetentionMaxFt + r.spec.pitchedRoofRidgeAllowanceFt;
-  if (project.heightFt <= ceiling) {
+  if (height <= ceiling) {
     return {
-      finding: verify(SUBJECT.HEIGHT, r.rule, evidence, `The ADU's height of ${num(project.heightFt)} ft is over the ${num(base)} ft limit. The limit is ${num(r.spec.treeRetentionMaxFt)} ft on lots that retain certain trees or earn enough tree points (SMC 23.44.070.A.2), and a pitched-roof ridge may rise up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft above the limit (SMC 23.44.070.B). Whether either applies is not determined here.`),
+      finding: verify(SUBJECT.HEIGHT, r.rule, evidence, `The ADU's height of ${num(height)} ft is over the ${num(base)} ft limit. The limit is ${num(r.spec.treeRetentionMaxFt)} ft on lots that retain certain trees or earn enough tree points (SMC 23.44.070.A.2), and a pitched-roof ridge may rise up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft above the limit (SMC 23.44.070.B). Whether either applies is not determined here.`),
       verifyItem: "Confirm how the ADU's height is measured and whether a taller height limit applies.",
     };
   }
   return {
-    finding: known(SUBJECT.HEIGHT, r.rule, false, evidence, `The ADU's height of ${num(project.heightFt)} ft is over even the tallest limit that can apply (${num(r.spec.treeRetentionMaxFt)} ft with the tree allowance, plus up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft for a pitched-roof ridge; SMC 23.44.070). ${DECLARED_BASIS}`),
-    blocker: `The ADU is ${num(project.heightFt)} ft tall, over the tallest limit that can apply (${num(ceiling)} ft)`,
+    finding: known(SUBJECT.HEIGHT, r.rule, false, evidence, `The ADU's height of ${num(height)} ft is over even the tallest limit that can apply (${num(r.spec.treeRetentionMaxFt)} ft with the tree allowance, plus up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft for a pitched-roof ridge; SMC 23.44.070). ${DECLARED_BASIS}`),
+    blocker: `The ADU is ${num(height)} ft tall, over the tallest limit that can apply (${num(ceiling)} ft)`,
   };
 }
 
@@ -533,15 +602,25 @@ function evaluateLotCoverage(project: AduProjectDetails, site: AduSiteFacts, rul
   const result = evaluateShedLotCoverage({
     parcelAreaSqFt: site.parcelAreaSqFt,
     existingMappedCoverageSqFt: site.existingMappedCoverageSqFt,
-    proposedShedFootprintSqFt: aduFootprintSqFt(project),
+    // A conversion that keeps the building's footprint adds no coverage (it is already in the mapped existing
+    // buildings); an addition, relocation or rebuild is not measured and is stated as such below.
+    proposedShedFootprintSqFt: isConversion(project) ? 0 : aduFootprintSqFt(project),
     ecaAdjustment: evaluateEcaLotAreaAdjustment(site.ecaFindings),
   });
   const pct = Math.round((result.estimatedCoverageSqFt / site.parcelAreaSqFt) * 100);
-  const lead = `Estimated lot coverage with the ADU is ${pct}% (${sf(result.estimatedCoverageSqFt)} sq ft of ${sf(site.parcelAreaSqFt)} sq ft): ${sf(site.existingMappedCoverageSqFt)} sq ft of mapped existing buildings plus the ${sf(aduFootprintSqFt(project))} sq ft ADU footprint. The standard limit is ${num(r.spec.maxPercent)}% (SMC 23.44.080.A). The existing figure comes from Seattle's building-outline map, which can differ from what counts for lot coverage (for example, eaves under 36 inches and low decks are not counted).`;
+  const existingPart = `${sf(site.existingMappedCoverageSqFt)} sq ft of mapped existing buildings`;
+  const addedPart = isConversion(project)
+    ? `${existingPart}. The building to convert is already among them${project.conversion?.keepsFootprintAndHeight === true ? "" : "; any addition, relocation or rebuild would add coverage that is not measured here"}.`
+    : `${existingPart} plus the ${sf(aduFootprintSqFt(project))} sq ft ADU footprint.`;
+  const lead = `Estimated lot coverage with the ADU is ${pct}% (${sf(result.estimatedCoverageSqFt)} sq ft of ${sf(site.parcelAreaSqFt)} sq ft): ${addedPart} The standard limit is ${num(r.spec.maxPercent)}% (SMC 23.44.080.A). The existing figure comes from Seattle's building-outline map, which can differ from what counts for lot coverage (for example, eaves under 36 inches and low decks are not counted).`;
   const evidence = [`estimatedCoverageSqFt=${Math.round(result.estimatedCoverageSqFt)}`, `parcelAreaSqFt=${Math.round(site.parcelAreaSqFt)}`];
   const verifyItem = "Confirm lot coverage (and any critical-area land excluded from the lot area) with a survey.";
   switch (result.status) {
     case "WITHIN_STANDARD_ALLOWANCE":
+      // A planned addition, relocation or enlargement of a converted building is not measured, so an in-limit existing figure is never a definite result.
+      if (isConversion(project) && project.conversion?.keepsFootprintAndHeight !== true) {
+        return { finding: verify(SUBJECT.LOT_COVERAGE, r.rule, evidence, `${lead} This is within the standard limit for the existing buildings, but any addition or relocation is not included and would count.`), verifyItem };
+      }
       return { finding: known(SUBJECT.LOT_COVERAGE, r.rule, true, evidence, `${lead} This is within the standard limit.`) };
     case "EXCEEDS_STANDARD_AND_SPECIAL_ALLOWANCE": {
       const tol = result.exclusionTolerance?.explanation.join(" ");
@@ -582,22 +661,32 @@ function evaluateFar(project: AduProjectDetails, site: AduSiteFacts, rules: Acti
   const far = band ? band.far : r.spec.denserFar;
   const byRatio = far * site.parcelAreaSqFt;
   const limit = site.parcelAreaSqFt < r.spec.smallLotAreaSqFt ? Math.max(byRatio, r.spec.smallLotMinChargeableSqFt) : byRatio;
-  const adu = estimateAduFloorAreaSqFt(project);
+  // Converting an existing building adds no new floor area when its footprint is kept, and the declared existing floor area already includes it.
+  const intactConversion = isConversion(project) && project.conversion?.keepsFootprintAndHeight === true;
+  // A conversion that is not known to be intact may add floor area that was not collected: its total is never a definite result.
+  const unmeasuredAddition = isConversion(project) && !intactConversion;
+  const adu = isConversion(project) ? 0 : estimateAduFloorAreaSqFt(project);
   const evidence = [`farLimit=${far}`, `limitSqFt=${Math.round(limit)}`, `unitsAfterAdu=${units}`, `aduFloorAreaSqFt=${Math.round(adu)}`];
   const limitText = `With this ADU the lot would have ${units} dwelling units on ${sf(site.parcelAreaSqFt)} sq ft (about ${sf(perUnit)} sq ft per unit), which puts it in the ${far} floor-area-ratio band (SMC 23.44.050 Table A). That allows about ${sf(limit)} sq ft of total chargeable floor area across all structures${site.parcelAreaSqFt < r.spec.smallLotAreaSqFt ? `, since lots under ${sf(r.spec.smallLotAreaSqFt)} sq ft may have at least ${sf(r.spec.smallLotMinChargeableSqFt)} sq ft` : ""}. Adding ADUs raises the unit count, which can raise this limit. Underground floors and portions of a story no more than 4 ft above grade are not counted.`;
   if (project.existingChargeableFloorAreaSqFt === undefined) {
     return {
-      finding: verify(SUBJECT.FAR, r.rule, evidence, `${limitText} You did not give the existing chargeable floor area, so the ${sf(adu)} sq ft ADU could not be added to it. The room left for the ADU is the limit less your existing chargeable floor area.`),
+      finding: verify(SUBJECT.FAR, r.rule, evidence, `${limitText} You did not give the existing chargeable floor area, so ${intactConversion ? "it could not be compared with the limit; converting the building adds no floor area, so only the extra dwelling unit's effect on the limit matters." : `the ${sf(adu)} sq ft ADU could not be added to it. The room left for the ADU is the limit less your existing chargeable floor area.`}`),
       verifyItem: "Add up the existing chargeable floor area of all structures and compare it to the floor area ratio limit.",
     };
   }
   const total = project.existingChargeableFloorAreaSqFt + adu;
   const totalEvidence = [...evidence, `existingChargeableFloorAreaSqFt=${Math.round(project.existingChargeableFloorAreaSqFt)}`, `totalSqFt=${Math.round(total)}`];
+  if (total <= limit && unmeasuredAddition) {
+    return {
+      finding: verify(SUBJECT.FAR, r.rule, totalEvidence, `${limitText} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft (which already includes the building you would convert) is ${sf(total)} sq ft, ${sf(limit - total)} sq ft under the limit. Any addition's floor area was not collected and would count against that room.`),
+      verifyItem: "Add the floor area of any addition to the existing chargeable floor area and compare it to the floor area ratio limit.",
+    };
+  }
   if (total <= limit) {
-    return { finding: known(SUBJECT.FAR, r.rule, true, totalEvidence, `${limitText} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, within the limit, ${sf(limit - total)} sq ft to spare. This rests on the floor area you declared.`) };
+    return { finding: known(SUBJECT.FAR, r.rule, true, totalEvidence, `${limitText} ${intactConversion ? `Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft (which already includes the building you would convert; the conversion adds none) is` : `Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is`} ${sf(total)} sq ft, within the limit, ${sf(limit - total)} sq ft to spare. This rests on the floor area you declared.`) };
   }
   return {
-    finding: verify(SUBJECT.FAR, r.rule, totalEvidence, `${limitText} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, over the limit by ${sf(total - limit)} sq ft. This rests on the floor area you declared, which may include exempt areas.`),
+    finding: verify(SUBJECT.FAR, r.rule, totalEvidence, `${limitText} ${intactConversion ? `Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft (which already includes the building you would convert; the conversion adds none) is` : `Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is`} ${sf(total)} sq ft, over the limit by ${sf(total - limit)} sq ft. This rests on the floor area you declared, which may include exempt areas.`),
     constraint: `Existing plus ADU floor area of ${sf(total)} sq ft appears to exceed the ${sf(limit)} sq ft floor area ratio limit`,
     verifyItem: "Confirm the chargeable floor area of all structures against the floor area ratio limit.",
   };
@@ -641,6 +730,17 @@ function evaluateTrees(project: AduProjectDetails, site: AduSiteFacts, rules: Ac
 function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluated {
   const r = rules.find<AduDesignStandardsSpec>(AduRuleType.DESIGN_STANDARDS);
   if (!r) return { uncovered: "design standards" };
+  if (conversionAllowance(project) === "YES") {
+    return {
+      finding: verify(
+        SUBJECT.DESIGN,
+        r.rule,
+        ["newDwellingUnitWithinExistingStructure=true"],
+        `The design standards (pedestrian path, street-facing entry, windows and doors) apply to new dwelling units except those added within existing structures (SMC 23.44.140.A.1). A conversion that keeps the existing building appears to fall outside them; whether SDCI treats it that way, and how any addition is treated, is for SDCI to confirm.`
+      ),
+      verifyItem: "Confirm with SDCI that the design standards do not apply to this conversion.",
+    };
+  }
   const distances = [project.distanceToFrontLotLineFt, ...Object.values(project.unresolvedStreetFrontageDistancesFt ?? {})].filter((v): v is number => v !== undefined);
   const nearest = distances.length > 0 ? Math.min(...distances) : undefined;
   const streetFacing =
@@ -653,6 +753,90 @@ function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluat
     finding: verify(SUBJECT.DESIGN, r.rule, nearest === undefined ? [] : [`nearestStreetLotLineFt=${nearest}`], `Each unit needs a pedestrian path at least ${num(r.spec.pedestrianAccessMinWidthFt)} ft wide to the sidewalk or front lot line, which may be shared and may cross setbacks (SMC 23.44.140.C). ${streetFacing} These depend on your design.`),
     verifyItem: "Plan a 3 ft pedestrian path from the sidewalk to the ADU entrance.",
   };
+}
+
+function longDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  return `${months[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
+}
+
+/** Conversion of an existing accessory structure (SMC 23.42.022.H): eligibility, the setback and lot-coverage allowance, height, and the Housing Code
+ * disclosure. All of it rests on the A11 rule; without it every conversion claim is uncovered. Nothing here is a KNOWN conclusion: the allowance rests on
+ * the customer's declarations about when the building was built and what the conversion changes, and SDCI confirms both. */
+function evaluateConversion(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules, allowance: ConversionAllowance): Evaluated[] {
+  const r = rules.find<AduConversionSpec>(AduRuleType.CONVERSION);
+  if (!r) return [{ uncovered: "conversion of an existing accessory structure" }];
+  const c = project.conversion!;
+  const date = longDate(r.spec.existingBeforeDate);
+  const housing = `${r.spec.housingCodeFirstSection} through ${r.spec.housingCodeLastSection.replace(/^SMC /, "")}`;
+  const out: Evaluated[] = [];
+
+  if (c.structureNotMatchedReason !== undefined || c.structureAreaSqFt === undefined) {
+    out.push({
+      finding: verify(SUBJECT.CONVERSION_STRUCTURE, r.rule, [], `The building you chose to convert could not be used: ${c.structureNotMatchedReason ?? "it is not among the mapped buildings on this parcel."} Its size and position could not be measured, so no part of the conversion was evaluated.`),
+      verifyItem: "Choose the building to convert from the mapped buildings on your parcel.",
+    });
+    return out;
+  }
+
+  const evidence = [`existedBeforeJuly2023=${c.existedBeforeJuly2023}`, `keepsFootprintAndHeight=${c.keepsFootprintAndHeight}`];
+  const director = r.spec.directorMayWaiveAndModify ? " The Director may also allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a)." : "";
+  const base = `An existing accessory structure (one that existed before ${date}) may be converted into a detached ADU notwithstanding the lot coverage and yard or setback provisions of SMC 23.42.022 and the zone (SMC 23.42.022.H.3.b), and must comply with the Housing Code minimum standards (SMC ${housing}). A conversion may keep the building, add to or alter it, or remove and rebuild it, provided any expansion or relocation meets the ADU and zone standards (SMC 23.42.022.H.1).`;
+
+  // Eligibility
+  if (allowance === "NO") {
+    out.push({
+      finding: verify(SUBJECT.CONVERSION, r.rule, evidence, `${base} You said the building did not exist before ${date}, so it is not an "existing accessory structure" (SMC 23.42.022.H.2) and the allowances do not apply as entered. The setback and lot-coverage standards for a new detached ADU are therefore applied to this building below.`),
+      constraint: "The conversion allowances do not apply as entered, so the new-ADU setback and lot-coverage standards apply",
+      verifyItem: "Confirm with SDCI how a building built after July 23, 2023 can become an ADU.",
+    });
+  } else {
+    const unknowns: string[] = [];
+    if (c.existedBeforeJuly2023 === undefined) unknowns.push(`whether the building existed before ${date}`);
+    if (c.keepsFootprintAndHeight === undefined) unknowns.push("whether the conversion keeps the building's footprint and height");
+    const status =
+      allowance === "YES"
+        ? " You said the building existed before that date and the conversion keeps its footprint and height, so this appears to apply. Seattle's building outlines map the building as of 2023; whether it legally existed on the date is for SDCI to confirm."
+        : allowance === "PARTIAL"
+          ? " You said the conversion would expand, move or enlarge the building: the existing building appears covered as it stands, but the expansion or relocation must meet the standards for a new ADU, and where it would go was not collected, so it is not measured here."
+          : ` It is not clear that this applies because ${unknowns.join(" and ")} is not known.`;
+    out.push({
+      finding: verify(SUBJECT.CONVERSION, r.rule, evidence, `${base}${status}${director}`),
+      verifyItem: `Confirm the building legally existed before ${date} (permit records, dated aerial photos) and what the conversion would change.`,
+    });
+    // Siting: informational distances, never a pass or fail, because the allowance removes those standards for the existing building.
+    const d = (v: number | undefined) => (v === undefined ? "not measured" : `${num(v)} ft`);
+    const siting = `The building is ${d(project.distanceToRearLotLineFt)} from the rear lot line, ${d(project.distanceToSideLotLineFt)} from the nearest side lot line and ${d(project.distanceToFrontLotLineFt)} from the front lot line. A new detached ADU would need to meet the rear, side and front setbacks and the lot-coverage limit; if the allowance applies, a conversion of this building as it stands does not have to (SMC 23.42.022.H.3.b).${allowance === "YES" ? " This rests on what you told us about the building and is for SDCI to confirm." : allowance === "PARTIAL" ? " The part that would be added or moved is not covered and was not measured." : ""}`;
+    out.push({
+      finding: verify(SUBJECT.CONVERSION_SITING, r.rule, [`conversionAllowance=${allowance}`], siting),
+      ...(allowance === "PARTIAL" ? { verifyItem: "Describe any addition or relocation to SDCI: it must meet the new-ADU setbacks and lot-coverage limit." } : {}),
+    });
+  }
+
+  // Height: the allowance names lot coverage and yard or setback provisions, not height; the existing building's height was not collected.
+  out.push({
+    finding: verify(
+      SUBJECT.CONVERSION_HEIGHT,
+      r.rule,
+      ["heightCollected=false"],
+      "The conversion allowance names lot coverage and yard or setback provisions; it does not mention height (SMC 23.42.022.H.3.b). The building's height was not collected, so whether the height standards (32 ft, and 12 ft for an accessory structure in a required setback; SMC 23.44.070.A) are met is not determined; the Director may allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a)."
+    ),
+    verifyItem: "Confirm with SDCI whether the height standards apply to the building as it stands.",
+  });
+
+  // Housing Code minimum standards
+  out.push({
+    finding: verify(
+      SUBJECT.HOUSING_CODE,
+      r.rule,
+      [`${r.spec.housingCodeFirstSection}-${r.spec.housingCodeLastSection.replace(/^SMC /, "")}`],
+      `A converted accessory structure must comply with the minimum standards in ${r.spec.housingCodeFirstSection} through ${r.spec.housingCodeLastSection.replace(/^SMC /, "")} (SMC 23.42.022.H.3.b). Permit Preflight does not assess the building against them; a garage or shed can need work to meet them.`
+    ),
+    verifyItem: "Have the building assessed against the minimum standards in SMC 22.206.020 through 22.206.140 before committing to the conversion.",
+  });
+  return out;
 }
 
 function ecaSummaryFinding(site: AduSiteFacts): { finding: Finding; mapped: string[] } {
@@ -684,6 +868,7 @@ function buildFeasibility(input: {
   evaluated: Evaluated[];
   uncovered: string[];
   placementMissing: boolean;
+  conversion: boolean;
   mappedEca: string[];
 }): AduFeasibility {
   const blockers = input.evaluated.map((e) => e.blocker).filter((v): v is string => Boolean(v));
@@ -709,7 +894,9 @@ function buildFeasibility(input: {
     summary = `Permit Preflight could not evaluate every ADU requirement (${input.uncovered.join("; ")}), so it cannot give a feasibility read. What it did evaluate is listed below.`;
   } else if (input.placementMissing) {
     headline = "CANNOT_TELL";
-    summary = "The ADU's position on the lot was not established, so its distances to the property lines and the existing house could not be measured. Place it on the map to get a read on setbacks and separation.";
+    summary = input.conversion
+      ? "The building to convert could not be matched to a mapped building on the parcel (or its distances could not be measured), so its size and position could not be evaluated. Choose it on the map to get a read on the conversion."
+      : "The ADU's position on the lot was not established, so its distances to the property lines and the existing house could not be measured. Place it on the map to get a read on setbacks and separation.";
   } else if (constraints.length > 0) {
     headline = "LIKELY_CONSTRAINED";
     summary = `Nothing is known to prohibit this ADU, but ${constraints.length === 1 ? "1 limit appears to be exceeded on the figures available" : `${constraints.length} limits appear to be exceeded on the figures available`}. Verify these first.`;
@@ -761,19 +948,41 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
   if (notNr) {
     uncovered.push(zoningStatus === "NOT_NR" ? "ADU zoning limits (parcel is not in a Neighborhood Residential zone)" : "ADU zoning limits (the parcel's zone could not be verified as a Neighborhood Residential zone)");
   } else {
-    evaluated.push(
-      evaluateCount(project, rules),
-      evaluateDensity(project, site, rules),
-      evaluateSize(project, rules),
-      ...evaluateSetbacks(project, site, rules),
-      ...evaluateSeparation(project, rules),
-      evaluateHeight(project, rules),
-      evaluateLotCoverage(project, site, rules),
-      evaluateFar(project, site, rules),
-      evaluateAmenity(project, site, rules),
-      evaluateTrees(project, site, rules),
-      evaluateDesign(project, rules)
-    );
+    if (isConversion(project)) {
+      const allowance = conversionAllowance(project);
+      const matched = project.conversion !== undefined && project.conversion.structureNotMatchedReason === undefined && project.conversion.structureAreaSqFt !== undefined;
+      if (!matched) {
+        // The building to convert is unknown: no claim that depends on it is made (its size, position and separation are unknown).
+        if (project.conversion) evaluated.push(...evaluateConversion(project, site, rules, allowance));
+      } else {
+        evaluated.push(evaluateCount(project, rules), evaluateDensity(project, site, rules), evaluateSize(project, rules), ...evaluateConversion(project, site, rules, allowance));
+        // Without the allowance the new-ADU standards govern the building's position and coverage. With a planned expansion or relocation only the
+        // coverage is shown (never a definite result, the addition is unmeasured). With the allowance, or while it is unresolved, neither is asserted.
+        if (allowance === "NO") evaluated.push(...evaluateSetbacks(project, site, rules), evaluateLotCoverage(project, site, rules));
+        else if (allowance === "PARTIAL") evaluated.push(evaluateLotCoverage(project, site, rules));
+        evaluated.push(
+          ...evaluateSeparation(project, rules, rules.find<AduConversionSpec>(AduRuleType.CONVERSION)),
+          evaluateFar(project, site, rules),
+          evaluateAmenity(project, site, rules),
+          evaluateTrees(project, site, rules),
+          evaluateDesign(project, rules)
+        );
+      }
+    } else {
+      evaluated.push(
+        evaluateCount(project, rules),
+        evaluateDensity(project, site, rules),
+        evaluateSize(project, rules),
+        ...evaluateSetbacks(project, site, rules),
+        ...evaluateSeparation(project, rules),
+        evaluateHeight(project, rules),
+        evaluateLotCoverage(project, site, rules),
+        evaluateFar(project, site, rules),
+        evaluateAmenity(project, site, rules),
+        evaluateTrees(project, site, rules),
+        evaluateDesign(project, rules)
+      );
+    }
     for (const e of evaluated) {
       if (e.finding) findings.push(e.finding);
       if (e.uncovered) uncovered.push(e.uncovered);
@@ -788,7 +997,8 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
     zoning: input.zoningApplicability,
     evaluated,
     uncovered,
-    placementMissing: !notNr && placementGap(project) !== undefined,
+    placementMissing: !notNr && (isConversion(project) ? project.conversion?.structureAreaSqFt === undefined || (conversionAllowance(project) === "NO" && placementGap(project) !== undefined) : placementGap(project) !== undefined),
+    conversion: isConversion(project),
     mappedEca: eca.mapped,
   });
 

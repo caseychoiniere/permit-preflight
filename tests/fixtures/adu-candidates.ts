@@ -1,9 +1,9 @@
 /**
- * The ten REAL Unit 11 (ADU) governance candidates (aidlc-docs/construction/unit-11-adus/). Real,
+ * The eleven REAL Unit 11 (ADU) governance candidates (aidlc-docs/construction/unit-11-adus/). Real,
  * non-fixture content (`isTestOnlyFixture: false`), mirroring fence-candidates.ts. Every threshold the
  * evaluator uses lives on `ruleSpecification` here - `evaluate-adu.ts` contains no SMC number as a literal.
  *
- * All ten are Tier 1: each is a numeric threshold in current code text (SMC 23.42.022 and the NR
+ * All eleven are Tier 1: each is a numeric threshold in current code text (SMC 23.42.022 and the NR
  * development standards of chapter 23.44, as rewritten by Ordinance 127376 (2025)) with no Director
  * judgment or unresolved source conflict. The interpretive edges (averaged side setback, whether a
  * mapped building has floor area, ADUs counting toward the three-unit front setback, exclusion areas,
@@ -37,9 +37,24 @@ export interface AduTestInput {
   site?: SiteOverrides;
 }
 
-function tc(kind: "POSITIVE" | "NEGATIVE" | "EXCEPTION", description: string, input: AduTestInput, subject: string, outcome: string) {
-  return { kind, description, input: input as Record<string, unknown>, expected: { subject, outcome } as Record<string, unknown> };
+/** `appliedBy` names the candidate whose rule the finding cites when it is not this row's own (a conversion case that exercises the setback or separation rule). */
+function tc(kind: "POSITIVE" | "NEGATIVE" | "EXCEPTION", description: string, input: AduTestInput, subject: string, outcome: string, appliedBy?: string) {
+  return { kind, description, input: input as Record<string, unknown>, expected: { subject, outcome, ...(appliedBy ? { appliedBy } : {}) } as Record<string, unknown> };
 }
+
+/** A conversion of a 400 sq ft existing building, 30 ft from the rear and 14 ft from the house: the baseline for conversion test cases. */
+const CONVERSION_BASE = {
+  aduType: "CONVERSION_EXISTING",
+  widthFt: undefined,
+  depthFt: undefined,
+  heightFt: undefined,
+  distanceToRearLotLineFt: 2,
+  distanceToSideLotLineFt: 2,
+  distanceToFrontLotLineFt: 80,
+  distanceToDwellingFt: 14,
+  conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true },
+};
+const CONVERSION_INTACT: AduTestInput = { project: CONVERSION_BASE };
 
 export const realAduCandidates: DraftedRuleInput[] = [
   {
@@ -347,6 +362,52 @@ export const realAduCandidates: DraftedRuleInput[] = [
     ],
     isTestOnlyFixture: false,
   },
+  {
+    id: "adu-a11-conversion-2026",
+    subject: "Conversion of an existing accessory structure to a detached ADU - permitted notwithstanding lot coverage and yard or setback provisions; structure existing before July 23, 2023; Housing Code minimum standards (SMC 22.206.020-.140)",
+    applicableProjectType: "adu",
+    applicableZone: "NR",
+    ruleSpecification: {
+      ruleType: AduRuleType.CONVERSION,
+      existingBeforeDate: "2023-07-23",
+      housingCodeFirstSection: "SMC 22.206.020",
+      housingCodeLastSection: "SMC 22.206.140",
+      waivesSetbacksAndLotCoverage: true,
+      directorMayWaiveAndModify: true,
+    },
+    citation: { smcSections: ["SMC 23.42.022.H.1", "SMC 23.42.022.H.2", "SMC 23.42.022.H.3.a", "SMC 23.42.022.H.3.b", "SMC 23.44.140.A.1"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
+    caveats: [
+      DECLARED_CAVEAT,
+      {
+        category: "what counts as an existing structure and an intact conversion",
+        description:
+          "The allowance covers an accessory structure that existed before July 23, 2023 (or was replaced to the same configuration) and a conversion that keeps, adds to, alters or rebuilds it, provided any expansion or relocation meets the ADU and zone standards (H.1). Permit Preflight cannot verify when a building was built (Seattle's building outlines are a 2023 map, not a permit history) or what the conversion would change, so the allowance is described only on the customer's declaration that the building existed before the date and the footprint and height are kept, and always as REQUIRES_VERIFICATION (never a KNOWN fact). A declaration that it did not exist before the date applies the new-ADU standards to the building; a planned expansion or relocation leaves the existing building covered as it stands and the changed part unmeasured (no future geometry is collected), so coverage and floor-area results are never definite; rebuilding in place at the same footprint and height counts as keeping it (H.1).",
+        affectedConditionOrInterpretation: "SMC 23.42.022.H.1-H.3",
+        sourceReferences: ["SMC 23.42.022.H.1", "SMC 23.42.022.H.2", "SMC 23.42.022.H.3.b"],
+        resolutionStatus: "Resolved by design - the allowance is never asserted without both declarations, and existence on the date is always left to SDCI.",
+      },
+      {
+        category: "separation, design standards and the Housing Code",
+        description:
+          "H.3.b names lot coverage and yard or setback provisions only, so the 5 ft separation between structures (SMC 23.44.100) is never reported as a known failure for a conversion (REQUIRES_VERIFICATION, noting the Director's Type I waiver authority in H.3.a). SMC 23.44.140.A.1 excludes new dwelling units added within existing structures from the design standards, which an intact conversion appears to fall under (REQUIRES_VERIFICATION). The allowance names lot coverage and yard or setback provisions, not height, so the converted building's height is left to SDCI (REQUIRES_VERIFICATION). The Housing Code minimum standards (SMC 22.206.020 through 22.206.140) are cited and never assessed or characterized.",
+        affectedConditionOrInterpretation: "Separation; design standards; habitability",
+        sourceReferences: ["SMC 23.42.022.H.3.a", "SMC 23.44.100.A", "SMC 23.44.140.A.1", "SMC 22.206.020-22.206.140"],
+        resolutionStatus: "Resolved by design.",
+      },
+    ],
+    testCases: [
+      tc("POSITIVE", "An intact conversion of a building declared to exist before the date: siting is described as outside the setbacks and coverage limit, but only ever as REQUIRES_VERIFICATION (SDCI confirms the building legally existed)", CONVERSION_INTACT, "Setbacks and lot coverage (conversion)", "REQUIRES_VERIFICATION"),
+      tc("NEGATIVE", "A building declared not to exist before the date: the allowance does not apply and the new-ADU standards are applied to it (1 ft from the rear lot line is clearly short of 5 ft)", { project: { ...CONVERSION_BASE, distanceToRearLotLineFt: 1, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: false, keepsFootprintAndHeight: true } } }, "ADU rear setback", "KNOWN/FAIL", "adu-a3-setbacks-2026"),
+      tc("NEGATIVE", "The same building: the eligibility finding itself says the allowance does not apply", { project: { ...CONVERSION_BASE, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: false, keepsFootprintAndHeight: true } } }, "Conversion of an existing accessory structure", "REQUIRES_VERIFICATION"),
+      tc("EXCEPTION", "Unsure whether the building existed: the allowance is not asserted and no standard setback is applied", { project: { ...CONVERSION_BASE, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: undefined, keepsFootprintAndHeight: true } } }, "Setbacks and lot coverage (conversion)", "REQUIRES_VERIFICATION"),
+      tc("EXCEPTION", "An addition or relocation is planned: the existing building is covered as it stands, the added part is not measured, and the lot-coverage figure is never a definite result", { project: { ...CONVERSION_BASE, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: false } } }, "Lot coverage", "REQUIRES_VERIFICATION", "adu-a6-lot-coverage-2026"),
+      tc("EXCEPTION", "The allowance names lot coverage and setbacks, not height: the converted building's height is always left to SDCI", CONVERSION_INTACT, "Height of the converted building", "REQUIRES_VERIFICATION"),
+      tc("POSITIVE", "The Housing Code minimum standards are always disclosed, never assessed", CONVERSION_INTACT, "Minimum housing standards for the converted building", "REQUIRES_VERIFICATION"),
+      tc("EXCEPTION", "A building next to the house (1.5 ft) is not a known separation failure for a conversion", { project: { ...CONVERSION_BASE, distanceToDwellingFt: 1.5 } }, "Separation from the existing dwelling", "REQUIRES_VERIFICATION", "adu-a4-separation-2026"),
+      tc("EXCEPTION", "A selected building that cannot be matched to a mapped building cannot be evaluated", { project: { ...CONVERSION_BASE, conversion: { structureNotMatchedReason: "it is not among the mapped buildings on this parcel.", existedBeforeJuly2023: true, keepsFootprintAndHeight: true } } }, "Building to convert", "REQUIRES_VERIFICATION"),
+    ],
+    isTestOnlyFixture: false,
+  },
 ];
 
 export function tierForRealAduCandidate(_candidateId: string): "TIER_1" {
@@ -365,4 +426,5 @@ export const ADU_FIXED_ROW_IDS: Record<string, string> = {
   "adu-a8-amenity-area-2026": "02b91d3b-ce12-442a-b41e-48126b5c31c7",
   "adu-a9-trees-2026": "668700bc-5096-4130-b01f-867cacebefb4",
   "adu-a10-design-standards-2026": "de3dc5b6-81fc-449b-966a-4176f2858d1d",
+  "adu-a11-conversion-2026": "364c39eb-6cea-4398-80ee-c0a867d88de7",
 };

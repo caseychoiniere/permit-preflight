@@ -129,6 +129,9 @@ interface Props {
   depthFt: number;
   /** What is being placed, for the visible labels only ("shed" by default; "ADU", "garage"). */
   structureNoun?: string;
+  /** True when no footprint is placed (an ADU conversion uses an existing building's mapped outline): the placement controls
+   * are not shown and a map click that is not on a lot line or building does nothing. */
+  hidePlacement?: boolean;
   onPlacementChange: (placement: PlacementSelection) => void;
   onLotLineRolesChange: (selection: LotLineSelection) => void;
   /** Building intelligence v1 - real building footprints on this parcel (Seattle Building Outlines
@@ -366,6 +369,7 @@ export function ParcelPlacementMap({
   widthFt,
   depthFt,
   structureNoun = "shed",
+  hidePlacement = false,
   onPlacementChange,
   onLotLineRolesChange,
   initialPlacement,
@@ -376,6 +380,8 @@ export function ParcelPlacementMap({
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const hidePlacementRef = useRef(hidePlacement);
+  hidePlacementRef.current = hidePlacement;
   const [anchor, setAnchor] = useState<GeographicPoint | null>(initialPlacement?.anchor ?? null);
   const [orientationDeg, setOrientationDeg] = useState(initialPlacement?.orientationDeg ?? 0);
   const [frontEdgeRef, setFrontEdgeRef] = useState<string | null>(initialLotLineSelection?.frontEdgeRef ?? null);
@@ -820,6 +826,7 @@ export function ParcelPlacementMap({
       // handler above for their e.preventDefault() calls to actually suppress it.
       map.on("click", (e) => {
         if (e.defaultPrevented) return; // an edge/building click already handled this (see above).
+        if (hidePlacementRef.current) return; // nothing is placed on this map (a conversion measures an existing building).
         setAnchor({ lng: e.lngLat.lng, lat: e.lngLat.lat });
       });
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1106,6 +1113,7 @@ export function ParcelPlacementMap({
             </div>
           </fieldset>
         )}
+        {!hidePlacement && (
         <fieldset className="rounded-lg border border-slate-200 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-900">{cap(structureNoun)} placement</legend>
           <p className="text-sm text-slate-600">
@@ -1158,6 +1166,7 @@ export function ParcelPlacementMap({
             />
           </label>
         </fieldset>
+        )}
       </div>
     </div>
   );

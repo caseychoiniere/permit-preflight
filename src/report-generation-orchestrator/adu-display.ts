@@ -22,5 +22,5 @@ export const ADU_SECTION_TITLES = {
   notEvaluated: "Not evaluated",
 } as const;
 
-export const ADU_DECLARED_NOTE = "This ADU was evaluated from the details you entered and the footprint you placed on the map, not from a survey of the site.";
+export const ADU_DECLARED_NOTE = "This ADU was evaluated from the details you entered and what you indicated on the map, not from a survey of the site.";
 export const ADU_SCREENING_NOTE = "This is a screening read, not an approval or a permit determination. SDCI makes the final determination.";

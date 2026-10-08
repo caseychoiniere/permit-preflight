@@ -18,7 +18,7 @@
  * means an ordinary `npm run test:integration` run would otherwise leave regulatory_rules emptied
  * behind it, silently breaking whatever real manual/browser product testing runs next (a real,
  * live-observed zero-findings regression this exact gap caused). afterAll's LAST action
- * unconditionally re-seeds the real 4 ACTIVE rows before handing control back - see its own comment.
+ * (as of 2026-10-08) leaves them cleared - see its own comment.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -61,18 +61,10 @@ describe.skipIf(!hasDb)("Staging-only rule seeding - live Neon integration", () 
   afterAll(async () => {
     await clearStagingTestRules(db);
     await db.delete(regulatoryRules).where(eq(regulatoryRules.id, unrelatedCandidateId));
-    // Real, live-discovered regression (2026-08-30): this file's beforeAll/afterEach/afterAll all
-    // clear the STAGING-TEST-ONLY rows for THIS suite's own test isolation - correct for the tests
-    // themselves, but it means every ordinary `npm run test:integration` run silently emptied the
-    // real staging_rules table by the time it finished, with nothing ever restoring the 4 ACTIVE
-    // rows the founder's own manual/browser product-testing continuously depends on existing. A
-    // real report generated shortly after a `test:integration` run came back with zero findings as
-    // a direct result - not a Building Intelligence bug, a test-suite hygiene gap in this exact
-    // file. The seeded, ACTIVE state IS the desired steady state for a staging environment (that's
-    // the whole purpose scripts/staging-test-rules.ts exists for) - restored here, unconditionally,
-    // as the very last thing this file does, so this suite can never again leave staging emptied
-    // behind it.
-    await seedStagingTestRules(db);
+    // 2026-10-08: this suite used to re-seed the four ACTIVE STAGING-TEST-ONLY shed rules here, so a test run never left the
+    // table empty for manual product testing. The real shed and garage rules (S1-S3, G1-G5) are now ACTIVE and the staging
+    // fixtures were deliberately removed from the live database; re-seeding them would put synthetic-citation rules back in
+    // front of real reports (it did, once, undoing that cleanup). The suite now leaves the staging rows cleared.
   });
 
   afterEach(async () => {

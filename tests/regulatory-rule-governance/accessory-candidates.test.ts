@@ -71,10 +71,10 @@ describe("every declared test case is executed against the evaluator using the c
 });
 
 describe("garage: the whole set covers setback, height and lot coverage; a footprint over a lot line yields no position-dependent claim upstream", () => {
-  it("nothing uncovered with all five rows ACTIVE", () => {
-    expect(run(GARAGE_BASE, garageRules, {}).uncoveredConstraintTypes).toEqual([]);
+  it("with all five rows ACTIVE only the (never governed) separation from the house is reported as not screened", () => {
+    expect(run(GARAGE_BASE, garageRules, {}).uncoveredConstraintTypes).toEqual(["separation from the house"]);
   });
   it("without the height rows the garage reports height as not screened", () => {
-    expect(run(GARAGE_BASE, garageRules.filter((r) => !String((r.ruleSpecification as { ruleType: string }).ruleType).startsWith("SHED_PERMIT")), {}).uncoveredConstraintTypes).toEqual(["height"]);
+    expect(run(GARAGE_BASE, garageRules.filter((r) => !String((r.ruleSpecification as { ruleType: string }).ruleType).startsWith("SHED_PERMIT")), {}).uncoveredConstraintTypes).toEqual(["height", "separation from the house"]);
   });
 });

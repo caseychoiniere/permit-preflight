@@ -226,18 +226,15 @@ function requiredSourceIdsFor(workflowType: string, projectType: string | null):
  * allowed to proceed regardless of public commercial readiness (BR-U4-9's own "the same
  * 'build the capability, then gate its sale' sequencing" precedent).
  *
- * Hardcoded `false` today, per business-logic-model.md Workflow U4-3's explicitly-accepted "a
- * static readiness flag Code Generation flips once the founder confirms all conditions are met" -
- * not a shortcut. It is expected to stay `false` for the entire Units 4-11 POC-build phase, since
- * one of its own conditions (professional review of the Tier-2 garage rule package) is explicitly
- * deferred to the post-POC "Regulatory Professional Review / Commercialization Gate" milestone
- * (aidlc-docs/aidlc-state.md). Flipping it to `true` is a founder decision, never inferred from
- * code state - do not derive it from `RegulatoryRule` lifecycle rows without that explicit
- * decision, since even all-Tier-1-candidates-ACTIVE would still leave every genuinely Tier-2
- * setback/height candidate (H1, H2, S2, S3, S4, S5, L4, L5) unreviewed.
+ * Flipped to `true` on 2026-10-08 on the founder's decision (relayed), after the five real garage rules (rear, side/front, height inside and outside a
+ * required setback, lot coverage) and the three shed rules were activated through the normal lifecycle and a real-rules pipeline smoke passed
+ * (tests/report-generation-orchestrator/accessory-real-rules-smoke.integration.test.ts). Static flag, not derived from rule state: if a rule is later
+ * disabled the report fails closed with a "not yet automatically screenable" notice rather than a conclusion. The garage setback/height rows
+ * are Tier 1 (threshold validity); the Tier-2 professional review of the garage package stays on the post-POC Commercialization Gate list, and the
+ * evaluator never states a definite failure where a garage exception (SMC 23.44.090.G, 23.44.160.D) could apply.
  */
 export function isGarageScreeningCoverageReady(): boolean {
-  return false;
+  return true;
 }
 
 /** The additional checkout-time half of the Garage Screening Coverage Readiness gate

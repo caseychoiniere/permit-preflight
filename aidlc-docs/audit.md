@@ -1896,3 +1896,16 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: Open for the founder (not blocking): activate the three shed rows (restores setback/separation screening on shed reports) and later the garage set plus the garage public gate.
 
 ---
+
+## Shed and Garage Accessory Rules Activated; Garage Public Gate Opened (founder decision relayed 2026-10-08)
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: "Activate all eight newly APPROVED real shed/garage rules ... Do not reactivate or recreate any STAGING-TEST-ONLY rows. After activation: verify all eight are ACTIVE; verify no unrelated rule changed state; smoke-test a real shed report ... smoke-test a real garage report ... If those checks pass, set the garage public-readiness gate to true ... commit and push automatically."
+**AI Response**:
+- Activated the eight rows through `activateRule` (`scripts/accessory-rules-activate.ts`: pre-check 8 APPROVED/0 ACTIVE; post-check 8 ACTIVE, 8 RULE_ACTIVATED audit entries, every other row's state unchanged).
+- **Defect found and fixed:** the full integration run after the staging cleanup had re-seeded the four STAGING-TEST-ONLY shed rows as ACTIVE (the `afterAll` of `tests/scripts/staging-test-rules.integration.test.ts` deliberately re-seeded them after a 2026-08-30 regression). That undid cleanup B in the live DB (the earlier push described a state the database was briefly not in). The re-seed was removed, the rows were deleted again, and the smoke test asserts that no STAGING-TEST-ONLY row is ACTIVE. A later full integration run left them cleared.
+- Real-rules smoke (`accessory-real-rules-smoke.integration.test.ts`, five cases against the real ACTIVE rows, web and PDF text compared): shed mid-yard gives KNOWN PASS rear, side, front and dwelling separation, height REQUIRES_VERIFICATION, no "Not yet automatically screenable" for covered constraints; shed in the street gives only REQUIRES_VERIFICATION, no FAIL; garage mid-yard gives KNOWN rear/side/front PASS, height and lot coverage REQUIRES_VERIFICATION; garage 0.9 ft and 0.1 ft from a side line gives side REQUIRES_VERIFICATION citing SMC 23.44.090.G (never FAIL), with the 12 ft in-setback height limit applied; a garage a few percent over the lot line or in the street gives no position-dependent conclusion.
+- **Disclosure gap found and fixed before opening the gate:** a detached garage is also subject to the 5 ft separation between structures (SMC 23.44.100.A), which no garage rule governs and the garage flow does not measure. Every garage report now lists "Separation from the house" under "Not Yet Automatically Screenable" (web and PDF) rather than reading as screened clean.
+- `isGarageScreeningCoverageReady()` = true; garage is advertised and purchasable. Tests updated.
+**Context**: Founder-authorized; no new gate. The Tier-2 professional review of the garage package remains on the post-POC Commercialization Gate list. Next: continue with the highest-value MVP work.
+
+---

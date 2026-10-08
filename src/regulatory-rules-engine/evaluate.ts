@@ -280,6 +280,10 @@ function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"]):
         { constraintType: "setback", ruleTypes: ["REAR_SETBACK", "SIDE_FRONT_SETBACK_STANDARD"] },
         { constraintType: "height", ruleTypes: ["HEIGHT_LIMIT", ...ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES] },
         { constraintType: "lot coverage", ruleTypes: ["LOT_COVERAGE"] },
+        // A detached garage is also subject to the 5 ft separation between structures (SMC 23.44.100.A), which no garage rule covers and the
+        // garage flow does not measure (no house is selected). Listed with a rule type no garage row carries, so every garage report says
+        // plainly that it is not screened instead of reading as screened clean.
+        { constraintType: "separation from the house", ruleTypes: ["GARAGE_DWELLING_SEPARATION_NOT_GOVERNED"] },
       ];
     default: {
       const exhaustiveCheck: never = projectType;

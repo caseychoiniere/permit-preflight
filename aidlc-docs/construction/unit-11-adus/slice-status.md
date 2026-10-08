@@ -42,3 +42,8 @@
 - Shed uncovered-notice defect fixed; eight real Tier-1 rows (shed S1-S3, garage G1-G5) built, tested (every declared case executed against the evaluator) and APPROVED; the four STAGING-TEST-ONLY rows removed from the live DB. Rows are not ACTIVE: until the three shed rows are activated (founder-controlled), shed reports state that setbacks and separation are not yet automatically screenable. Garage stays unavailable for purchase.
 - Footprint validation (shed, garage, ADU share one guard): a footprint over a lot line or in the street gets no distances; position-dependent findings are REQUIRES_VERIFICATION with the reason; the accessory height limit stays unresolved. Live shed and garage tests cover it.
 - Reviewer (decision 81bfd917-469c-4ef6-8834-3723f638f91e): ESCALATE on authority, recorded; its deletion-procedure and integration-rerun findings addressed.
+
+## Activation of the shed and garage accessory rules (founder decision, 2026-10-08, relayed)
+- All eight rules (shed S1-S3, garage G1-G5) ACTIVE via `scripts/accessory-rules-activate.ts` (8 RULE_ACTIVATED audit entries; no other rule changed). `isGarageScreeningCoverageReady()` = true; garage is advertised and purchasable. The STAGING-TEST-ONLY rows stay deleted (the staging-rules integration test no longer re-seeds them).
+- Garage reports always state that separation from the house (SMC 23.44.100.A) is not automatically screened. A garage shortfall on side or front setback is REQUIRES_VERIFICATION (exceptions in SMC 23.44.090.G / 23.44.160.D), never a definite failure.
+- Real-rules smoke: `tests/report-generation-orchestrator/accessory-real-rules-smoke.integration.test.ts`.

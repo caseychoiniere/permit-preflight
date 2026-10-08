@@ -8,16 +8,12 @@ describe("Unit 4 - Garage Screening Coverage Readiness (business-rules.md BR-U4-
     expect(SUPPORTED_PROJECT_TYPES.has("garage")).toBe(true);
   });
 
-  it("[hard invariant] isGarageScreeningCoverageReady() is false today - expected to stay false for the entire Units 4-11 POC-build phase", () => {
-    expect(isGarageScreeningCoverageReady()).toBe(false);
+  it("isGarageScreeningCoverageReady() is true: the five real garage rules were activated and smoke-verified on 2026-10-08", () => {
+    expect(isGarageScreeningCoverageReady()).toBe(true);
   });
 
-  it("checkGarageCheckoutEligibility rejects a garage order while the coverage gate is closed, with a reason a customer can read", () => {
-    const result = checkGarageCheckoutEligibility({ projectType: "garage" });
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.reason.length).toBeGreaterThan(0);
-    }
+  it("checkGarageCheckoutEligibility allows a garage order now that the coverage gate is open", () => {
+    expect(checkGarageCheckoutEligibility({ projectType: "garage" })).toEqual({ ready: true });
   });
 
   it("checkGarageCheckoutEligibility is a no-op ({ ready: true }) for a shed order - this gate has nothing to say about sheds", () => {

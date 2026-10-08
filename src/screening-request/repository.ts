@@ -112,6 +112,7 @@ function isConfigurationComplete(config: ProjectConfiguration): boolean {
   // Unit 11 - an ADU is evaluated against measured distances, so it needs both the map placement and the
   // customer's lot-line roles (a footprint alone cannot be measured against the right lines).
   if ("aduType" in config) {
+    if (config.aduType === "ATTACHED_TO_HOUSE") return true; // declared only, like a fence or deck: nothing is placed
     if (config.aduType === "CONVERSION_EXISTING") return config.convertedStructure !== undefined && config.lotLineRoleAssignment !== undefined;
     return config.proposedPlacement !== undefined && config.lotLineRoleAssignment !== undefined;
   }

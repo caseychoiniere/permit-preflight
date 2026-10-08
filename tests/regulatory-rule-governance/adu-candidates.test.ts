@@ -1,5 +1,5 @@
 /**
- * Unit 11 governance candidates: structure (11 Tier-1 rows, fixed ids, never past TRIAGED in code), and
+ * Unit 11 governance candidates: structure (12 Tier-1 rows, fixed ids, never past TRIAGED in code), and
  * every declared test case EXECUTED against the real evaluator using the candidates' own persisted
  * ruleSpecification, so a declared case can never drift from what the rule actually does.
  */
@@ -27,11 +27,11 @@ function run(input: AduTestInput) {
 }
 
 describe("real ADU candidates - structure", () => {
-  it("exactly eleven, one per AduRuleType, unique ids, each with a fixed row UUID", () => {
-    expect(realAduCandidates).toHaveLength(11);
+  it("exactly twelve, one per AduRuleType, unique ids, each with a fixed row UUID", () => {
+    expect(realAduCandidates).toHaveLength(12);
     expect(realAduCandidates.map((c) => (c.ruleSpecification as { ruleType: string }).ruleType).sort()).toEqual(Object.values(AduRuleType).sort());
-    expect(new Set(realAduCandidates.map((c) => c.id)).size).toBe(11);
-    expect(new Set(Object.values(ADU_FIXED_ROW_IDS)).size).toBe(11);
+    expect(new Set(realAduCandidates.map((c) => c.id)).size).toBe(12);
+    expect(new Set(Object.values(ADU_FIXED_ROW_IDS)).size).toBe(12);
     for (const c of realAduCandidates) {
       expect(ADU_FIXED_ROW_IDS[c.id]).toMatch(/^[0-9a-f-]{36}$/);
       expect(c.applicableProjectType).toBe("adu");
@@ -53,7 +53,7 @@ describe("real ADU candidates - structure", () => {
     }
   });
 
-  it("all eleven specifications are accepted by the evaluator's guards (nothing is uncovered)", () => {
+  it("all twelve specifications are accepted by the evaluator's guards (nothing is uncovered)", () => {
     expect(run({}).uncoveredConstraintTypes).toEqual([]);
   });
 });

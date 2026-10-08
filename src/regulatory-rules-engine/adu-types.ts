@@ -12,6 +12,7 @@ import type { Finding } from "./types.js";
 export const AduType = {
   DETACHED_NEW: "DETACHED_NEW",
   CONVERSION_EXISTING: "CONVERSION_EXISTING",
+  ATTACHED_TO_HOUSE: "ATTACHED_TO_HOUSE",
 } as const;
 export type AduType = (typeof AduType)[keyof typeof AduType];
 
@@ -29,6 +30,14 @@ export interface AduConversionDetails {
   keepsFootprintAndHeight?: boolean;
 }
 
+/** Present only for an ADU inside or attached to the existing house (SMC 23.42.022.D, G, H.4). */
+export interface AduAttachedDetails {
+  /** Gross floor area as the code counts it (underground floors and up to the garage allowance already left out by the customer). */
+  grossFloorAreaSqFt: number;
+  includesAddition: boolean;
+  portionExistedBeforeJuly2023?: boolean;
+}
+
 export interface AduProjectDetails {
   projectType: "adu";
   aduType: AduType;
@@ -36,11 +45,13 @@ export interface AduProjectDetails {
   widthFt?: number;
   depthFt?: number;
   /** Above-ground stories; the ADU's gross floor area is estimated as footprint x stories. */
-  stories: number;
+  /** Not used by an attached ADU, whose floor area is declared. */
+  stories?: number;
   bedrooms: number;
   /** Greatest height of a new ADU, in feet. */
   heightFt?: number;
   conversion?: AduConversionDetails;
+  attached?: AduAttachedDetails;
   alleyAdjacent: boolean;
   /** Principal dwelling units already on the lot (not counting ADUs). */
   existingPrincipalDwellingUnits: number;
@@ -87,6 +98,7 @@ export const AduRuleType = {
   TREES: "ADU_A9_TREES",
   DESIGN_STANDARDS: "ADU_A10_DESIGN_STANDARDS",
   CONVERSION: "ADU_A11_CONVERSION_OF_EXISTING_ACCESSORY_STRUCTURE",
+  ATTACHED: "ADU_A12_ATTACHED_TO_OR_INSIDE_HOUSE",
 } as const;
 export type AduRuleType = (typeof AduRuleType)[keyof typeof AduRuleType];
 
@@ -183,6 +195,14 @@ export interface AduConversionSpec {
   waivesSetbacksAndLotCoverage: boolean;
   /** The Director may allow waivers and modifications as a Type I decision (SMC 23.42.022.H.3.a). */
   directorMayWaiveAndModify: boolean;
+}
+
+export interface AduAttachedSpec {
+  ruleType: typeof AduRuleType.ATTACHED;
+  /** The size cap does not apply to an attached ADU in a portion of the structure that existed before this date (ISO date; SMC 23.42.022.H.4). */
+  capExemptionBeforeDate: string;
+  /** Up to this much floor area in an attached garage is not counted toward the size cap (SMC 23.42.022.G.2.a). */
+  attachedGarageExclusionSqFt: number;
 }
 
 export type AduFeasibilityHeadline = "BLOCKED" | "LIKELY_CONSTRAINED" | "LOOKS_FEASIBLE" | "CANNOT_TELL";

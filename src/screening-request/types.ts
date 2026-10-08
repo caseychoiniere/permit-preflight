@@ -283,6 +283,7 @@ export interface DeckProjectConfiguration {
 export const AduTypeValue = {
   DETACHED_NEW: "DETACHED_NEW",
   CONVERSION_EXISTING: "CONVERSION_EXISTING",
+  ATTACHED_TO_HOUSE: "ATTACHED_TO_HOUSE",
 } as const;
 export type AduTypeValue = (typeof AduTypeValue)[keyof typeof AduTypeValue];
 
@@ -312,6 +313,25 @@ export interface AduConversionConfiguration {
   primaryDwellingSelection?: PrimaryDwellingSelection;
 }
 
+/** Unit 11 Slice 5 - an ADU inside or attached to the existing house (a basement, attic, garage or room conversion, or a new addition). Declared only,
+ * like a fence or deck: nothing is placed on the map (an addition's position is not collected, and a unit inside the house changes no exterior wall). */
+export interface AduAttachedConfiguration {
+  aduType: typeof AduTypeValue.ATTACHED_TO_HOUSE;
+  /** Gross floor area of the ADU as the code counts it: leave out underground floors and up to 250 sq ft of an attached garage. */
+  grossFloorAreaSqFt: number;
+  bedrooms: number;
+  /** Is any part of the ADU in a new addition or expansion of the house? */
+  includesAddition: boolean;
+  /** Did the part of the house the ADU would be in exist before July 23, 2023? undefined = not sure. */
+  portionExistedBeforeJuly2023?: boolean;
+  existingPrincipalDwellingUnits: number;
+  existingAduCount: number;
+  existingHouseBuiltBefore1982?: boolean;
+  existingChargeableFloorAreaSqFt?: number;
+  /** Lot-line roles are not used by an attached ADU; kept optional so a shared intake payload shape stays valid. */
+  lotLineRoleAssignment?: LotLineRoleAssignment;
+}
+
 export interface AduNewDetachedConfiguration {
   aduType: typeof AduTypeValue.DETACHED_NEW;
   widthFt: number;
@@ -330,7 +350,7 @@ export interface AduNewDetachedConfiguration {
   primaryDwellingSelection?: PrimaryDwellingSelection;
 }
 
-export type AduProjectConfiguration = AduNewDetachedConfiguration | AduConversionConfiguration;
+export type AduProjectConfiguration = AduNewDetachedConfiguration | AduConversionConfiguration | AduAttachedConfiguration;
 
 /** Unit 4 - `ProjectDetails` (domain-entities.md). Neither member carries its own `projectType`
  * discriminant field - the sibling `ScreeningRequest.projectType` column is the actual
@@ -758,9 +778,22 @@ const AduConversionSchema = z.object({
   ...AduCommonFields,
 });
 
-/** Unit 11's Boundary Validator schema for ADU intake (a new detached ADU or the conversion of an existing
- * accessory structure, discriminated by `aduType`). Counts are integers; nothing is defaulted. */
-export const AduProjectConfigurationSchema = z.discriminatedUnion("aduType", [AduNewDetachedSchema, AduConversionSchema]).superRefine((value, ctx) => {
+const AduAttachedSchema = z.object({
+  aduType: z.literal(AduTypeValue.ATTACHED_TO_HOUSE),
+  grossFloorAreaSqFt: z.number().finite().positive().max(10_000),
+  bedrooms: z.number().int().min(0).max(8),
+  includesAddition: z.boolean(),
+  portionExistedBeforeJuly2023: z.boolean().optional(),
+  existingPrincipalDwellingUnits: z.number().int().min(1).max(10),
+  existingAduCount: z.number().int().min(0).max(10),
+  existingHouseBuiltBefore1982: z.boolean().optional(),
+  existingChargeableFloorAreaSqFt: z.number().finite().nonnegative().max(200_000).optional(),
+  lotLineRoleAssignment: LotLineRoleAssignmentSchema.optional(),
+});
+
+/** Unit 11's Boundary Validator schema for ADU intake (a new detached ADU, the conversion of an existing accessory
+ * structure, or an ADU attached to or inside the house, discriminated by `aduType`). Counts are integers; nothing is defaulted. */
+export const AduProjectConfigurationSchema = z.discriminatedUnion("aduType", [AduNewDetachedSchema, AduConversionSchema, AduAttachedSchema]).superRefine((value, ctx) => {
   if (value.aduType !== AduTypeValue.CONVERSION_EXISTING) return;
   const dwelling = value.primaryDwellingSelection;
   if (value.convertedStructure && dwelling?.status === PrimaryDwellingSelectionStatus.SELECTED && dwelling.outlineId === value.convertedStructure.outlineId) {

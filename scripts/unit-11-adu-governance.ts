@@ -3,7 +3,7 @@
  * Policy ("lifecycle advancement where justified"). Uses only the existing mechanisms -
  * `bootstrapUnit6bGovernance` (insert-if-absent + RULE_BOOTSTRAPPED audit, TRIAGED only) and the real admin
  * lifecycle functions (sourceVerifyRule -> markRuleTested -> approveRule) - never a direct DB edit. Advances
- * the eleven ADU rules to APPROVED and STOPS: it never calls activateRule (APPROVED -> ACTIVE is a founder
+ * the twelve ADU rules to APPROVED and STOPS: it never calls activateRule (APPROVED -> ACTIVE is a founder
  * decision, and ADU activation has NOT been authorized) and never touches any non-ADU row.
  *
  * Safe to re-run: bootstrap never overwrites; a row already APPROVED is skipped; any other unexpected state
@@ -34,6 +34,7 @@ const SOURCES: Record<string, string> = {
   "adu-a8-amenity-area-2026": `${BASE}: SMC 23.44.110.A, E, H`,
   "adu-a9-trees-2026": `${BASE}: SMC 23.44.120.A Table A and B`,
   "adu-a10-design-standards-2026": `${BASE}: SMC 23.44.140.A.2, C, D, E`,
+  "adu-a12-attached-2026": `${BASE}: SMC 23.42.022.D, E, G.2.a, H.4; SMC 23.44.140.A.1`,
   "adu-a11-conversion-2026": `${BASE}: SMC 23.42.022.H.1-H.3 (conversion of an existing accessory structure), SMC 23.44.140.A.1; SMC 22.206.020-.140 named by H.3.b`,
 };
 const DESIGN = "aidlc-docs/construction/unit-11-adus/research-findings.md and customer-questions-and-scope.md";
@@ -48,7 +49,7 @@ const QUALITY: Record<string, ("AUTHORITATIVE" | "GENERAL_LOCATION_ONLY")[]> = {
 async function main() {
   const operatorId = requireOperatorId();
   if (!operatorId) throw new Error("ADMIN_OPERATOR_ID is not configured; pass it explicitly when invoking this script.");
-  if (realAduCandidates.length !== 11) throw new Error(`Expected exactly 11 ADU candidates, found ${realAduCandidates.length}.`);
+  if (realAduCandidates.length !== 12) throw new Error(`Expected exactly 12 ADU candidates, found ${realAduCandidates.length}.`);
   const db = getDb();
 
   const candidates: BootstrapCandidate[] = realAduCandidates.map((input) => {
@@ -61,7 +62,7 @@ async function main() {
 
   const ids = candidates.map((c) => c.fixedRowId);
   const rows = await db.select().from(regulatoryRules).where(inArray(regulatoryRules.id, ids));
-  if (rows.length !== 11) throw new Error(`Expected 11 ADU rows in the database, found ${rows.length}.`);
+  if (rows.length !== 12) throw new Error(`Expected 12 ADU rows in the database, found ${rows.length}.`);
   for (const row of rows) {
     if (row.lifecycleState === "ACTIVE") throw new Error("An ADU rule is ACTIVE - refusing to proceed.");
     if (row.lifecycleState !== "TRIAGED" && row.lifecycleState !== "APPROVED") {

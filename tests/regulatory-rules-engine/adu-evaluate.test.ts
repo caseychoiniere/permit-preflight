@@ -387,3 +387,123 @@ describe("conversion of an existing accessory structure (Unit 11 Slice 4)", () =
     expect(get("Conversion keeps the footprint and height")).toBe("Yes");
   });
 });
+
+describe("ADU inside or attached to the house (Unit 11 Slice 5)", () => {
+  const att = (a: Partial<NonNullable<AduProjectDetails["attached"]>> = {}, over: Partial<AduProjectDetails> = {}): Partial<AduProjectDetails> => ({
+    aduType: "ATTACHED_TO_HOUSE",
+    widthFt: undefined,
+    depthFt: undefined,
+    heightFt: undefined,
+    stories: undefined,
+    distanceToRearLotLineFt: undefined,
+    distanceToSideLotLineFt: undefined,
+    distanceToFrontLotLineFt: undefined,
+    distanceToDwellingFt: undefined,
+    attached: { grossFloorAreaSqFt: 700, includesAddition: false, portionExistedBeforeJuly2023: true, ...a },
+    ...over,
+  });
+
+  it("an ADU inside the existing house: count, density and size are evaluated; no setback, separation, height or lot-coverage finding exists; exterior standards are described as REQUIRES_VERIFICATION", () => {
+    const o = run(att());
+    expect(oc(by(o, "Number of ADUs on the lot"))).toBe("KNOWN/PASS");
+    expect(oc(by(o, "Dwelling units allowed on the lot (density)"))).toBe("KNOWN/PASS");
+    expect(oc(by(o, "ADU size limit"))).toBe("KNOWN/PASS");
+    for (const s of ["ADU rear setback", "ADU side setback", "ADU front setback", "Separation from the existing dwelling", "ADU height", "Lot coverage"]) expect(by(o, s), s).toBeUndefined();
+    const siting = by(o, "Setbacks, height and lot coverage (attached ADU)")!;
+    expect(siting.classification).toBe("REQUIRES_VERIFICATION");
+    expect(siting.explanationBasis).toContain("adds no exterior wall");
+    expect(o.feasibility.headline).toBe("LOOKS_FEASIBLE");
+    expect(o.findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+  });
+
+  it("size: the cap and H.4 - over-cap is a KNOWN FAIL only when the part of the house did NOT exist before July 23, 2023", () => {
+    const size = (a: Partial<NonNullable<AduProjectDetails["attached"]>>, bedrooms = 2) => by(run(att({ grossFloorAreaSqFt: 1300, ...a }, { bedrooms })), "ADU size limit")!;
+    expect(oc(size({ portionExistedBeforeJuly2023: false }))).toBe("KNOWN/FAIL");
+    expect(oc(size({ portionExistedBeforeJuly2023: true, includesAddition: false }))).toBe("REQUIRES_VERIFICATION");
+    expect(size({ portionExistedBeforeJuly2023: true, includesAddition: false }).explanationBasis).toContain("SMC 23.42.022.H.4");
+    expect(oc(size({ portionExistedBeforeJuly2023: true, includesAddition: true }))).toBe("REQUIRES_VERIFICATION");
+    expect(size({ portionExistedBeforeJuly2023: true, includesAddition: true }).explanationBasis).toContain("not clear that the exception covers all of it");
+    expect(oc(size({ portionExistedBeforeJuly2023: undefined, includesAddition: false }))).toBe("REQUIRES_VERIFICATION");
+    // three or more bedrooms: 1,200 cap
+    expect(oc(by(run(att({ grossFloorAreaSqFt: 1150, portionExistedBeforeJuly2023: false }, { bedrooms: 3 })), "ADU size limit"))).toBe("KNOWN/PASS");
+    expect(oc(by(run(att({ grossFloorAreaSqFt: 1150, portionExistedBeforeJuly2023: false }, { bedrooms: 2 })), "ADU size limit"))).toBe("KNOWN/FAIL");
+  });
+
+  it("over-cap attached findings cite the attached rule (A12, where H.4 decides it); an in-limit result cites the size rule (A2)", () => {
+    const over = by(run(att({ grossFloorAreaSqFt: 1300, portionExistedBeforeJuly2023: true })), "ADU size limit")!;
+    expect(over.appliedRule?.id).toBe(ADU_FIXED_ROW_IDS["adu-a12-attached-2026"]);
+    expect(over.appliedRule?.citation.smcSections).toContain("SMC 23.42.022.H.4");
+    const failing = by(run(att({ grossFloorAreaSqFt: 1300, portionExistedBeforeJuly2023: false })), "ADU size limit")!;
+    expect(failing.appliedRule?.id).toBe(ADU_FIXED_ROW_IDS["adu-a12-attached-2026"]);
+    expect(by(run(att()), "ADU size limit")!.appliedRule?.id).toBe(ADU_FIXED_ROW_IDS["adu-a2-size-limit-2026"]);
+  });
+
+  it("FAR is never definite for an attached ADU, in every branch: no existing area, existing area under or over the limit, with or without an addition", () => {
+    // a 6,000 sq ft lot with 2 units after the ADU: 3,000 sq ft per unit -> 0.8 band -> 4,800 sq ft
+    for (const addition of [false, true]) {
+      for (const existing of [undefined, 2000, 4800, 6000]) {
+        const f = by(run(att({ includesAddition: addition }, { existingChargeableFloorAreaSqFt: existing }), { parcelAreaSqFt: 6000 }), "Floor area ratio (FAR)")!;
+        expect(f.classification, `addition=${addition} existing=${existing}`).toBe("REQUIRES_VERIFICATION");
+        expect(f.complianceOutcome).toBeUndefined();
+      }
+    }
+  });
+
+  it("the siting finding makes no claim that the standards are 'not triggered': it says they are not measured and SDCI determines whether any exterior change brings them into play", () => {
+    const t = by(run(att()), "Setbacks, height and lot coverage (attached ADU)")!.explanationBasis;
+    expect(t).not.toMatch(/not triggered/i);
+    expect(t).toContain("does not measure the house against");
+    expect(t).toContain("for SDCI to determine");
+  });
+
+  it("with an addition: the siting finding says the addition must meet the standards and was not measured; FAR is never a definite result", () => {
+    const o = run(att({ includesAddition: true }, { existingChargeableFloorAreaSqFt: 2000 }));
+    expect(by(o, "Setbacks, height and lot coverage (attached ADU)")!.explanationBasis).toContain("where it would go was not collected");
+    const far = by(o, "Floor area ratio (FAR)")!;
+    expect(far.classification).toBe("REQUIRES_VERIFICATION");
+    expect(far.explanationBasis).toContain("can add chargeable floor area that was not collected");
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("Describe the addition");
+    expect(by(o, "Design standards (pedestrian access, street-facing entry)")!.explanationBasis).toContain("pedestrian path");
+  });
+
+  it("inside the house with no addition, design standards appear not to apply (SMC 23.44.140.A.1) as REQUIRES_VERIFICATION", () => {
+    const f = by(run(att()), "Design standards (pedestrian access, street-facing entry)")!;
+    expect(f.classification).toBe("REQUIRES_VERIFICATION");
+    expect(f.explanationBasis).toContain("SMC 23.44.140.A.1");
+  });
+
+  it("the amenity exemption (one new unit on a pre-1982 house) and tree requirement still apply to an attached ADU", () => {
+    expect(oc(by(run(att({}, { existingHouseBuiltBefore1982: true })), "Amenity area"))).toBe("KNOWN/PASS");
+    expect(oc(by(run(att({}, { existingHouseBuiltBefore1982: false })), "Amenity area"))).toBe("REQUIRES_VERIFICATION");
+    expect(by(run(att()), "Tree requirement")).toBeDefined();
+  });
+
+  it("count and density still bind (a lot may have at most two ADUs)", () => {
+    expect(oc(by(run(att({}, { existingAduCount: 2 })), "Number of ADUs on the lot"))).toBe("KNOWN/FAIL");
+  });
+
+  it("attached claims need their rules: without A12 the attached size and siting are uncovered and the headline is not LOOKS_FEASIBLE; without the size rule only size disappears", () => {
+    const noA12 = run(att(), {}, without(AduRuleType.ATTACHED));
+    expect(by(noA12, "ADU size limit")).toBeUndefined();
+    expect(by(noA12, "Setbacks, height and lot coverage (attached ADU)")).toBeUndefined();
+    expect(noA12.uncoveredConstraintTypes).toEqual(expect.arrayContaining(["attached ADU size limit", "ADU attached to or inside the house"]));
+    expect(noA12.feasibility.headline).toBe("CANNOT_TELL");
+    expect(by(run(att(), {}, without(AduRuleType.SIZE_LIMIT)), "ADU size limit")).toBeUndefined();
+  });
+
+  it("zoning that is not verified NR suppresses an attached ADU exactly as it does the other kinds", () => {
+    const o = run(att(), {}, ALL, { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays });
+    expect(o.feasibility.headline).toBe("CANNOT_TELL");
+    expect(o.findings.some((f) => f.complianceOutcome !== undefined || f.subject.startsWith("Setbacks, height"))).toBe(false);
+  });
+
+  it("declared inputs: the floor area as the code counts it, the addition answer and the existed-before answer; no alley or footprint rows", () => {
+    const rows = run(att({ portionExistedBeforeJuly2023: undefined })).declaredInputs;
+    const get = (l: string) => rows.find((r) => r.label === l)?.value;
+    expect(get("Type of ADU")).toBe("Inside or attached to the existing house");
+    expect(get("Gross floor area (as the code counts it)")).toBe("700 sq ft");
+    expect(get("Any part in a new addition")).toBe("No");
+    expect(get("The part of the house it is in existed before July 23, 2023")).toBe("Not sure");
+    expect(rows.some((r) => r.label === "Rear lot line is on an alley" || r.label === "Footprint")).toBe(false);
+  });
+});

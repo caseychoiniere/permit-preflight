@@ -36,6 +36,7 @@ import { ReviewPlacementMap } from "../components/ReviewPlacementMap.js";
 import { FenceDetailsForm } from "./FenceDetailsForm.js";
 import { DeckDetailsForm } from "./DeckDetailsForm.js";
 import { AduDetailsForm, type AduDeclaredDetails } from "./AduDetailsForm.js";
+import { AduAttachedDetailsForm, type AduAttachedDeclaredDetails } from "./AduAttachedDetailsForm.js";
 import { AduConversionDetailsForm, type AduConversionDeclaredDetails } from "./AduConversionDetailsForm.js";
 import { describeAduDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-adu.js";
 import { describeDeckDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-deck.js";
@@ -162,10 +163,12 @@ export default function ConfigurePage() {
   // Unit 11 - the declared ADU details; the map step adds placement, lot-line roles and the dwelling selection.
   const [aduDetails, setAduDetails] = useState<AduDeclaredDetails | null>(null);
   // Unit 11 Slice 4 - converting an existing building: its declared details, and which mapped building was chosen.
-  const [aduMode, setAduMode] = useState<"NEW" | "CONVERSION">("NEW");
+  const [aduMode, setAduMode] = useState<"NEW" | "CONVERSION" | "ATTACHED">("NEW");
+  const [aduAttached, setAduAttached] = useState<AduAttachedDeclaredDetails | null>(null);
   const [aduConversion, setAduConversion] = useState<AduConversionDeclaredDetails | null>(null);
   const [convertedOutlineId, setConvertedOutlineId] = useState<string | null>(null);
   const isConversion = projectType === ProjectType.ADU && aduMode === "CONVERSION";
+  const isAttached = projectType === ProjectType.ADU && aduMode === "ATTACHED";
   const [placement, setPlacement] = useState<PlacementSelection | null>(null);
   const [lotLineSelection, setLotLineSelection] = useState<LotLineSelection | null>(null);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
@@ -292,7 +295,7 @@ export default function ConfigurePage() {
     }
   }
 
-  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | typeof ProjectType.ADU, mode: "NEW" | "CONVERSION" = "NEW") {
+  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | typeof ProjectType.ADU, mode: "NEW" | "CONVERSION" | "ATTACHED" = "NEW") {
     setAduMode(mode);
     const res = await fetch("/api/screening-requests", {
       method: "POST",
@@ -347,6 +350,24 @@ export default function ConfigurePage() {
     setAduDetails(details);
     setDimensions({ widthFt: details.widthFt, depthFt: details.depthFt, heightFt: details.heightFt, alleyAdjacent: details.alleyAdjacent });
     setStep("PLACEMENT");
+  }
+
+  /** Unit 11 Slice 5 - an attached ADU is declared, not placed: validate (server-side too) and go straight to review. */
+  async function submitAduAttached(details: AduAttachedDeclaredDetails) {
+    if (!screeningRequestId) return;
+    setServerErrors([]);
+    const res = await fetch(`/api/screening-requests/${screeningRequestId}/project-details`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(details),
+    });
+    const result = await res.json();
+    if (result.issues) {
+      setServerErrors(result.issues);
+      return;
+    }
+    setAduAttached(details);
+    setStep("SUMMARY");
   }
 
   /** Unit 11 Slice 4 - the declared conversion details; the map step then collects the building, lot lines and main house. */
@@ -454,7 +475,7 @@ export default function ConfigurePage() {
   }
 
   // Units 7-8 - a fence or deck has no placement step, so its tracker and back-navigation skip it.
-  const visibleSteps = projectType === ProjectType.FENCE || projectType === ProjectType.DECK ? STEPS.filter((s) => s.key !== "PLACEMENT") : STEPS;
+  const visibleSteps = projectType === ProjectType.FENCE || projectType === ProjectType.DECK || isAttached ? STEPS.filter((s) => s.key !== "PLACEMENT") : STEPS;
 
   return (
     // Layout pass (2026-08-30) - the Placement step specifically needs more horizontal room than
@@ -563,6 +584,9 @@ export default function ConfigurePage() {
                 <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "CONVERSION")}>
                   Screen converting an existing garage or shed into an ADU
                 </Button>
+                <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "ATTACHED")}>
+                  Screen an ADU inside or attached to my house (basement, attic, garage, addition)
+                </Button>
               </>
             )}
           </div>
@@ -576,7 +600,11 @@ export default function ConfigurePage() {
 
       {step === "DETAILS" && projectType === ProjectType.DECK && <DeckDetailsForm onSubmit={submitDeck} onBack={goToPreviousStep} serverErrors={serverErrors} />}
 
-      {step === "DETAILS" && projectType === ProjectType.ADU && !isConversion && (
+      {step === "DETAILS" && isAttached && (
+        <AduAttachedDetailsForm onSubmit={submitAduAttached} onBack={goToPreviousStep} serverErrors={serverErrors} initial={aduAttached ?? undefined} />
+      )}
+
+      {step === "DETAILS" && projectType === ProjectType.ADU && !isConversion && !isAttached && (
         <AduDetailsForm onSubmit={submitAduDetails} onBack={goToPreviousStep} serverErrors={serverErrors} initial={aduDetails ?? undefined} />
       )}
 
@@ -1120,7 +1148,45 @@ export default function ConfigurePage() {
         </>
       )}
 
-      {step === "SUMMARY" && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && (
+      {step === "SUMMARY" && isAttached && aduAttached && (
+        <>
+          <Card>
+            <h1 className="text-lg font-semibold text-slate-900">Review</h1>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Parcel</dt>
+                <dd className="font-medium text-slate-900">{parcelId}</dd>
+              </div>
+              {describeAduDeclaredInputs({
+                projectType: "adu",
+                ...aduAttached,
+                attached: { grossFloorAreaSqFt: aduAttached.grossFloorAreaSqFt, includesAddition: aduAttached.includesAddition, portionExistedBeforeJuly2023: aduAttached.portionExistedBeforeJuly2023 },
+                alleyAdjacent: false,
+              }).map((row) => (
+                <div key={row.label} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                  <dt className="text-slate-500">{row.label}</dt>
+                  <dd className="font-medium text-slate-900">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-6 flex gap-2">
+              <Button variant="secondary" onClick={goToPreviousStep}>
+                &larr; Previous
+              </Button>
+              <Button variant="primary" onClick={checkout}>
+                Continue to payment
+              </Button>
+            </div>
+            {authorizedMessage && (
+              <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {authorizedMessage}
+              </p>
+            )}
+          </Card>
+        </>
+      )}
+
+      {step === "SUMMARY" && !isAttached && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && (
         <>
           <Card>
             <h1 className="text-lg font-semibold text-slate-900">Review</h1>

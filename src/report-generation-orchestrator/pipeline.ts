@@ -399,7 +399,9 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // Unit 11 - an ADU is placed on the parcel (needs the existing buildings), screened for critical areas, and its
     // reduced small-lot side setback depends on frequent-transit-service-area membership.
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.ADU) {
-      retrievers.push(createSeattleBuildingOutlinesRetriever(), createSeattleEcaRetriever(), createSeattleFrequentTransitRetriever());
+      // An ADU inside or attached to the house is declared only: it needs the critical-area screen (density) but no building outlines or transit area.
+      const declaredOnly = (snapshot.projectDetails as { aduType?: string }).aduType === "ATTACHED_TO_HOUSE";
+      retrievers.push(...(declaredOnly ? [createSeattleEcaRetriever()] : [createSeattleBuildingOutlinesRetriever(), createSeattleEcaRetriever(), createSeattleFrequentTransitRetriever()]));
     }
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
       retrievers.push(createSeattleBuildingOutlinesRetriever());
@@ -1093,6 +1095,9 @@ async function runAduPipeline(
   const details = snapshot.projectDetails as AduProjectConfiguration;
   const conversionDetails = details.aduType === "CONVERSION_EXISTING" ? details : undefined;
   const newDetails = details.aduType === "DETACHED_NEW" ? details : undefined;
+  const attachedDetails = details.aduType === "ATTACHED_TO_HOUSE" ? details : undefined;
+  // An attached ADU is declared only: no building outlines, lot-line roles or placement are used.
+  const dwellingSelectionInput = newDetails?.primaryDwellingSelection ?? conversionDetails?.primaryDwellingSelection;
   const frequentTransitFact = getFact<FrequentTransitFactValue>(propertyContext, "frequent-transit-service-area");
   const parcelGeometryAvailable = geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value !== undefined;
 
@@ -1122,7 +1127,7 @@ async function runAduPipeline(
 
   const buildingsFetched = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value);
   let structures: ExistingStructure[] | undefined;
-  if (buildingsFetched) structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, details.primaryDwellingSelection);
+  if (buildingsFetched && !attachedDetails) structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, dwellingSelectionInput);
   const primaryDwelling = structures ? findPrimaryDwelling(structures) : undefined;
 
   if (conversionDetails) {
@@ -1154,7 +1159,7 @@ async function runAduPipeline(
     footprintProjected = computed.footprintProjected;
   }
 
-  const roles = details.lotLineRoleAssignment;
+  const roles = newDetails?.lotLineRoleAssignment ?? conversionDetails?.lotLineRoleAssignment;
   if (distances !== undefined || (parcelGeometryAvailable && footprintProjected && roles)) {
     if (roles?.status === LotLineRoleStatus.INSUFFICIENT) {
       setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
@@ -1202,7 +1207,7 @@ async function runAduPipeline(
     buildingFootprintsAvailable,
     footprintProjected: Boolean(footprintProjected),
     primaryDwellingFound,
-    primaryDwellingSelectionStatus: details.primaryDwellingSelection?.status === "SELECTED" ? "SELECTED" : undefined,
+    primaryDwellingSelectionStatus: dwellingSelectionInput?.status === "SELECTED" ? "SELECTED" : undefined,
   });
   const dwellingEvidenceGapReason = deriveDwellingSeparationEvidenceGapReason({ case: dwellingGapCase });
   if (dwellingGapCase === "SELECTION_NOT_MATCHED") dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
@@ -1221,9 +1226,11 @@ async function runAduPipeline(
           },
         }
       : {}),
-    stories: details.stories,
+    ...(attachedDetails
+      ? { attached: { grossFloorAreaSqFt: attachedDetails.grossFloorAreaSqFt, includesAddition: attachedDetails.includesAddition, portionExistedBeforeJuly2023: attachedDetails.portionExistedBeforeJuly2023 } }
+      : { stories: (newDetails ?? conversionDetails)!.stories }),
     bedrooms: details.bedrooms,
-    alleyAdjacent: details.alleyAdjacent,
+    alleyAdjacent: attachedDetails ? false : (newDetails ?? conversionDetails)!.alleyAdjacent,
     existingPrincipalDwellingUnits: details.existingPrincipalDwellingUnits,
     existingAduCount: details.existingAduCount,
     existingHouseBuiltBefore1982: details.existingHouseBuiltBefore1982,

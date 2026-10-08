@@ -1867,3 +1867,12 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: No founder-only condition hit. Open for the founder: activate the eleven ADU rules and flip `isAduScreeningCoverageReady()`. Next: Slice 5 (attached ADU).
 
 ---
+
+## Unit 11 (ADUs) Slice 5 - ADU Inside or Attached to the House; Rule A12 APPROVED (Not Activated)
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (Standing) "BUILD ADUs NEXT ... KEEP MOVING"; ADU rules advance to APPROVED only.
+**AI Response**: Read SMC 23.42.022.D, E, G, H.4 and SMC 23.44.140.A.1 live. Built the declared-only attached path (no map; four-step tracker), schema variant, evaluator branch, rule A12, previews and parity coverage, a live pipeline case on parcel 1498301270, and browser-verified the entry point, form and review. Ran the governance script: A12 -> APPROVED (adu APPROVED 12; zero ACTIVE).
+**Reviewer**: ESCALATE (RESERVED_FOUNDER; decision f83744f4-0d99-4dba-ac36-f984adcf717d) on authority; recorded. Fixed: over-cap findings now cite A12 where H.4 decides them; the claim that exterior standards are "not triggered" was replaced by "not measured, for SDCI"; exhaustive attached-FAR tests added; building-outline and transit retrievals skipped for attached reports. Two unrelated live-network integration tests (Anthropic, Seattle outlines) flaked once on timeout and passed on rerun.
+**Context**: No founder-only condition hit. Open for the founder: activate the twelve ADU rules and flip `isAduScreeningCoverageReady()`. The ADU unit is now customer-ready in the sense of slice 1-5 scope; next: evaluate Unit 10 (general additions) per the roadmap, and Slice 2 (real shed/garage accessory rules).
+
+---

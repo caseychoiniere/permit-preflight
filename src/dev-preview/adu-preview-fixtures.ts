@@ -43,6 +43,7 @@ export const ADU_PREVIEW_RULE_SPECS: Record<string, Record<string, unknown>> = {
     lotSqFtPerNewTree: 2500,
   },
   [AduRuleType.DESIGN_STANDARDS]: { pedestrianAccessMinWidthFt: 3, streetFacingWithinFt: 40, weatherProtectionFt: 3, facadeOpeningsPercent: 20 },
+  [AduRuleType.ATTACHED]: { capExemptionBeforeDate: "2023-07-23", attachedGarageExclusionSqFt: 250 },
   [AduRuleType.CONVERSION]: {
     existingBeforeDate: "2023-07-23",
     housingCodeFirstSection: "SMC 22.206.020",
@@ -91,6 +92,20 @@ const CONVERSION_PROJECT: Partial<AduProjectDetails> = {
   distanceToFrontLotLineFt: 90,
   distanceToDwellingFt: 14,
   conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true },
+};
+
+/** Overrides that turn the base project into an ADU inside the existing house (700 sq ft, no addition, the part of the house existed before the date). */
+const ATTACHED_PROJECT: Partial<AduProjectDetails> = {
+  aduType: "ATTACHED_TO_HOUSE",
+  widthFt: undefined,
+  depthFt: undefined,
+  heightFt: undefined,
+  stories: undefined,
+  distanceToRearLotLineFt: undefined,
+  distanceToSideLotLineFt: undefined,
+  distanceToFrontLotLineFt: undefined,
+  distanceToDwellingFt: undefined,
+  attached: { grossFloorAreaSqFt: 700, includesAddition: false, portionExistedBeforeJuly2023: true },
 };
 
 export const ADU_PREVIEW_SCENARIOS: AduPreviewScenarioDefinition[] = [
@@ -157,6 +172,27 @@ export const ADU_PREVIEW_SCENARIOS: AduPreviewScenarioDefinition[] = [
     title: "Building to convert could not be matched (cannot tell)",
     project: { ...CONVERSION_PROJECT, conversion: { structureNotMatchedReason: "it is no longer among the mapped buildings on this parcel.", existedBeforeJuly2023: true, keepsFootprintAndHeight: true } },
     expected: { headline: "CANNOT_TELL", subjects: { "Building to convert": "REQUIRES_VERIFICATION" } },
+  },
+  {
+    id: "adu-attached-inside",
+    group: "Unit 11 - ADUs",
+    title: "ADU inside the existing house, no addition (looks feasible)",
+    project: { ...ATTACHED_PROJECT },
+    expected: { headline: "LOOKS_FEASIBLE", subjects: { "ADU size limit": "KNOWN/PASS", "Setbacks, height and lot coverage (attached ADU)": "REQUIRES_VERIFICATION" } },
+  },
+  {
+    id: "adu-attached-over-cap-existing",
+    group: "Unit 11 - ADUs",
+    title: "Large attached ADU in the existing part of the house (size cap may not apply)",
+    project: { ...ATTACHED_PROJECT, attached: { grossFloorAreaSqFt: 1300, includesAddition: false, portionExistedBeforeJuly2023: true } },
+    expected: { headline: "LOOKS_FEASIBLE", subjects: { "ADU size limit": "REQUIRES_VERIFICATION" } },
+  },
+  {
+    id: "adu-attached-blocked-size",
+    group: "Unit 11 - ADUs",
+    title: "Attached ADU in a new part of the house, over the size cap (blocked)",
+    project: { ...ATTACHED_PROJECT, attached: { grossFloorAreaSqFt: 1300, includesAddition: true, portionExistedBeforeJuly2023: false } },
+    expected: { headline: "BLOCKED", subjects: { "ADU size limit": "KNOWN/FAIL" } },
   },
   {
     id: "adu-uncovered-claims",

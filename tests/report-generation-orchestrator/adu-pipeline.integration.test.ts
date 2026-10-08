@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { getDb, type Db } from "../../src/db/client.js";
 import { screeningRequests, reportGenerationJobs, evidenceReportArtifacts, regulatoryRules } from "../../src/db/schema.js";
-import type { AduConversionConfiguration, AduNewDetachedConfiguration, ExistingPropertyScreeningRequestSnapshot } from "../../src/screening-request/types.js";
+import type { AduAttachedConfiguration, AduConversionConfiguration, AduNewDetachedConfiguration, ExistingPropertyScreeningRequestSnapshot } from "../../src/screening-request/types.js";
 import { createReportGenerationJob, claimQueuedJob } from "../../src/report-generation-job/repository.js";
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
@@ -112,7 +112,7 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
     }
   });
 
-  async function generate(details: AduNewDetachedConfiguration | AduConversionConfiguration, parcelPin: string = NR_PIN) {
+  async function generate(details: AduNewDetachedConfiguration | AduConversionConfiguration | AduAttachedConfiguration, parcelPin: string = NR_PIN) {
     const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: parcelPin, projectType: "adu", projectDetails: details };
     const [row] = await db.insert(screeningRequests).values({ workflowType: "EXISTING_PROPERTY", projectType: "adu", projectDetails: details, confirmedParcelId: parcelPin, snapshot }).returning({ id: screeningRequests.id });
     screeningIds.push(row!.id);
@@ -264,11 +264,36 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
     },
     180_000
   );
+
+  it(
+    "Slice 5: an ADU inside the existing house is declared only - evaluated on the real parcel's area, with no placement, outlines or lot-line roles, and the parcel drawn",
+    async () => {
+      const attached: AduAttachedConfiguration = { aduType: "ATTACHED_TO_HOUSE", grossFloorAreaSqFt: 700, bedrooms: 1, includesAddition: false, portionExistedBeforeJuly2023: true, existingPrincipalDwellingUnits: 1, existingAduCount: 0, existingHouseBuiltBefore1982: true };
+      const { job, artifact } = await generate(attached);
+      expect(job?.state).toBe("COMPLETE");
+      const findings = artifact!.findings as F[];
+      const by = (s: string) => findings.find((f) => f.subject === s);
+      expect(by("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN");
+      expect(by("Number of ADUs on the lot")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+      // Density is KNOWN/PASS, or REQUIRES_VERIFICATION when the live critical-area map indicates possible excluded land - never a FAIL here.
+      expect(by("Dwelling units allowed on the lot (density)")?.complianceOutcome).not.toBe("FAIL");
+      expect(by("ADU size limit")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+      expect(by("Amenity area")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" }); // single new unit on a pre-1982 house
+      expect(by("Setbacks, height and lot coverage (attached ADU)")?.classification).toBe("REQUIRES_VERIFICATION");
+      expect(findings.some((f) => /^ADU (rear|side|front)|^Separation|^Lot coverage|^ADU height/.test(f.subject))).toBe(false);
+      expect(feasibilityOf(artifact).headline).toBe("LOOKS_FEASIBLE");
+      const evidence = artifact!.evidence as { factType: string; value: unknown }[];
+      expect(evidence.map((e) => e.factType)).toEqual(expect.arrayContaining(["adu-declared-inputs", "adu-feasibility", "parcel-boundary-wgs84-display", "zoning"]));
+      expect(evidence.map((e) => e.factType)).not.toContain("existing-structures-wgs84-display");
+      expect(evidence.map((e) => e.factType)).not.toContain("proposed-footprint-wgs84-display");
+    },
+    120_000
+  );
 });
 
 describe.skipIf(hasDb)("ADU pipeline integration (skipped)", () => {
   it("documents why this suite did not run - DATABASE_URL is not provisioned", () => {
     expect(hasDb).toBe(false);
-    expect(realAduCandidates).toHaveLength(11);
+    expect(realAduCandidates).toHaveLength(12);
   });
 });

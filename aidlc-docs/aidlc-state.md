@@ -3868,3 +3868,7 @@ Design skipped (no new infrastructure or data source).
 ## UNIT 11 (ADUs) 2026-10-08 — Slice 4 (conversion of an existing garage or shed) built; A11 APPROVED, availability OFF
 
 - Conversion path: building chosen on the map (mapped outline = footprint), declarations (existed before July 23, 2023; keeps footprint and height), allowance states YES/NO/PARTIAL/UNSURE, no KNOWN fact about the allowance, separation never a KNOWN FAIL, height left to SDCI, Housing Code cited by range only. Rule `adu-a11-conversion-2026` APPROVED (adu APPROVED 11, ACTIVE 0). Next: Slice 5 (attached ADU), then Slice 2 (real shed/garage rules).
+
+## UNIT 11 (ADUs) 2026-10-08 — Slice 5 (ADU inside or attached to the house) built; A12 APPROVED; all five slices done, availability OFF
+
+- Attached ADU: declared-only, H.4-aware size, FAR never definite, exterior standards described not measured. Rule `adu-a12-attached-2026` APPROVED (adu APPROVED 12, ACTIVE 0). ADU screening now covers: new detached, conversion of an existing garage or shed, and inside/attached to the house; `isAduScreeningCoverageReady()` = false. Next per roadmap: evaluate Unit 10 (additions) against product opportunity; Slice 2 (real shed/garage rules, unblock garage).

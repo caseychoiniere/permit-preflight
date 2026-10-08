@@ -1,9 +1,9 @@
 /**
- * The eleven REAL Unit 11 (ADU) governance candidates (aidlc-docs/construction/unit-11-adus/). Real,
+ * The twelve REAL Unit 11 (ADU) governance candidates (aidlc-docs/construction/unit-11-adus/). Real,
  * non-fixture content (`isTestOnlyFixture: false`), mirroring fence-candidates.ts. Every threshold the
  * evaluator uses lives on `ruleSpecification` here - `evaluate-adu.ts` contains no SMC number as a literal.
  *
- * All eleven are Tier 1: each is a numeric threshold in current code text (SMC 23.42.022 and the NR
+ * All twelve are Tier 1: each is a numeric threshold in current code text (SMC 23.42.022 and the NR
  * development standards of chapter 23.44, as rewritten by Ordinance 127376 (2025)) with no Director
  * judgment or unresolved source conflict. The interpretive edges (averaged side setback, whether a
  * mapped building has floor area, ADUs counting toward the three-unit front setback, exclusion areas,
@@ -55,6 +55,21 @@ const CONVERSION_BASE = {
   conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true },
 };
 const CONVERSION_INTACT: AduTestInput = { project: CONVERSION_BASE };
+
+/** An ADU inside the existing house: 700 sq ft, one bedroom, no addition, the part of the house existed before the date. */
+const ATTACHED_BASE = {
+  aduType: "ATTACHED_TO_HOUSE",
+  widthFt: undefined,
+  depthFt: undefined,
+  heightFt: undefined,
+  stories: undefined,
+  distanceToRearLotLineFt: undefined,
+  distanceToSideLotLineFt: undefined,
+  distanceToFrontLotLineFt: undefined,
+  distanceToDwellingFt: undefined,
+  attached: { grossFloorAreaSqFt: 700, includesAddition: false, portionExistedBeforeJuly2023: true },
+};
+const ATTACHED_INSIDE: AduTestInput = { project: ATTACHED_BASE };
 
 export const realAduCandidates: DraftedRuleInput[] = [
   {
@@ -408,6 +423,42 @@ export const realAduCandidates: DraftedRuleInput[] = [
     ],
     isTestOnlyFixture: false,
   },
+  {
+    id: "adu-a12-attached-2026",
+    subject: "ADU attached to or inside the house - may be attached, detached or stacked; size cap does not apply to a portion that existed before July 23, 2023; up to 250 sq ft of attached garage not counted",
+    applicableProjectType: "adu",
+    applicableZone: "NR",
+    ruleSpecification: { ruleType: AduRuleType.ATTACHED, capExemptionBeforeDate: "2023-07-23", attachedGarageExclusionSqFt: 250 },
+    citation: { smcSections: ["SMC 23.42.022.D", "SMC 23.42.022.E", "SMC 23.42.022.G.2.a", "SMC 23.42.022.H.4", "SMC 23.44.140.A.1"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
+    caveats: [
+      DECLARED_CAVEAT,
+      {
+        category: "declared floor area and what existed",
+        description:
+          "The ADU's gross floor area is declared by the customer as the code counts it (underground floors and up to 250 sq ft of an attached garage left out), and whether the part of the house existed before July 23, 2023 is declared; neither is verified. The cap is a KNOWN failure only when the customer says that part of the house did not exist before the date; every other over-cap case (existing portion, addition mixed in, unsure) is REQUIRES_VERIFICATION because H.4 does not say how it applies to an ADU spanning existing and new space.",
+        affectedConditionOrInterpretation: "SMC 23.42.022.G.1, G.2.a, H.4",
+        sourceReferences: ["SMC 23.42.022.G", "SMC 23.42.022.H.4"],
+        resolutionStatus: "Resolved by design.",
+      },
+      {
+        category: "exterior standards not measured; FAR; design standards",
+        description:
+          "No position is collected for an attached ADU, so setbacks, height and lot coverage are described, never measured: an ADU inside the house with no addition adds no exterior wall (REQUIRES_VERIFICATION on the customer's declaration), and an addition is stated as needing to meet them. Converting space inside the house can add chargeable floor area that was not counted before, so the floor-area-ratio result is always REQUIRES_VERIFICATION. SMC 23.44.140.A.1 excludes new units added within existing structures from the design standards (REQUIRES_VERIFICATION).",
+        affectedConditionOrInterpretation: "Exterior standards, FAR and design standards for an attached ADU",
+        sourceReferences: ["SMC 23.44.050", "SMC 23.44.090", "SMC 23.44.140.A.1"],
+        resolutionStatus: "Resolved by design.",
+      },
+    ],
+    testCases: [
+      tc("POSITIVE", "A 700 sq ft basement ADU: within the cap (cites the size rule)", ATTACHED_INSIDE, "ADU size limit", "KNOWN/PASS", "adu-a2-size-limit-2026"),
+      tc("EXCEPTION", "A 1,300 sq ft ADU in the part of the house declared to exist before the date, no addition: the cap may not apply (H.4)", { project: { ...ATTACHED_BASE, attached: { grossFloorAreaSqFt: 1300, includesAddition: false, portionExistedBeforeJuly2023: true } } }, "ADU size limit", "REQUIRES_VERIFICATION"),
+      tc("NEGATIVE", "A 1,300 sq ft ADU in a part declared NOT to have existed before the date: the cap applies and it is over", { project: { ...ATTACHED_BASE, attached: { grossFloorAreaSqFt: 1300, includesAddition: false, portionExistedBeforeJuly2023: false } } }, "ADU size limit", "KNOWN/FAIL"),
+      tc("EXCEPTION", "Over the cap with part of the ADU in an addition: not clear that H.4 covers all of it", { project: { ...ATTACHED_BASE, attached: { grossFloorAreaSqFt: 1300, includesAddition: true, portionExistedBeforeJuly2023: true } } }, "ADU size limit", "REQUIRES_VERIFICATION"),
+      tc("POSITIVE", "An ADU inside the house with no addition: exterior standards are described, not asserted", ATTACHED_INSIDE, "Setbacks, height and lot coverage (attached ADU)", "REQUIRES_VERIFICATION"),
+      tc("EXCEPTION", "An addition is planned: it must meet the exterior standards, and where it would go is not collected", { project: { ...ATTACHED_BASE, attached: { grossFloorAreaSqFt: 700, includesAddition: true, portionExistedBeforeJuly2023: true } } }, "Setbacks, height and lot coverage (attached ADU)", "REQUIRES_VERIFICATION"),
+    ],
+    isTestOnlyFixture: false,
+  },
 ];
 
 export function tierForRealAduCandidate(_candidateId: string): "TIER_1" {
@@ -426,5 +477,6 @@ export const ADU_FIXED_ROW_IDS: Record<string, string> = {
   "adu-a8-amenity-area-2026": "02b91d3b-ce12-442a-b41e-48126b5c31c7",
   "adu-a9-trees-2026": "668700bc-5096-4130-b01f-867cacebefb4",
   "adu-a10-design-standards-2026": "de3dc5b6-81fc-449b-966a-4176f2858d1d",
+  "adu-a12-attached-2026": "f7e57574-f51a-4340-b230-c0fdd3ef3daa",
   "adu-a11-conversion-2026": "364c39eb-6cea-4398-80ee-c0a867d88de7",
 };

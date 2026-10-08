@@ -101,6 +101,87 @@ describe("fetchSeattleEcaFindings - fan-out isolation (mocked, deterministic)", 
     expect(findings.every((f) => f.mappedIntersectionResult !== undefined)).toBe(true);
   });
 
+  it("sends the parcel polygon in a POST form body, never in the URL (a large parcel makes a GET query string too long for the service)", async () => {
+    stubParcelBoundaryFetch();
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fetchLayer = vi.fn(async (url: string, _timeoutMs: number, init?: RequestInit) => {
+      calls.push({ url, init });
+      return intersectsResponse(false);
+    });
+    await fetchSeattleEcaFindings("4088801470", fetchLayer);
+    expect(calls).toHaveLength(24); // 12 per-hazard layers (known slides has three) + the same 12 in the combined service
+    for (const c of calls) {
+      expect(c.url).not.toContain("?");
+      expect(c.url).not.toContain("geometry");
+      expect(c.init?.method).toBe("POST");
+      const body = new URLSearchParams(String(c.init?.body));
+      expect(body.get("spatialRel")).toBe("esriSpatialRelIntersects");
+      expect(body.get("inSR")).toBe("2926");
+      expect(body.get("returnGeometry")).toBe("false");
+      expect(JSON.parse(body.get("geometry")!).rings[0]).toHaveLength(5);
+    }
+  });
+
+  it("[regression, 2026-10-08] every hazard is queried at its real layer id, and the combined fallback is that same hazard's layer - not the flood layer", async () => {
+    stubParcelBoundaryFetch();
+    const urls: string[] = [];
+    const fetchLayer = vi.fn(async (url: string) => {
+      urls.push(url);
+      return intersectsResponse(false);
+    });
+    await fetchSeattleEcaFindings("4088801470", fetchLayer);
+    const expected: Record<string, number[]> = {
+      Environmentally_Critical_Areas_Steep_Slope: [9],
+      Environmentally_Critical_Areas_Known_Slides: [1, 2, 3],
+      Environmentally_Critical_Areas_Potential_Slide_Areas: [7],
+      Environmentally_Critical_Areas_Riparian_Corridors: [8],
+      Environmentally_Critical_Areas_Wetlands: [10],
+      ECA_Fish_and_Wildlife_Habitat_Conservation_Area: [11],
+      ECA_Flood_Prone_Areas: [0],
+      ECA_Landfills_Historical: [4],
+      ECA_Liquefaction_Prone_Areas: [5],
+      ECA_Peat_Settlement_Prone_Areas: [6],
+    };
+    for (const [service, ids] of Object.entries(expected)) {
+      for (const id of ids) expect(urls.some((u) => u.includes(`/${service}/FeatureServer/${id}/query`)), `${service}/${id}`).toBe(true);
+    }
+    // The combined service is queried at every layer 0-11 (hazard-specific), not only at layer 0.
+    for (let id = 0; id <= 11; id++) expect(urls.some((u) => u.includes(`/Environmentally_Critical_Areas_ECA/FeatureServer/${id}/query`)), `combined/${id}`).toBe(true);
+  });
+
+  it("[regression] a hazard whose own layer is unavailable is never reported as 'no intersection' on the strength of a different hazard's layer", async () => {
+    stubParcelBoundaryFetch();
+    // Wetland's own service fails; the combined service says the flood layer (0) intersects and everything else (including combined wetland, 10) fails too.
+    const fetchLayer = vi.fn(async (url: string) => {
+      if (url.includes("/Environmentally_Critical_Areas_Wetlands/")) throw new Error("down");
+      if (url.includes("/Environmentally_Critical_Areas_ECA/FeatureServer/10/")) throw new Error("down");
+      return intersectsResponse(url.includes("/FeatureServer/0/"));
+    });
+    const findings = await fetchSeattleEcaFindings("4088801470", fetchLayer);
+    const wetland = findings.find((f) => f.hazardType === "wetland")!;
+    expect(wetland.individualLayerResult).toBeUndefined();
+    expect(wetland.combinedLayerResult).toBeUndefined();
+    expect(wetland.mappedIntersectionResult).toBe("INDETERMINATE");
+  });
+
+  it("a hazard with several layers (known slides) intersects when any one does, is clear only when all answered no, and is unavailable if one failed and none hit", async () => {
+    stubParcelBoundaryFetch();
+    const run = async (behaviour: (id: number) => Response | Error) => {
+      const fetchLayer = vi.fn(async (url: string) => {
+        const m = url.match(/\/Environmentally_Critical_Areas_Known_Slides\/FeatureServer\/(\d+)\/query/);
+        if (!m) return intersectsResponse(false);
+        const r = behaviour(Number(m[1]));
+        if (r instanceof Error) throw r;
+        return r;
+      });
+      return (await fetchSeattleEcaFindings("4088801470", fetchLayer)).find((f) => f.hazardType === "known_slides")!;
+    };
+    expect((await run((id) => (id === 2 ? intersectsResponse(true) : intersectsResponse(false)))).individualLayerResult).toBe(true);
+    expect((await run(() => intersectsResponse(false))).individualLayerResult).toBe(false);
+    expect((await run((id) => (id === 3 ? new Error("down") : intersectsResponse(false)))).individualLayerResult).toBeUndefined();
+    expect((await run((id) => (id === 3 ? new Error("down") : id === 1 ? intersectsResponse(true) : intersectsResponse(false)))).individualLayerResult).toBe(true);
+  });
+
   it("one layer's fetchLayerWithTimeout rejects while the rest succeed - that layer alone is unavailable, the fact stays usable", async () => {
     stubParcelBoundaryFetch();
     let call = 0;

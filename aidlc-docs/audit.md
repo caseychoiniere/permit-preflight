@@ -1909,3 +1909,12 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: Founder-authorized; no new gate. The Tier-2 professional review of the garage package remains on the post-POC Commercialization Gate list. Next: continue with the highest-value MVP work.
 
 ---
+
+## ECA Retriever Correction: Wrong Layer Ids, False "No Intersection" Fallback, GET Limit
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (Standing) "continue with the next highest-value MVP work automatically unless a genuine founder-only issue appears."
+**AI Response**: While confirming the large-parcel fix (zoning GET -> POST) also applied to the ECA retriever, a live check showed eight of the ten hazard layers UNAVAILABLE even on an ordinary parcel. Root cause: every layer except flood-prone and steep slope was queried at layer id 0, which does not exist in those services; and the "combined overlay" fallback only ever read layer 0 (the flood layer), so when a hazard's own query failed the resolver (BR-5.1: individual undefined + combined false) reported NO_INTERSECTION for a hazard that had never been checked - including the two map-dispositive hazards (priority habitat, peat). Fixed: correct layer ids verified against each service's FeatureServer listing (known slides = layers 1-3, any-of), the combined fallback is the same hazard's layer in the combined service, queries use POST (large parcels), unavailable stays unavailable. 4 new unit tests (ids, fallback isolation, any-of semantics, POST body) and a live test over an ordinary and a campus parcel. Real effect on reports: parcel 1498301270 now shows its genuine known-slide and potential-slide hits (previously unavailable/clean).
+**Reviewer**: APPROVE (decision 122d2ae7-5610-47e5-a3d0-f9bf446bd441).
+**Context**: Customer-visible reports generated before this fix on the staging deployment could show map-dispositive and other ECA hazards as "no mapped intersection" without having checked; the fix only makes reports more complete and more conservative. No founder-only condition.
+
+---

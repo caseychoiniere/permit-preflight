@@ -29,31 +29,37 @@ const ECA_ORG_BASE_URL = "https://services.arcgis.com/ZOyb2t4B0UYuYNYH/arcgis/re
 
 /** The approved subset of the 12 published ECA feature services actually queried here
  * (research-findings.md §3.1): the 10 individual per-hazard layers below, plus the one combined
- * overlay (queried separately, see COMBINED_LAYER). The 12th service
+ * service's matching layers (queried separately as the BR-5.1 fallback, see COMBINED_SERVICE_NAME). The 12th service
  * (`Environmentally_Critical_Area_Overlay_for_Zoned_Development_Capacity_Model_Current`) is
  * excluded entirely - the research explicitly disclaims it as "a modeling artifact - not a
  * regulatory layer." */
 interface EcaHazardLayer {
   hazardType: string;
+  /** The per-hazard feature service and the layer ids inside it (a hazard intersects when ANY of its layers does). */
   serviceName: string;
-  layerId: number;
+  layerIds: number[];
+  /** The same hazard's layer ids inside the combined ECA service (`Environmentally_Critical_Areas_ECA`), used only as the BR-5.1 fallback. */
+  combinedLayerIds: number[];
   layerVintageNote: string;
 }
 
+// Layer ids verified against each service's FeatureServer?f=json listing on 2026-10-08. They are NOT all 0: before this correction every layer but flood-prone
+// and steep slope was queried at id 0 (which does not exist in those services, or is the flood layer in the combined service), so the individual queries failed
+// and the combined fallback - which only ever looked at layer 0, the flood layer - reported "no intersection" for hazards that had never been checked.
 const HAZARD_LAYERS: EcaHazardLayer[] = [
-  { hazardType: "steep_slope", serviceName: "Environmentally_Critical_Areas_Steep_Slope", layerId: 9, layerVintageNote: "2001 PSLC LIDAR + 1993 contours; SDCI Director's Rule 12-2019." },
-  { hazardType: "known_slides", serviceName: "Environmentally_Critical_Areas_Known_Slides", layerId: 0, layerVintageNote: "Mapped historic landslide areas." },
-  { hazardType: "potential_slide_areas", serviceName: "Environmentally_Critical_Areas_Potential_Slide_Areas", layerId: 0, layerVintageNote: "Mapped potential landslide-prone areas." },
-  { hazardType: "riparian_corridor", serviceName: "Environmentally_Critical_Areas_Riparian_Corridors", layerId: 0, layerVintageNote: "100-ft riparian management area." },
-  { hazardType: "wetland", serviceName: "Environmentally_Critical_Areas_Wetlands", layerId: 0, layerVintageNote: "Category-based buffers; buffer width itself not computed here." },
-  { hazardType: "priority_habitat", serviceName: "ECA_Fish_and_Wildlife_Habitat_Conservation_Area", layerId: 0, layerVintageNote: "Priority habitat, corridors, species of local importance." },
-  { hazardType: "flood_prone", serviceName: "ECA_Flood_Prone_Areas", layerId: 0, layerVintageNote: "Cross-reference FEMA NFHL." },
-  { hazardType: "landfill_historical", serviceName: "ECA_Landfills_Historical", layerId: 0, layerVintageNote: "Abandoned/historical landfills." },
-  { hazardType: "liquefaction_prone", serviceName: "ECA_Liquefaction_Prone_Areas", layerId: 0, layerVintageNote: "1995 vintage, USGS-derived." },
-  { hazardType: "peat_settlement", serviceName: "ECA_Peat_Settlement_Prone_Areas", layerId: 0, layerVintageNote: "Category 1 + new impervious surface disqualifies STFI (Tip 316)." },
+  { hazardType: "steep_slope", serviceName: "Environmentally_Critical_Areas_Steep_Slope", layerIds: [9], combinedLayerIds: [9], layerVintageNote: "2001 PSLC LIDAR + 1993 contours; SDCI Director's Rule 12-2019." },
+  { hazardType: "known_slides", serviceName: "Environmentally_Critical_Areas_Known_Slides", layerIds: [1, 2, 3], combinedLayerIds: [1, 2, 3], layerVintageNote: "Mapped historic landslide areas (affected property, initiation points, scarps)." },
+  { hazardType: "potential_slide_areas", serviceName: "Environmentally_Critical_Areas_Potential_Slide_Areas", layerIds: [7], combinedLayerIds: [7], layerVintageNote: "Mapped potential landslide-prone areas." },
+  { hazardType: "riparian_corridor", serviceName: "Environmentally_Critical_Areas_Riparian_Corridors", layerIds: [8], combinedLayerIds: [8], layerVintageNote: "100-ft riparian management area." },
+  { hazardType: "wetland", serviceName: "Environmentally_Critical_Areas_Wetlands", layerIds: [10], combinedLayerIds: [10], layerVintageNote: "Category-based buffers; buffer width itself not computed here." },
+  { hazardType: "priority_habitat", serviceName: "ECA_Fish_and_Wildlife_Habitat_Conservation_Area", layerIds: [11], combinedLayerIds: [11], layerVintageNote: "Priority habitat, corridors, species of local importance." },
+  { hazardType: "flood_prone", serviceName: "ECA_Flood_Prone_Areas", layerIds: [0], combinedLayerIds: [0], layerVintageNote: "Cross-reference FEMA NFHL." },
+  { hazardType: "landfill_historical", serviceName: "ECA_Landfills_Historical", layerIds: [4], combinedLayerIds: [4], layerVintageNote: "Abandoned/historical landfills." },
+  { hazardType: "liquefaction_prone", serviceName: "ECA_Liquefaction_Prone_Areas", layerIds: [5], combinedLayerIds: [5], layerVintageNote: "1995 vintage, USGS-derived." },
+  { hazardType: "peat_settlement", serviceName: "ECA_Peat_Settlement_Prone_Areas", layerIds: [6], combinedLayerIds: [6], layerVintageNote: "Category 1 + new impervious surface disqualifies STFI (Tip 316)." },
 ];
 
-const COMBINED_LAYER = { serviceName: "Environmentally_Critical_Areas_ECA", layerId: 0 };
+const COMBINED_SERVICE_NAME = "Environmentally_Critical_Areas_ECA";
 
 /** Per-request timeout (nfr-design.md §1) - `AbortController`-based, scoped to this file only.
  * Not retrofitted onto any other existing retriever. */
@@ -81,7 +87,7 @@ function toEsriRingJson(polygon: Polygon): string {
   return JSON.stringify({ rings: [ring] });
 }
 
-export type FetchLayer = (url: string, timeoutMs: number) => Promise<Response>;
+export type FetchLayer = (url: string, timeoutMs: number, init?: RequestInit) => Promise<Response>;
 
 /**
  * Queries one ECA layer for a boolean parcel-boundary intersection only (no feature geometry
@@ -92,12 +98,24 @@ export type FetchLayer = (url: string, timeoutMs: number) => Promise<Response>;
  */
 async function queryLayerIntersects(serviceName: string, layerId: number, boundary: Polygon, fetchLayer: FetchLayer): Promise<boolean> {
   const srid = AUTHORITATIVE_PARCEL_SRID;
-  const url =
-    `${ECA_ORG_BASE_URL}/${serviceName}/FeatureServer/${layerId}/query?` +
-    `geometry=${encodeURIComponent(toEsriRingJson(boundary))}&geometryType=esriGeometryPolygon&spatialRel=esriSpatialRelIntersects` +
-    `&inSR=${srid}&outSR=${srid}&outFields=OBJECTID&returnGeometry=false&f=json`;
+  const url = `${ECA_ORG_BASE_URL}/${serviceName}/FeatureServer/${layerId}/query`;
+  const params = new URLSearchParams({
+    geometry: toEsriRingJson(boundary),
+    geometryType: "esriGeometryPolygon",
+    spatialRel: "esriSpatialRelIntersects",
+    inSR: String(srid),
+    outSR: String(srid),
+    outFields: "OBJECTID",
+    returnGeometry: "false",
+    f: "json",
+  });
 
-  const response = await fetchLayer(url, DEFAULT_LAYER_TIMEOUT_MS);
+  // POST, not GET: a large or complex parcel polygon makes the query string too long for the service (the zoning layer returned 404 as a GET for a campus parcel).
+  const response = await fetchLayer(url, DEFAULT_LAYER_TIMEOUT_MS, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
   if (!response.ok) {
     throw new Error(`ECA layer "${serviceName}" request failed: ${response.status} ${response.statusText}`);
   }
@@ -131,24 +149,29 @@ async function queryLayerIntersects(serviceName: string, layerId: number, bounda
 export async function fetchSeattleEcaFindings(parcelId: string, fetchLayer: FetchLayer = fetchLayerWithTimeout): Promise<CriticalAreaFinding[]> {
   const boundary = await fetchParcelBoundaryPolygon(parcelId);
 
-  const individualSettled = await Promise.allSettled(
-    HAZARD_LAYERS.map((layer) => (async () => queryLayerIntersects(layer.serviceName, layer.layerId, boundary, fetchLayer))())
+  // Each hazard's result is the OR over its layers: true as soon as any layer intersects; false only when every layer answered; otherwise unavailable
+  // (the query throws, which the settled wrapper below turns into `undefined` - never a guessed "no intersection").
+  const anyLayerIntersects = async (serviceName: string, layerIds: number[]): Promise<boolean> => {
+    const settled = await Promise.allSettled(layerIds.map((layerId) => (async () => queryLayerIntersects(serviceName, layerId, boundary, fetchLayer))()));
+    if (settled.some((r) => r.status === "fulfilled" && r.value)) return true;
+    const failed = settled.find((r) => r.status === "rejected");
+    if (failed && failed.status === "rejected") throw failed.reason;
+    return false;
+  };
+
+  const settledPairs = await Promise.all(
+    HAZARD_LAYERS.map(async (layer) => {
+      const [individual, combined] = await Promise.allSettled([anyLayerIntersects(layer.serviceName, layer.layerIds), anyLayerIntersects(COMBINED_SERVICE_NAME, layer.combinedLayerIds)]);
+      return { individual, combined };
+    })
   );
-  const combinedSettled = await (async () => {
-    try {
-      const intersects = await queryLayerIntersects(COMBINED_LAYER.serviceName, COMBINED_LAYER.layerId, boundary, fetchLayer);
-      return { status: "fulfilled" as const, value: intersects };
-    } catch (error) {
-      return { status: "rejected" as const, reason: error };
-    }
-  })();
 
   const queries: LayerQueryResult[] = HAZARD_LAYERS.map((layer, i) => {
-    const settled = individualSettled[i]!;
+    const { individual, combined } = settledPairs[i]!;
     return {
       hazardType: layer.hazardType,
-      individualLayerResult: settled.status === "fulfilled" ? settled.value : undefined,
-      combinedLayerResult: combinedSettled.status === "fulfilled" ? combinedSettled.value : undefined,
+      individualLayerResult: individual.status === "fulfilled" ? individual.value : undefined,
+      combinedLayerResult: combined.status === "fulfilled" ? combined.value : undefined,
       layerVintageNote: layer.layerVintageNote,
     };
   });
@@ -165,7 +188,7 @@ export function createSeattleEcaRetriever(fetchLayer: FetchLayer = fetchLayerWit
   return {
     factType: "environmental-constraints",
     sourceAgency: "City of Seattle Enterprise GIS / SDCI",
-    dataset: `${HAZARD_LAYERS.length} individual ECA hazard layers + combined ECA overlay (${ECA_ORG_BASE_URL})`,
+    dataset: `${HAZARD_LAYERS.length} individual ECA hazard layers + the combined ECA service's matching layers (${ECA_ORG_BASE_URL})`,
     qualityCaveat: SEATTLE_ECA_QUALITY_CAVEAT,
     evidenceQuality: EvidenceQuality.GENERAL_LOCATION_ONLY,
     retrieve: (parcel: CandidateParcel) => fetchSeattleEcaFindings(parcel.parcelId, fetchLayer),

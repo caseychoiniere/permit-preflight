@@ -9,6 +9,7 @@
 import { notFound } from "next/navigation";
 import { ReportView, type Report } from "../../components/ReportView.js";
 import { PREVIEW_SCENARIOS, buildPreviewReport, toPreviewArtifactRow } from "../../../src/dev-preview/report-preview-fixtures.js";
+import { FENCE_PREVIEW_SCENARIOS, buildFencePreviewReport, toFencePreviewArtifactRow } from "../../../src/dev-preview/fence-preview-fixtures.js";
 import { renderReportHtml } from "../../../src/report-pdf-rendering/render.js";
 import type { EvidenceReportArtifactRow } from "../../../src/db/schema.js";
 
@@ -18,10 +19,12 @@ export default async function ReportPreviewPage({ searchParams }: { searchParams
   if (process.env.NODE_ENV === "production") notFound();
 
   const { scenario: requested } = await searchParams;
-  const scenario = PREVIEW_SCENARIOS.find((s) => s.id === requested) ?? PREVIEW_SCENARIOS[0]!;
-  const report = buildPreviewReport(scenario);
-  const pdfHtml = renderReportHtml(toPreviewArtifactRow(report) as unknown as EvidenceReportArtifactRow);
-  const groups = Array.from(new Set(PREVIEW_SCENARIOS.map((s) => s.group)));
+  const fenceScenario = FENCE_PREVIEW_SCENARIOS.find((s) => s.id === requested);
+  const scenario = fenceScenario ?? PREVIEW_SCENARIOS.find((s) => s.id === requested) ?? PREVIEW_SCENARIOS[0]!;
+  const report = fenceScenario ? buildFencePreviewReport(fenceScenario) : buildPreviewReport(scenario as (typeof PREVIEW_SCENARIOS)[number]);
+  const pdfHtml = renderReportHtml((fenceScenario ? toFencePreviewArtifactRow(report as never) : toPreviewArtifactRow(report as never)) as unknown as EvidenceReportArtifactRow);
+  const allScenarios = [...PREVIEW_SCENARIOS, ...FENCE_PREVIEW_SCENARIOS];
+  const groups = Array.from(new Set(allScenarios.map((s) => s.group)));
 
   return (
     <main style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
@@ -33,7 +36,7 @@ export default async function ReportPreviewPage({ searchParams }: { searchParams
         {groups.map((group) => (
           <div key={group} style={{ marginBottom: 8 }}>
             <strong>{group}: </strong>
-            {PREVIEW_SCENARIOS.filter((s) => s.group === group).map((s) => (
+            {allScenarios.filter((s) => s.group === group).map((s) => (
               <a key={s.id} href={`?scenario=${s.id}`} style={{ marginRight: 12, fontWeight: s.id === scenario.id ? 700 : 400 }}>
                 {s.title}
               </a>

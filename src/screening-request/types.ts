@@ -198,13 +198,52 @@ export interface GarageProjectConfiguration {
   stackedDwellingUnits?: boolean;
 }
 
+
+/** Unit 7 (Fences) - where along the property a fence lies, in SMC 23.44.090.H.4's own terms. All
+ * values are USER-DECLARED (a fence is a line, not a placed rectangle; no map placement is
+ * collected for it). `FRONT_SETBACK` is the required front setback extended to the side lot lines;
+ * `STREET_SIDE_SETBACK` is the setback along a side street (corner lots) extended to the front and
+ * rear lot lines - both are the 4-foot zones. `OUTSIDE_REQUIRED_SETBACKS` means no setback is
+ * required where the fence runs (e.g. an alley edge or the buildable area). */
+export const FenceLocation = {
+  FRONT_SETBACK: "FRONT_SETBACK",
+  STREET_SIDE_SETBACK: "STREET_SIDE_SETBACK",
+  OTHER_SIDE_OR_REAR_SETBACK: "OTHER_SIDE_OR_REAR_SETBACK",
+  OUTSIDE_REQUIRED_SETBACKS: "OUTSIDE_REQUIRED_SETBACKS",
+} as const;
+export type FenceLocation = (typeof FenceLocation)[keyof typeof FenceLocation];
+
+/** How the fence relates to a bulkhead/retaining wall (SMC 23.44.090.H.4.a, H.5). No default - the
+ * intake requires an explicit answer, `NONE` included. */
+export const FenceWallRelation = {
+  NONE: "NONE",
+  ON_NEW_WALL_RAISING_GRADE: "ON_NEW_WALL_RAISING_GRADE",
+  ON_OTHER_WALL_OR_BULKHEAD: "ON_OTHER_WALL_OR_BULKHEAD",
+  SET_BACK_FROM_CUT_WALL: "SET_BACK_FROM_CUT_WALL",
+} as const;
+export type FenceWallRelation = (typeof FenceWallRelation)[keyof typeof FenceWallRelation];
+
+/** Unit 7 - fence intake (aidlc-docs/construction/unit-7-fences/functional-design.md §3). Every
+ * field is user-declared and is labeled as such in the report. */
+export interface FenceProjectConfiguration {
+  heightFt: number;
+  locations: FenceLocation[];
+  openFeatureHeightFt?: number;
+  siteSlopes: boolean;
+  tallestPortionHeightFt?: number;
+  wallRelation: FenceWallRelation;
+  wallHeightFt?: number;
+  cutWallSetbackFt?: number;
+  hasMasonryOrConcreteAbove6Ft?: boolean;
+}
+
 /** Unit 4 - `ProjectDetails` (domain-entities.md). Neither member carries its own `projectType`
  * discriminant field - the sibling `ScreeningRequest.projectType` column is the actual
  * discriminant (a plain `jsonb` column has no way to enforce a matching internal tag, so code
  * must consistently branch on the SIBLING field, then narrow/cast - never trust an internal tag
  * inside untrusted JSON as authoritative on its own). See `screening-request/repository.ts` and
  * `report-generation-orchestrator/pipeline.ts` for the actual branch points. */
-export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration;
+export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration | FenceProjectConfiguration;
 
 export const ValidationState = {
   DRAFT: "DRAFT",
@@ -225,6 +264,7 @@ export type WorkflowType = (typeof WorkflowType)[keyof typeof WorkflowType];
 export const ProjectType = {
   SHED: "shed",
   GARAGE: "garage",
+  FENCE: "fence",
 } as const;
 export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
 
@@ -234,7 +274,7 @@ export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
  * Coverage Readiness check). Every call site that previously redeclared its own copy of this set
  * (screening-request/repository.ts, screening-request/authorization.ts,
  * checkout-fulfillment/index.ts, app/api/screening-requests/route.ts) now imports this one. */
-export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE]);
+export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE]);
 
 export const VacantLandScreeningIntent = {
   VACANT_PARCEL: "VACANT_PARCEL",
@@ -487,3 +527,75 @@ export const GarageProjectConfigurationSchema = z.object({
 });
 
 export type GarageProjectConfigurationInput = z.infer<typeof GarageProjectConfigurationSchema>;
+
+/** Unit 7's Boundary Validator schema for fence intake. Cross-field refinements keep an internally
+ * inconsistent declaration from ever becoming VALID: wall fields travel with `wallRelation`,
+ * `tallestPortionHeightFt` is never below the fence height, and locations are non-empty and unique.
+ * Nothing is defaulted - `openFeatureHeightFt`, `tallestPortionHeightFt`, `wallHeightFt`,
+ * `cutWallSetbackFt` and `hasMasonryOrConcreteAbove6Ft` stay `undefined` when not answered. */
+export const FenceProjectConfigurationSchema = z
+  .object({
+    heightFt: z.number().finite().positive().max(20),
+    locations: z
+      .array(z.enum([FenceLocation.FRONT_SETBACK, FenceLocation.STREET_SIDE_SETBACK, FenceLocation.OTHER_SIDE_OR_REAR_SETBACK, FenceLocation.OUTSIDE_REQUIRED_SETBACKS]))
+      .min(1)
+      .max(4),
+    openFeatureHeightFt: z.number().finite().nonnegative().max(4).optional(),
+    siteSlopes: z.boolean(),
+    tallestPortionHeightFt: z.number().finite().positive().max(30).optional(),
+    wallRelation: z.enum([
+      FenceWallRelation.NONE,
+      FenceWallRelation.ON_NEW_WALL_RAISING_GRADE,
+      FenceWallRelation.ON_OTHER_WALL_OR_BULKHEAD,
+      FenceWallRelation.SET_BACK_FROM_CUT_WALL,
+    ]),
+    wallHeightFt: z.number().finite().positive().max(30).optional(),
+    cutWallSetbackFt: z.number().finite().nonnegative().max(200).optional(),
+    hasMasonryOrConcreteAbove6Ft: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (new Set(value.locations).size !== value.locations.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "locations must not repeat.", path: ["locations"] });
+    }
+    if (value.tallestPortionHeightFt !== undefined) {
+      if (!value.siteSlopes) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "tallestPortionHeightFt applies only when siteSlopes is true.", path: ["tallestPortionHeightFt"] });
+      } else if (value.tallestPortionHeightFt < value.heightFt) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "tallestPortionHeightFt cannot be below heightFt.", path: ["tallestPortionHeightFt"] });
+      }
+    }
+    if (value.wallRelation === FenceWallRelation.NONE) {
+      if (value.wallHeightFt !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "wallHeightFt requires a wallRelation other than NONE.", path: ["wallHeightFt"] });
+      }
+      if (value.cutWallSetbackFt !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "cutWallSetbackFt requires wallRelation SET_BACK_FROM_CUT_WALL.", path: ["cutWallSetbackFt"] });
+      }
+    } else {
+      if (value.wallHeightFt === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "wallHeightFt is required when the fence relates to a wall.", path: ["wallHeightFt"] });
+      }
+      if (value.wallRelation === FenceWallRelation.SET_BACK_FROM_CUT_WALL) {
+        if (value.cutWallSetbackFt === undefined) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "cutWallSetbackFt is required for SET_BACK_FROM_CUT_WALL.", path: ["cutWallSetbackFt"] });
+        }
+      } else if (value.cutWallSetbackFt !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "cutWallSetbackFt applies only to SET_BACK_FROM_CUT_WALL.", path: ["cutWallSetbackFt"] });
+      }
+    }
+  });
+
+export type FenceProjectConfigurationInput = z.infer<typeof FenceProjectConfigurationSchema>;
+
+/** Single dispatch point from the sibling `projectType` column to the project-details schema (the
+ * column, never a tag inside the untrusted JSON, is the discriminant). Exhaustive over ProjectType. */
+export function projectDetailsSchemaFor(projectType: string): z.ZodType<ProjectConfiguration> {
+  switch (projectType) {
+    case ProjectType.GARAGE:
+      return GarageProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
+    case ProjectType.FENCE:
+      return FenceProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
+    default:
+      return ShedProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
+  }
+}

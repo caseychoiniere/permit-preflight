@@ -78,6 +78,17 @@ function toleranceHtmlForPdf(coverage: ShedLotCoverageForPdf): string {
   return paragraphs.join("");
 }
 
+/** Unit 7 (Fences) - mirrors ReportView.tsx's fence display shapes; duplicated (not imported - src/
+ * never imports from app/). */
+interface FencePermitRequirementForPdf {
+  buildingPermit: "REQUIRED" | "REQUIRES_VERIFICATION";
+  criteria: { criterionId: string; status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION"; explanationBasis: string }[];
+  note?: string;
+  exemptionDisclaimer?: string;
+  permitPathNote?: string;
+  disclosures: string[];
+}
+
 function coveragePercentForPdf(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
   return Math.round((estimatedCoverageSqFt / parcelAreaSqFt) * 100);
 }
@@ -103,6 +114,14 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     | ShedLotCoverageForPdf
     | undefined;
 
+  // Unit 7 (Fences) - same persisted evidence entries ReportView.tsx reads, printed with identical text.
+  const fenceDeclaredInputs = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "fence-declared-inputs")?.value as
+    | { label: string; value: string }[]
+    | undefined;
+  const fencePermit = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "fence-permit-requirement")?.value as
+    | FencePermitRequirementForPdf
+    | undefined;
+
   // BR-U6B-11 - the existing-structure coverage figure is always disclosed with its over-count/
   // capture-date caveat. The web report shows it under Evidence Notes; the PDF has no Evidence
   // Notes section, so it is rendered adjacent to the figure (found by the dev report-preview
@@ -119,6 +138,49 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
       </div>`;
     })
     .join("\n");
+
+  // Parity with ReportView.tsx's "Not Yet Automatically Screenable" notice (found 2026-10-08 while adding
+  // Unit 7: the PDF never rendered it, so a claim with no ACTIVE rule coverage would have been silently
+  // omitted from a downloaded fence - or garage - report instead of shown as "not screened").
+  const uncoveredConstraintTypes = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "uncovered-constraint-types")?.value as string[] | undefined;
+  const uncoveredHtml =
+    uncoveredConstraintTypes && uncoveredConstraintTypes.length > 0
+      ? `<h2>Not Yet Automatically Screenable</h2>
+  ${uncoveredConstraintTypes
+    .map(
+      (t) => `<div>
+    <strong>${escapeHtml(t.charAt(0).toUpperCase() + t.slice(1))}</strong>
+    <p>This constraint could not yet be automatically screened for this project type - no active regulatory rule currently governs it in this system. This is not the same as a compliance finding of any kind and should not be read as a pass.</p>
+  </div>`
+    )
+    .join("\n  ")}`
+      : "";
+
+  const fenceDeclaredHtml =
+    fenceDeclaredInputs && fenceDeclaredInputs.length > 0
+      ? `<h2>What you told us</h2>
+  <div>
+    <p>This fence was evaluated from the details you entered, not from measurements of the site.</p>
+    <ul>
+      ${fenceDeclaredInputs.map((d) => `<li>${escapeHtml(d.label)}: ${escapeHtml(d.value)}</li>`).join("\n      ")}
+    </ul>
+  </div>`
+      : "";
+
+  const fencePermitHtml = fencePermit
+    ? `<h2>Building permit (fence)</h2>
+  <div>
+    <strong>${fencePermit.buildingPermit === "REQUIRED" ? "Building permit likely required" : "Requires verification"}</strong>
+    ${fencePermit.note ? `<p>${escapeHtml(fencePermit.note)}</p>` : ""}
+    <ul>
+      ${fencePermit.criteria.map((c) => `<li>${permitCriterionIconForPdf(c.status)} ${escapeHtml(c.explanationBasis)}</li>`).join("\n      ")}
+    </ul>
+    ${fencePermit.permitPathNote ? `<p>${escapeHtml(fencePermit.permitPathNote)}</p>` : ""}
+    ${fencePermit.exemptionDisclaimer ? `<p>${escapeHtml(fencePermit.exemptionDisclaimer)}</p>` : ""}
+    ${fencePermit.disclosures.map((d) => `<p>${escapeHtml(d)}</p>`).join("\n    ")}
+    <p>SDCI makes the final determination.</p>
+  </div>`
+    : "";
 
   const permitHtml = permitRequirement
     ? `<h2>Building permit</h2>
@@ -180,6 +242,9 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   <p>Generated: ${escapeHtml(artifact.generatedAt.toISOString())}</p>
   <h2>Findings</h2>
   ${findingsHtml}
+  ${fenceDeclaredHtml}
+  ${fencePermitHtml}
+  ${uncoveredHtml}
   ${permitHtml}
   ${lotCoverageHtml}
   ${explanation ? `<h2>Explanation</h2><p>${escapeHtml(explanation.text)}</p>` : "<h2>Explanation</h2><p><em>Plain-language synthesis is temporarily unavailable.</em></p>"}

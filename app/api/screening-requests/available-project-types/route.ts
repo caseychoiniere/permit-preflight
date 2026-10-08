@@ -1,5 +1,5 @@
 import { ProjectType } from "../../../../src/screening-request/types.js";
-import { isGarageScreeningCoverageReady } from "../../../../src/screening-request/authorization.js";
+import { isFenceScreeningCoverageReady, isGarageScreeningCoverageReady } from "../../../../src/screening-request/authorization.js";
 
 /**
  * Unit 4 (business-rules.md BR-U4-9, corrected per founder review 2026-08-27) - the minimal
@@ -17,6 +17,11 @@ import { isGarageScreeningCoverageReady } from "../../../../src/screening-reques
  * the authoritative server-side defense even if a caller bypasses this list entirely.
  */
 export async function GET() {
-  const availableProjectTypes = [ProjectType.SHED, ...(isGarageScreeningCoverageReady() ? [ProjectType.GARAGE] : [])];
+  const availableProjectTypes = [
+    ProjectType.SHED,
+    ...(isGarageScreeningCoverageReady() ? [ProjectType.GARAGE] : []),
+    // Unit 7 - same gate discipline as garage; hardcoded false until a founder decision.
+    ...(isFenceScreeningCoverageReady() ? [ProjectType.FENCE] : []),
+  ];
   return Response.json({ availableProjectTypes }, { headers: { "Cache-Control": "no-store" } });
 }

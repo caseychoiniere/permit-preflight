@@ -193,9 +193,16 @@ export const REQUIRED_SOURCE_IDS_FOR_GARAGE = REQUIRED_SOURCE_IDS_FOR_SHED;
  * explicit instruction). */
 export const REQUIRED_SOURCE_IDS_FOR_VACANT_LAND = REQUIRED_SOURCE_IDS_FOR_SHED;
 
+/** Unit 7 - identical to REQUIRED_SOURCE_IDS_FOR_SHED, not a new list. A fence evaluation reads only
+ * the declared inputs plus the same parcel confirmation every workflow needs (and, best-effort, the
+ * ECA layer for flood-prone context); no new data source is introduced anywhere in Unit 7. */
+export const REQUIRED_SOURCE_IDS_FOR_FENCE = REQUIRED_SOURCE_IDS_FOR_SHED;
+
 function requiredSourceIdsFor(workflowType: string, projectType: string | null): string[] {
   if (workflowType === WorkflowType.VACANT_LAND) return REQUIRED_SOURCE_IDS_FOR_VACANT_LAND;
-  return projectType === ProjectType.GARAGE ? REQUIRED_SOURCE_IDS_FOR_GARAGE : REQUIRED_SOURCE_IDS_FOR_SHED;
+  if (projectType === ProjectType.GARAGE) return REQUIRED_SOURCE_IDS_FOR_GARAGE;
+  if (projectType === ProjectType.FENCE) return REQUIRED_SOURCE_IDS_FOR_FENCE;
+  return REQUIRED_SOURCE_IDS_FOR_SHED;
 }
 
 /**
@@ -236,6 +243,30 @@ export function checkGarageCheckoutEligibility(screeningRequest: { projectType: 
     return {
       ready: false,
       reason: "Detached garage screening is not yet available for purchase - the required regulatory rule coverage has not been activated.",
+    };
+  }
+  return { ready: true };
+}
+
+/**
+ * Fence Screening Coverage Readiness (Unit 7) - mirrors Garage Screening Coverage Readiness exactly
+ * (same two-layer discipline: intake/evaluation support via SUPPORTED_PROJECT_TYPES is separate from
+ * public advertisement and public checkout, which this predicate governs). Hardcoded `false`:
+ * flipping it - like activating the eight fence rules - is a founder decision, never inferred from
+ * rule lifecycle state. Fences are therefore creatable, validatable and internally generatable
+ * (INTERNAL_PROTOTYPE) but not publicly offered or purchasable.
+ */
+export function isFenceScreeningCoverageReady(): boolean {
+  return false;
+}
+
+/** Checkout-time half of Fence Screening Coverage Readiness; `{ ready: true }` for non-fence requests. */
+export function checkFenceCheckoutEligibility(screeningRequest: { projectType: string | null }): ReadinessResult {
+  if (screeningRequest.projectType !== ProjectType.FENCE) return { ready: true };
+  if (!isFenceScreeningCoverageReady()) {
+    return {
+      ready: false,
+      reason: "Fence screening is not yet available for purchase - the required regulatory rule coverage has not been activated.",
     };
   }
   return { ready: true };

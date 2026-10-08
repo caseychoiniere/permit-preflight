@@ -1809,3 +1809,14 @@ Tests: added resolveBuildingVisualState to the existing parcel-placement-helpers
 Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED_FOUNDER solely for inability to authenticate the founder decision (recorded, not a defect, per the Delegated Founder Decision Policy). One real finding fixed: inactive-P6 ECA copy no longer calls map-dispositive layers "advisory" (now "context only; not used to decide this criterion"). Unit suite 783/783 after the fix.
 
 ---
+
+---
+
+## Unit 6B Activation Completed; Unit 7 (Fences) Built Under the Continuous Autonomous Execution Policy
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (1) Founder authorization to activate exactly the 17 APPROVED Unit 6B rules (P6 and C1e-director excluded) with a full DB-backed integration gate, preflight, post-verify and product smoke, no Unit 7 until complete. (2) Mid-task, the founder's CONTINUOUS AUTONOMOUS EXECUTION POLICY: continue by default; stop only for the five founder-only conditions (new regulatory interpretation with materially different defensible outcomes; pricing/scope; payment/security/privacy/destructive; major irreversible architecture; public launch or new customer promise); reviewer is adversarial QA; after a unit, checkpoint and begin the next planned unit automatically.
+**AI Response**: Activation: full integration suite with DATABASE_URL (25 files, 139 passed, 0 failed; the 13 skips are inverse placeholders), preflight of all 17 rows, sequential activation via activateRule with "ACTIVATE RULE", re-query (17 ACTIVE / 2 TRIAGED, exactly 17 rows changed, 17 RULE_ACTIVATED entries, no tier changes), then 73 real-pipeline/evaluator/web/PDF smoke checks (a harness defect in the first pass was fixed and the whole smoke rerun). No code changed; no commit. Unit 7: live-sourced research, functional design, reviewer design gate (authority objections recorded; F4/permit-REQUIRED/sight-distance defects fixed in the design), implementation (declared-input fence evaluator, 8 Tier-1 rules F1-F8, intake form, pipeline branch, web/PDF report, dev-only intake preview, hardcoded-false public readiness gate), reviewer implementation gate (authority objections recorded; five engineering findings fixed), governance advancement of the 8 rules to APPROVED only, full verification.
+**Context**: Fences are NOT activated and NOT publicly available. Decisions deliberately left to the founder: activating the 8 fence rules and flipping isFenceScreeningCoverageReady(). Reviewer decisions: 50af47ff-3dbf-4881-8b1f-35240796617c (design), 333344f2-057f-4bab-a9f8-410fa8c1660c (implementation). Open observation for the founder (not a stop): CLAUDE.md's Founder Acceptance Gate (hands-on testing after each construction phase) is not mentioned by the Continuous Autonomous Execution Policy; Unit 7 was started under the policy's explicit "begin the next planned unit automatically" instruction.
+
+---
+

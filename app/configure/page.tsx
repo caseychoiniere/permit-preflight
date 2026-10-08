@@ -33,9 +33,12 @@ import { Card } from "../components/ui/Card.js";
 import { Button } from "../components/ui/Button.js";
 import { SampleReportPreview } from "../components/SampleReportPreview.js";
 import { ReviewPlacementMap } from "../components/ReviewPlacementMap.js";
+import { FenceDetailsForm } from "./FenceDetailsForm.js";
+import { describeFenceDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-fence.js";
+import type { FenceProjectConfiguration } from "../../src/screening-request/types.js";
 
 type Step = "ADDRESS" | "TYPE" | "DETAILS" | "PLACEMENT" | "SUMMARY";
-type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | null;
+type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | null;
 /** undefined = not answered (never coerced to a concrete value); tri-state matches
  * frontend-components.md's explicit 3-choice contract for both garage-only fields. */
 type TriState = boolean | undefined;
@@ -49,11 +52,11 @@ const STEPS: { key: Step; label: string }[] = [
 ];
 
 /** Purely visual step tracker - reads `step` only, never drives navigation or validation. */
-function StepTracker({ step }: { step: Step }) {
-  const currentIndex = STEPS.findIndex((s) => s.key === step);
+function StepTracker({ step, steps = STEPS }: { step: Step; steps?: { key: Step; label: string }[] }) {
+  const currentIndex = steps.findIndex((s) => s.key === step);
   return (
     <ol className="mb-8 flex items-center gap-2 text-xs font-medium text-slate-400 sm:text-sm">
-      {STEPS.map((s, i) => (
+      {steps.map((s, i) => (
         <li key={s.key} className="flex items-center gap-2">
           <span
             className={
@@ -77,7 +80,7 @@ function StepTracker({ step }: { step: Step }) {
             </span>
             <span className="hidden sm:inline">{s.label}</span>
           </span>
-          {i < STEPS.length - 1 && <span className="h-px w-4 bg-slate-200 sm:w-8" aria-hidden="true" />}
+          {i < steps.length - 1 && <span className="h-px w-4 bg-slate-200 sm:w-8" aria-hidden="true" />}
         </li>
       ))}
     </ol>
@@ -147,6 +150,8 @@ export default function ConfigurePage() {
     utilityPlumbing: boolean;
     utilityMechanical: boolean;
   }>({ utilityElectrical: false, utilityPlumbing: false, utilityMechanical: false });
+  // Unit 7 - the validated fence declaration (a fence has no placement step).
+  const [fenceConfig, setFenceConfig] = useState<FenceProjectConfiguration | null>(null);
   const [placement, setPlacement] = useState<PlacementSelection | null>(null);
   const [lotLineSelection, setLotLineSelection] = useState<LotLineSelection | null>(null);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
@@ -270,7 +275,7 @@ export default function ConfigurePage() {
     }
   }
 
-  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE) {
+  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE) {
     const res = await fetch("/api/screening-requests", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -280,6 +285,24 @@ export default function ConfigurePage() {
     setProjectType(type);
     setScreeningRequestId(result.id);
     setStep("DETAILS");
+  }
+
+  /** Unit 7 - a fence is declared, not placed: validate (server-side too) and go straight to review. */
+  async function submitFence(config: FenceProjectConfiguration) {
+    if (!screeningRequestId) return;
+    setServerErrors([]);
+    const res = await fetch(`/api/screening-requests/${screeningRequestId}/project-details`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    const result = await res.json();
+    if (result.issues) {
+      setServerErrors(result.issues);
+      return;
+    }
+    setFenceConfig(config);
+    setStep("SUMMARY");
   }
 
   async function submitPlacement() {
@@ -353,9 +376,12 @@ export default function ConfigurePage() {
    * and then forward again shows exactly what the user already entered. Never re-submits anything
    * to the server by itself. */
   function goToPreviousStep() {
-    const currentIndex = STEPS.findIndex((s) => s.key === step);
-    if (currentIndex > 0) setStep(STEPS[currentIndex - 1]!.key);
+    const currentIndex = visibleSteps.findIndex((s) => s.key === step);
+    if (currentIndex > 0) setStep(visibleSteps[currentIndex - 1]!.key);
   }
+
+  // Unit 7 - a fence has no placement step, so its tracker and back-navigation skip it.
+  const visibleSteps = projectType === ProjectType.FENCE ? STEPS.filter((s) => s.key !== "PLACEMENT") : STEPS;
 
   return (
     // Layout pass (2026-08-30) - the Placement step specifically needs more horizontal room than
@@ -365,7 +391,7 @@ export default function ConfigurePage() {
     // specifically") - so this inlines Container's own classes with a step-conditional max-width
     // instead, touching nothing else.
     <div className={`mx-auto w-full px-4 py-8 sm:px-6 lg:px-8 ${step === "PLACEMENT" ? "max-w-[1000px]" : "max-w-3xl"}`}>
-      <StepTracker step={step} />
+      <StepTracker step={step} steps={visibleSteps} />
 
       {step === "ADDRESS" && (
         <Card>
@@ -446,6 +472,11 @@ export default function ConfigurePage() {
                 Screen a detached garage
               </Button>
             )}
+            {availableProjectTypes.includes(ProjectType.FENCE) && (
+              <Button variant="primary" onClick={() => selectProjectType(ProjectType.FENCE)}>
+                Screen a fence
+              </Button>
+            )}
           </div>
           <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
             &larr; Previous
@@ -453,7 +484,9 @@ export default function ConfigurePage() {
         </Card>
       )}
 
-      {step === "DETAILS" && (
+      {step === "DETAILS" && projectType === ProjectType.FENCE && <FenceDetailsForm onSubmit={submitFence} onBack={goToPreviousStep} serverErrors={serverErrors} />}
+
+      {step === "DETAILS" && projectType !== ProjectType.FENCE && (
         <Card>
           <h1 className="text-lg font-semibold text-slate-900">{projectType === ProjectType.GARAGE ? "Detached garage details" : "Shed details"}</h1>
 
@@ -893,7 +926,42 @@ export default function ConfigurePage() {
         </Card>
       )}
 
-      {step === "SUMMARY" && (
+      {step === "SUMMARY" && projectType === ProjectType.FENCE && fenceConfig && (
+        <>
+          <Card>
+            <h1 className="text-lg font-semibold text-slate-900">Review</h1>
+            <p className="mt-1 text-sm text-slate-500">Your fence will be checked from these details, not from measurements of your site.</p>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Parcel</dt>
+                <dd className="font-medium text-slate-900">{parcelId}</dd>
+              </div>
+              {describeFenceDeclaredInputs({ projectType: "fence", ...fenceConfig }).map((d) => (
+                <div key={d.label} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                  <dt className="text-slate-500">{d.label}</dt>
+                  <dd className="font-medium text-slate-900">{d.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-6 flex gap-2">
+              <Button variant="secondary" onClick={goToPreviousStep}>
+                &larr; Previous
+              </Button>
+              <Button variant="primary" onClick={checkout}>
+                Continue to payment
+              </Button>
+            </div>
+            {authorizedMessage && (
+              <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {authorizedMessage}
+              </p>
+            )}
+          </Card>
+          <SampleReportPreview />
+        </>
+      )}
+
+      {step === "SUMMARY" && projectType !== ProjectType.FENCE && (
         <>
           <Card>
             <h1 className="text-lg font-semibold text-slate-900">Review</h1>
@@ -961,7 +1029,6 @@ export default function ConfigurePage() {
               </p>
             )}
           </Card>
-          <SampleReportPreview />
         </>
       )}
     </div>

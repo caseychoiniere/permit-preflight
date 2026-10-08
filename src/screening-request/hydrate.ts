@@ -13,9 +13,8 @@
 
 import { z } from "zod";
 import {
-  GarageProjectConfigurationSchema,
   ProjectType,
-  ShedProjectConfigurationSchema,
+  projectDetailsSchemaFor,
   VacantLandDetailsSchema,
   VacantLandScreeningIntent,
   WorkflowType,
@@ -27,7 +26,7 @@ const ExistingPropertyShapeSchema = z
   .object({
     workflowType: z.literal(WorkflowType.EXISTING_PROPERTY),
     confirmedParcelId: z.string().min(1),
-    projectType: z.enum([ProjectType.SHED, ProjectType.GARAGE]),
+    projectType: z.enum([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE]),
     // Deliberately z.unknown() here, not the final Shed/Garage schema - z.discriminatedUnion
     // requires every branch to be a plain ZodObject (a `.superRefine`-wrapped ZodEffects is
     // rejected at the type level). `projectDetails`'s own shape - which schema applies depends on
@@ -71,7 +70,7 @@ export function hydrateScreeningRequestShape(raw: unknown): HydrateResult {
   if (shapeResult.outcome === "INVALID") return { outcome: "INVALID", issues: shapeResult.issues };
 
   if (shapeResult.data.workflowType === WorkflowType.EXISTING_PROPERTY) {
-    const detailsSchema = shapeResult.data.projectType === ProjectType.GARAGE ? GarageProjectConfigurationSchema : ShedProjectConfigurationSchema;
+    const detailsSchema = projectDetailsSchemaFor(shapeResult.data.projectType);
     const detailsResult = validateAtBoundary(detailsSchema, shapeResult.data.projectDetails);
     if (detailsResult.outcome === "INVALID") return { outcome: "INVALID", issues: detailsResult.issues.map((i) => `projectDetails.${i}`) };
     return {

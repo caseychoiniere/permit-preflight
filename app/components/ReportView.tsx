@@ -148,6 +148,24 @@ type ShedLotCoverageResultDisplay =
       parcelSpecificApprovalDisclosure?: string;
     };
 
+/** Unit 7 (Fences) - mirrors regulatory-rules-engine/fence-types.ts's FencePermitRequirement and
+ * FenceDeclaredInput shapes, duplicated (not imported) matching this file's existing convention. */
+interface FenceDeclaredInputDisplay {
+  label: string;
+  value: string;
+}
+interface FencePermitRequirementDisplay {
+  buildingPermit: "REQUIRED" | "REQUIRES_VERIFICATION";
+  criteria: { criterionId: string; status: "MET" | "NOT_MET" | "REQUIRES_VERIFICATION"; explanationBasis: string }[];
+  note?: string;
+  exemptionDisclaimer?: string;
+  permitPathNote?: string;
+  disclosures: string[];
+}
+function fencePermitHeadline(buildingPermit: FencePermitRequirementDisplay["buildingPermit"]): string {
+  return buildingPermit === "REQUIRED" ? "Building permit likely required" : "Requires verification";
+}
+
 function coveragePercent(estimatedCoverageSqFt: number, parcelAreaSqFt: number): number {
   return Math.round((estimatedCoverageSqFt / parcelAreaSqFt) * 100);
 }
@@ -210,6 +228,10 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
   // vacant-land and for any shed report generated while the 6 Unit 6B "C" rows remain TRIAGED
   // (production today).
   const shedLotCoverage = report.evidence.find((e) => e.factType === "shed-lot-coverage")?.value as ShedLotCoverageResultDisplay | undefined;
+  // Unit 7 (Fences) - present only on a fence report. The permit aggregate is evidence only (never a
+  // finding), exactly like Unit 6B's; declared inputs are echoed so the customer sees what the result rests on.
+  const fenceDeclaredInputs = report.evidence.find((e) => e.factType === "fence-declared-inputs")?.value as FenceDeclaredInputDisplay[] | undefined;
+  const fencePermit = report.evidence.find((e) => e.factType === "fence-permit-requirement")?.value as FencePermitRequirementDisplay | undefined;
 
   return (
     <div>
@@ -247,6 +269,52 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
           </Card>
         ))}
       </div>
+
+      {fenceDeclaredInputs && fenceDeclaredInputs.length > 0 && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">What you told us</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              <p className="text-sm text-slate-500">This fence was evaluated from the details you entered, not from measurements of the site.</p>
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                {fenceDeclaredInputs.map((d, i) => (
+                  <div key={i} className="flex gap-2">
+                    <dt className="text-slate-500">{d.label}:</dt>
+                    <dd className="text-slate-900">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {fencePermit && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">Building permit (fence)</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              <strong className="text-sm text-slate-900">{fencePermitHeadline(fencePermit.buildingPermit)}</strong>
+              {fencePermit.note && <p className="mt-2 text-sm text-amber-900">{fencePermit.note}</p>}
+              <ul className="mt-3 flex flex-col gap-1">
+                {fencePermit.criteria.map((c, i) => (
+                  <li key={i} className="text-sm text-slate-600">
+                    {permitCriterionIcon(c.status)} {c.explanationBasis}
+                  </li>
+                ))}
+              </ul>
+              {fencePermit.permitPathNote && <p className="mt-3 text-sm text-slate-600">{fencePermit.permitPathNote}</p>}
+              {fencePermit.exemptionDisclaimer && <p className="mt-3 text-sm text-slate-500">{fencePermit.exemptionDisclaimer}</p>}
+              {fencePermit.disclosures.map((d, i) => (
+                <p key={i} className="mt-3 text-sm text-slate-500">
+                  {d}
+                </p>
+              ))}
+              <p className="mt-3 text-xs text-slate-400">SDCI makes the final determination.</p>
+            </Card>
+          </div>
+        </>
+      )}
 
       {permitRequirement && (
         <>

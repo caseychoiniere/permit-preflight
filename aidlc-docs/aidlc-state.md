@@ -3808,3 +3808,27 @@ surface). `requirements.md §2.4`'s own "minimum scope, not a general-purpose us
 directive is taken as the design default, not re-asked. Stopping at Unit 6's normal Functional
 Design Part 1 gate, matching every prior unit's own two-part-process discipline this session.
 Awaiting the founder's answers.
+
+## UNIT 7 (FENCES) — ✅ IMPLEMENTATION COMPLETE 2026-10-08 (rules APPROVED, not ACTIVE; not publicly available)
+
+Started under the founder's Continuous Autonomous Execution Policy (2026-10-08) immediately after the 17 Unit 6B rules were activated and
+smoke-verified (see the Unit 6B activation entry in `audit.md`). Artifacts: `aidlc-docs/construction/unit-7-fences/functional-design.md`
+(live-sourced rule inventory: SMC 23.44.090.H.4/H.5, SMC 23.44.070.A, 2021 SRC R105.1/R105.2, SDCI Fences page) and `code-generation-plan.md`.
+NFR Requirements / NFR Design / Infrastructure Design skipped (no new infrastructure, data source or auth/payment surface).
+
+- **Capability:** a declared-input fence evaluation: height by location (front/street-side 4 ft, side/rear 6 ft + predominantly-open feature, absolute
+  caps on slopes, retaining-wall/bulkhead rules, outside-setback scope), an unresolved sight-distance finding, an always-emitted zoning-applicability
+  finding, and a fence building-permit determination that is `REQUIRED` or `REQUIRES_VERIFICATION` and **can never be LIKELY_EXEMPT** (flood-prone
+  status cannot be determined). Correction recorded: the controlling Seattle exemption is **8 ft with a masonry/concrete-above-6-ft exception**
+  (not the model-code 7 ft).
+- **Governance:** 8 Tier-1 rows (F1-F8) bootstrapped and advanced to **APPROVED** through the real admin lifecycle (audit: 8 each of RULE_BOOTSTRAPPED,
+  RULE_SOURCE_VERIFIED, RULE_TESTED, RULE_APPROVED). **0 ACTIVE.** Activation is a founder decision and was not performed.
+- **Gating:** `isFenceScreeningCoverageReady()` is hardcoded `false` (same two-layer discipline as garage): fences are creatable and internally
+  generatable but absent from the public type list and blocked at checkout. Outcome-specific rule dependencies are explicit in `evaluate-fence.ts`.
+- **Also fixed:** the PDF template never rendered the "Not Yet Automatically Screenable" notice (web-only before); both surfaces now print it.
+- **Verification:** unit 907/907; integration (live DB, real parcel + ECA, synthetic ACTIVE rows removed afterward) 141 passed / 0 failed; typecheck and
+  build clean; the real intake form -> evaluator -> report browser-verified on the dev-only `/dev/fence-intake` page (which found and fixed a
+  server-import-in-client-bundle defect).
+- **To make fences customer-available (founder decisions, not done):** activate the 8 rules (`activateRule`, "ACTIVATE RULE") and flip
+  `isFenceScreeningCoverageReady()`; both are outside this unit.
+

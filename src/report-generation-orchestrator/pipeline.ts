@@ -8,7 +8,7 @@
 import { eq, and } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { screeningRequests, regulatoryRules, inferencePolicies, type ReportGenerationJobRow } from "../db/schema.js";
-import type { GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
+import type { ExistingPropertyScreeningRequestSnapshot, FenceProjectConfiguration, GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
 import { LotLineRoleStatus, MultipleFrontageAnswer, ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestSnapshot } from "../screening-request/hydrate.js";
 import { assemblePropertyContext, type FactRetriever } from "../property-intelligence/assemble.js";
@@ -39,6 +39,9 @@ import {
   transformPolygonToWgs84,
 } from "../spatial-analysis/postgis-adapter.js";
 import { evaluateProject, isCriticalAreaFinding, evaluateEcaLotAreaAdjustment } from "../regulatory-rules-engine/evaluate.js";
+import { evaluateFence } from "../regulatory-rules-engine/evaluate-fence.js";
+import { assembleFenceEvidence } from "./fence-evidence.js";
+import type { FenceEvaluationOutcome, FenceProjectDetails } from "../regulatory-rules-engine/fence-types.js";
 import { evaluateVacantLand, findActiveScenarioRule, SCENARIO_DEFINITIONS, toAppliedRuleRef } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import type { VacantLandSetbackRuleSpec } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import { EvaluationStatus } from "../regulatory-rules-engine/types.js";
@@ -368,6 +371,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // placed structure to measure from at all) - scoped here rather than fetched unconditionally,
     // so garage/vacant-land requests never pay for a network call they can't use.
     const retrievers: FactRetriever[] = [createKingCountyParcelGeometryRetriever()];
+    // Unit 7 - a fence needs no Building Outlines, but the ECA layer is retrieved for its one use:
+    // disclosing mapped flood-prone context next to the permit determination (never deciding it).
+    if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.FENCE) {
+      retrievers.push(createSeattleEcaRetriever());
+    }
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
       retrievers.push(createSeattleBuildingOutlinesRetriever());
       // Unit 6B - ECA screening (capability A) is shed-scoped for this unit's approved scope
@@ -456,6 +464,15 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       return;
     }
 
+    // Unit 7 - a sibling branch, never a third arm inside the shed/garage path below: a fence has no
+    // footprint, placement, lot-line roles or setback geometry, only declared inputs.
+    if (snapshot.projectType === ProjectType.FENCE) {
+      await runFencePipeline(db, job, snapshot, screeningRequest.id, propertyContext, environmentalConstraintsFact?.value ?? [], deps);
+      return;
+    }
+    // From here on the request is a shed or garage (the vacant-land and fence branches returned above).
+    const accessoryDetails = snapshot.projectDetails as ShedProjectConfiguration | GarageProjectConfiguration;
+
     // Spatial Analysis (real PostGIS) - only when the parcel geometry was actually retrieved and
     // a lot-line role assignment was captured. BR-U2-9: never guesses roles.
     let spatialEvidenceQuality: EvidenceQuality | undefined;
@@ -532,15 +549,15 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       rawParcelAreaSqFt = await computeParcelAreaSqFt(db, geometryFact.value);
     }
 
-    if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value && snapshot.projectDetails.proposedPlacement && snapshot.projectDetails.lotLineRoleAssignment) {
+    if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value && accessoryDetails.proposedPlacement && accessoryDetails.lotLineRoleAssignment) {
       spatialEvidenceQuality = geometryFact.provenance.evidenceQuality;
       const { distances, footprintProjected: computedFootprint } = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
         computeSetbackDistances(
           db,
           geometryFact.value!,
-          snapshot.projectDetails.proposedPlacement!,
-          { widthFt: snapshot.projectDetails.widthFt, depthFt: snapshot.projectDetails.depthFt },
-          snapshot.projectDetails.lotLineRoleAssignment!
+          accessoryDetails.proposedPlacement!,
+          { widthFt: accessoryDetails.widthFt, depthFt: accessoryDetails.depthFt },
+          accessoryDetails.lotLineRoleAssignment!
         )
       );
       distanceToRearLotLineFt = distances.distanceToRearLotLineFt;
@@ -550,13 +567,13 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       unresolvedStreetFrontageDistancesFt = distances.unresolvedStreetFrontageDistancesFt;
       streetFrontageHeuristics = distances.streetFrontageHeuristics;
       footprintProjected = computedFootprint;
-      if (snapshot.projectDetails.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
+      if (accessoryDetails.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
         setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
       }
 
       const roleGapReasons = deriveStreetFrontageRoleGapReasons({
-        multipleFrontageAnswer: snapshot.projectDetails.lotLineRoleAssignment.multipleFrontageAnswer,
-        rearAlsoFacesStreet: snapshot.projectDetails.lotLineRoleAssignment.rearAlsoFacesStreet,
+        multipleFrontageAnswer: accessoryDetails.lotLineRoleAssignment.multipleFrontageAnswer,
+        rearAlsoFacesStreet: accessoryDetails.lotLineRoleAssignment.rearAlsoFacesStreet,
         hasUnresolvedStreetFrontage: Boolean(unresolvedStreetFrontageDistancesFt && Object.keys(unresolvedStreetFrontageDistancesFt).length > 0),
       });
       frontRoleEvidenceGapReason = roleGapReasons.frontRoleEvidenceGapReason;
@@ -592,7 +609,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     let lotCoverageFacts: LotCoverageFacts | undefined;
     let shedLotCoverageFacts: Omit<ShedLotCoverageFacts, "allowanceFacts"> | undefined;
     if (snapshot.projectType === ProjectType.GARAGE) {
-      const garageDetails = snapshot.projectDetails as GarageProjectConfiguration;
+      const garageDetails = accessoryDetails as GarageProjectConfiguration;
       project = {
         projectType: "garage",
         widthFt: garageDetails.widthFt,
@@ -629,7 +646,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       let primaryDwellingSelectionStatus: "SELECTED" | undefined;
       const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
       if (buildingFootprintsAvailable) {
-        const shedDetails = snapshot.projectDetails as ShedProjectConfiguration;
+        const shedDetails = accessoryDetails as ShedProjectConfiguration;
         const structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, shedDetails.primaryDwellingSelection);
         existingStructuresForEvidence = structures;
         existingStructuresWgs84Display = await Promise.all(
@@ -690,7 +707,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         shedLotCoverageFacts = {
           parcelAreaSqFt: rawParcelAreaSqFt,
           existingMappedCoverageSqFt: existingStructureCoverageFact.mappedFootprintAreaSqFt,
-          proposedShedFootprintSqFt: snapshot.projectDetails.widthFt * snapshot.projectDetails.depthFt,
+          proposedShedFootprintSqFt: accessoryDetails.widthFt * accessoryDetails.depthFt,
           // BR-U6B-12/Flow 5 - the SAME single environmental-constraints fact P6 already reads,
           // never a second ECA fetch or interpretation.
           ecaAdjustment: evaluateEcaLotAreaAdjustment(environmentalConstraintsFact?.value ?? []),
@@ -701,7 +718,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // 2026-09-23, see deriveIsInRequiredSetback's own docstring for full citations). Computed
       // from the exact same role/distance facts gathered above for the existing setback findings -
       // no new fetch, no new geometry engine.
-      const shedDetailsForPermit = snapshot.projectDetails as ShedProjectConfiguration;
+      const shedDetailsForPermit = accessoryDetails as ShedProjectConfiguration;
       const requiredSetback = deriveIsInRequiredSetback({
         distanceToFrontLotLineFt,
         distanceToRearLotLineFt,
@@ -713,10 +730,10 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
 
       project = {
         projectType: "shed",
-        widthFt: snapshot.projectDetails.widthFt,
-        depthFt: snapshot.projectDetails.depthFt,
-        heightFt: snapshot.projectDetails.heightFt,
-        alleyAdjacent: snapshot.projectDetails.alleyAdjacent,
+        widthFt: accessoryDetails.widthFt,
+        depthFt: accessoryDetails.depthFt,
+        heightFt: accessoryDetails.heightFt,
+        alleyAdjacent: accessoryDetails.alleyAdjacent,
         distanceToRearLotLineFt,
         distanceToSideLotLineFt,
         distanceToFrontLotLineFt,
@@ -778,7 +795,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // check against a fact this pipeline never fetches.
     if (snapshot.projectType === ProjectType.SHED) {
       const shedProject = project as ShedProjectDetails;
-      const shedDetails = snapshot.projectDetails as ShedProjectConfiguration;
+      const shedDetails = accessoryDetails as ShedProjectConfiguration;
       logger.info("SHED_REPORT_DIAGNOSTICS", {
         reportGenerationJobId: job.id,
         workflowType: snapshot.workflowType,
@@ -889,6 +906,58 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     logger.error("JOB_FAILED", { reportGenerationJobId: job.id, reason });
     await markJobFailed(db, job.id, reason);
   }
+}
+
+/**
+ * Unit 7 (Fences) - Workflow F-1. Called from within `runReportGenerationPipeline`'s own try/catch.
+ * Evaluates the declared fence configuration against the ACTIVE `fence` rules (a structurally
+ * separate query, never an OR across project types), persists ordinary findings plus the
+ * fence-specific evidence entries, and asks Report Explanation to narrate the findings only.
+ * No spatial analysis, no PostGIS, no Building Outlines.
+ */
+async function runFencePipeline(
+  db: Db,
+  job: ReportGenerationJobRow,
+  snapshot: ExistingPropertyScreeningRequestSnapshot,
+  screeningRequestId: string,
+  propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
+  ecaFindings: CriticalAreaFinding[],
+  deps: PipelineDependencies
+): Promise<void> {
+  const project: FenceProjectDetails = { projectType: "fence", ...(snapshot.projectDetails as FenceProjectConfiguration) };
+
+  const activeRuleRows = await db
+    .select()
+    .from(regulatoryRules)
+    .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.FENCE)));
+
+  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () =>
+    evaluateFence({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), ecaFindings })
+  );
+
+  const explanationResult = deps.generateExplanation
+    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
+    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+
+  const evidence = [
+    ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
+    ...assembleFenceEvidence(outcome),
+  ];
+
+  const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>
+    createEvidenceReportArtifact(db, {
+      screeningRequestId,
+      reportGenerationJobId: job.id,
+      findings: outcome.findings,
+      evidence,
+      explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
+      ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+      dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
+    })
+  );
+
+  await markJobComplete(db, job.id, artifact.id);
+  logger.info("JOB_COMPLETE", { reportGenerationJobId: job.id, evidenceReportArtifactId: artifact.id });
 }
 
 /**

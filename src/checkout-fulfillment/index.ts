@@ -12,10 +12,12 @@ import type { ExistingPropertyScreeningRequestSnapshot, VacantLandScreeningReque
 import { ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestRow } from "../screening-request/hydrate.js";
 import {
+  checkFenceCheckoutEligibility,
   checkGarageCheckoutEligibility,
   checkReadiness,
   checkVacantLandCheckoutEligibility,
   GenerationAuthorizationType,
+  REQUIRED_SOURCE_IDS_FOR_FENCE,
   REQUIRED_SOURCE_IDS_FOR_GARAGE,
   REQUIRED_SOURCE_IDS_FOR_SHED,
   REQUIRED_SOURCE_IDS_FOR_VACANT_LAND,
@@ -59,7 +61,9 @@ export async function initiateCheckout(
       ? REQUIRED_SOURCE_IDS_FOR_VACANT_LAND
       : request.projectType === ProjectType.GARAGE
         ? REQUIRED_SOURCE_IDS_FOR_GARAGE
-        : REQUIRED_SOURCE_IDS_FOR_SHED;
+        : request.projectType === ProjectType.FENCE
+          ? REQUIRED_SOURCE_IDS_FOR_FENCE
+          : REQUIRED_SOURCE_IDS_FOR_SHED;
   const readiness = await checkReadiness(db, request, requiredSourceIds);
   if (!readiness.ready) return { outcome: "NOT_READY", reason: readiness.reason };
 
@@ -68,6 +72,10 @@ export async function initiateCheckout(
   // INTERNAL_PROTOTYPE path. A no-op ({ ready: true }) for non-GARAGE requests.
   const garageEligibility = checkGarageCheckoutEligibility(request);
   if (!garageEligibility.ready) return { outcome: "NOT_READY", reason: garageEligibility.reason };
+
+  // Fence Screening Coverage Readiness (Unit 7) - same shape; a no-op for non-FENCE requests.
+  const fenceEligibility = checkFenceCheckoutEligibility(request);
+  if (!fenceEligibility.ready) return { outcome: "NOT_READY", reason: fenceEligibility.reason };
 
   // Vacant-Land Screening Coverage Readiness (BR-U5-9) - mirrors garageEligibility exactly, a
   // no-op ({ ready: true }) for non-VACANT_LAND requests.

@@ -360,3 +360,40 @@ describe("review fixes (reviewer decision 333344f2-057f-4bab-a9f8-410fa8c1660c)"
     }
   });
 });
+
+describe("zoning applicability (Unit 11 Slice 1)", () => {
+  const overlays = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
+  const nr = { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays } as const;
+  const notNr = { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays } as const;
+  const runZ = (z: Parameters<typeof evaluateFence>[0]["zoningApplicability"], over: Partial<FenceProjectDetails> = {}) =>
+    evaluateFence({ project: fence(over), candidateActiveRules: ALL_RULES, ecaFindings: [], zoningApplicability: z });
+
+  it("a verified NR parcel keeps every NR fence finding and states zoning as a KNOWN fact", () => {
+    const { findings } = runZ(nr);
+    expect(outcome(findings[0])).toBe("KNOWN/PASS");
+    expect(bySubject(findings, "Zoning applicability")?.classification).toBe("KNOWN");
+  });
+
+  it("a parcel verifiably not NR withholds the NR height findings (never a PASS/FAIL), names the zone, keeps the permit determination, and records the uncovered limits", () => {
+    const out = runZ(notNr, { heightFt: 8.5, locations: [FenceLocation.FRONT_SETBACK], hasMasonryOrConcreteAbove6Ft: false });
+    expect(out.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
+    expect(out.findings.some((f) => f.subject.startsWith("Fence height"))).toBe(false);
+    const z = bySubject(out.findings, "Zoning applicability")!;
+    expect(z.classification).toBe("REQUIRES_VERIFICATION");
+    expect(z.explanationBasis).toContain("LR1 (M)");
+    expect(out.permitRequirement?.buildingPermit).toBe("REQUIRED");
+    expect(out.uncoveredConstraintTypes.join()).toContain("not in a Neighborhood Residential zone");
+  });
+
+  it("an overlay adds a REQUIRES_VERIFICATION overlay finding while NR findings stay", () => {
+    const out = runZ({ ...nr, overlays: { ...overlays, shorelineDistrict: true } });
+    expect(bySubject(out.findings, "Overlay districts")?.classification).toBe("REQUIRES_VERIFICATION");
+    expect(outcome(out.findings[0])).toBe("KNOWN/PASS");
+  });
+
+  it("an UNRESOLVED zoning result keeps the NR findings and the 'not verified' statement", () => {
+    const out = runZ({ status: "UNRESOLVED", reason: "the parcel is split between zones (NR 60%, LR2 40%)" });
+    expect(outcome(out.findings[0])).toBe("KNOWN/PASS");
+    expect(bySubject(out.findings, "Zoning applicability")?.explanationBasis).toContain("split between zones");
+  });
+});

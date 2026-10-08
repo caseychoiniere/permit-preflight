@@ -12,6 +12,7 @@
  * contains no SMC number as a literal. All inputs are USER-DECLARED and every explanation says so.
  */
 
+import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
 import { LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { MappedIntersectionResult } from "../spatial-analysis/types.js";
@@ -75,8 +76,6 @@ const FLOOD_NOTE =
   "All other screened building-permit exemption criteria are met. The remaining question is whether the site is in a flood-prone area, where SDCI requires a construction permit. Permit Preflight cannot determine that conclusively from available mapping; SDCI makes that determination.";
 const EXEMPTION_DISCLAIMER = "A building-permit exemption does not waive fence-height, setback, or other zoning compliance.";
 const PERMIT_PATH_NOTE = "SDCI states that most fences needing a permit require only a construction subject-to-field-inspection permit; SDCI determines the review path.";
-const ZONING_SCOPE_EXPLANATION =
-  "These fence rules are Seattle's Neighborhood Residential zone rules (SMC 23.44.090.H). Permit Preflight did not verify this parcel's zoning, so it cannot confirm they apply to this property; a parcel in a different zone can have different fence limits. SDCI determines the applicable zone and rules.";
 const SIGHT_DISTANCE_EXPLANATION =
   "Seattle can limit fences and other obstructions near intersections, driveways and alleys to keep drivers able to see. Permit Preflight has no intersection or driveway geometry and no verified rule text for this, so it does not evaluate it and makes no statement that it is satisfied. SDCI and SDOT determine it.";
 
@@ -406,18 +405,6 @@ function sightDistanceFinding(project: FenceProjectDetails): Finding | undefined
   };
 }
 
-/** Always emitted: no zoning fact is retrieved for any project type today (the shed/garage evaluators
- * share the limitation), so for fences - new ground - the NR-only scope is stated in every report as an
- * unresolved item rather than assumed silently. */
-function zoningScopeFinding(): Finding {
-  return {
-    classification: FindingClassification.REQUIRES_VERIFICATION,
-    subject: "Zoning applicability (Neighborhood Residential zones)",
-    supportingEvidence: ["parcel zoning not verified"],
-    explanationBasis: ZONING_SCOPE_EXPLANATION,
-  };
-}
-
 // ---------------------------------------------------------------------------------------------
 // Building permit
 // ---------------------------------------------------------------------------------------------
@@ -510,6 +497,8 @@ export interface EvaluateFenceInput {
   candidateActiveRules: RegulatoryRule[];
   /** Used only for disclosed flood-prone context - never to decide a criterion. */
   ecaFindings: CriticalAreaFinding[];
+  /** Unit 11 Slice 1. Undefined = zoning not retrieved (treated as unresolved: pre-existing behavior). */
+  zoningApplicability?: ZoningApplicability;
 }
 
 export function evaluateFence(input: EvaluateFenceInput): FenceEvaluationOutcome {
@@ -518,20 +507,27 @@ export function evaluateFence(input: EvaluateFenceInput): FenceEvaluationOutcome
   const findings: Finding[] = [];
   const uncovered: string[] = [];
 
-  for (const location of LOCATION_ORDER) {
-    if (!project.locations.includes(location)) continue;
-    const result = location === FenceLocation.OUTSIDE_REQUIRED_SETBACKS ? evaluateOutsideLocation(project, rules) : evaluateSetbackLocation(project, location, rules);
-    if (result.finding) findings.push(result.finding);
-    if (result.uncovered) uncovered.push(result.uncovered);
-  }
+  // A parcel verifiably not in a Neighborhood Residential zone: the NR fence limits are withheld (never
+  // produced); the building-permit determination and the general sight-distance note are zone-independent.
+  const notNr = input.zoningApplicability?.status === "NOT_NR";
+  if (notNr) {
+    uncovered.push("fence zoning limits (parcel is not in a Neighborhood Residential zone)");
+  } else {
+    for (const location of LOCATION_ORDER) {
+      if (!project.locations.includes(location)) continue;
+      const result = location === FenceLocation.OUTSIDE_REQUIRED_SETBACKS ? evaluateOutsideLocation(project, rules) : evaluateSetbackLocation(project, location, rules);
+      if (result.finding) findings.push(result.finding);
+      if (result.uncovered) uncovered.push(result.uncovered);
+    }
 
-  const wall = evaluateWall(project, rules);
-  if (wall.finding) findings.push(wall.finding);
-  if (wall.uncovered) uncovered.push(wall.uncovered);
+    const wall = evaluateWall(project, rules);
+    if (wall.finding) findings.push(wall.finding);
+    if (wall.uncovered) uncovered.push(wall.uncovered);
+  }
 
   const sight = sightDistanceFinding(project);
   if (sight) findings.push(sight);
-  findings.push(zoningScopeFinding());
+  findings.push(...zoningApplicabilityFindings(input.zoningApplicability, "fence rules"));
 
   const permit = evaluatePermit(project, rules, input.ecaFindings);
   if (permit.uncovered) uncovered.push(permit.uncovered);

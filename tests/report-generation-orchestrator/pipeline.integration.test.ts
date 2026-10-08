@@ -10,11 +10,10 @@
  * Skips cleanly (does not fail) when DATABASE_URL is unset, matching every other DB-gated
  * integration suite in this project.
  *
- * Uses a real, already-verified Seattle test parcel (PIN 3298700485) with 3 real Building Outlines
- * footprints (outlineIds 1271026693/1271026694/1271026695, live-confirmed 2026-08-30) and a real,
- * previously-proven-working placement/lot-line-role combination for that exact parcel's boundary
- * shape (front=edge-0, rear=edge-2, sides=edge-1/edge-3 - the same values a real historical
- * generation for this parcel used successfully).
+ * Uses a real Seattle test parcel, PIN 1498301270 (plain NR zoning, 120 x 50 ft rectangle, one real
+ * Building Outlines footprint 1270857812, all live-confirmed 2026-10-08). It replaced PIN 3298700485
+ * (the original 2026-08-30 fixture) when Unit 11 Slice 1 zoning verification showed that parcel is zoned
+ * LR1, not NR - the pipeline now correctly withholds NR conclusions for it.
  *
  * Real-flake fix (2026-08-30, discovered running this suite for the first time as part of the
  * FULL integration run): this file originally called seedStagingTestRules/shared the SAME 4
@@ -47,20 +46,20 @@ import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealt
 const hasDb = Boolean(process.env["DATABASE_URL"]);
 
 // Real, live-verified (2026-08-30) test parcel and its real building-outline ids.
-const TEST_PARCEL_PIN = "3298700485";
-const REAL_OUTLINE_ID_MAIN_HOUSE = "1271026695"; // the largest of the 3 real footprints on this parcel
+const TEST_PARCEL_PIN = "1498301270"; // plain NR (verified 2026-10-08), 120 x 50 ft rectangle with one house
+const REAL_OUTLINE_ID_MAIN_HOUSE = "1270857812"; // the single real footprint on this parcel
 const NONEXISTENT_OUTLINE_ID = "9999999999"; // never a real Building Outlines id for this parcel
 
 // A real, previously-proven-working placement + lot-line-role combination for this exact parcel's
 // boundary shape (a simple 4-edge rectangle) - reused rather than guessed, matching a real
 // historical generation for this same parcel that succeeded before the regulatory_rules regression.
-const REAL_PLACEMENT = { anchor: { lat: 47.52175460888725, lng: -122.354484222839 }, orientationDeg: 0 };
+const REAL_PLACEMENT = { anchor: { lat: 47.586094007341046, lng: -122.3116149461082 }, orientationDeg: 0 }; // mid back yard, SRID-2926 (1275630, 217291)
 const REAL_LOT_LINE_ROLES = {
   method: "USER_INDICATED" as const,
   status: "ASSIGNED" as const,
-  frontEdgeRef: "edge-0",
-  rearEdgeRef: "edge-2",
-  sideEdgeRefs: ["edge-1", "edge-3"],
+  frontEdgeRef: "edge-3", // west
+  rearEdgeRef: "edge-1", // east
+  sideEdgeRefs: ["edge-0", "edge-2"],
   multipleFrontageAnswer: "NO" as const,
 };
 
@@ -81,7 +80,7 @@ function shedProjectDetails(overrides: Partial<ShedProjectConfiguration> = {}): 
 // test runs and restored in afterAll (which Vitest runs even when a test throws) so this suite
 // can never leave the shared dev/staging dataSourceHealth state changed - the real root cause of
 // the 2026-09-10 king-county-parcel-polygon contamination this fixes.
-const AFFECTED_DATA_SOURCE_IDS = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca"];
+const AFFECTED_DATA_SOURCE_IDS = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca", "seattle-zoning", "seattle-landmarks"];
 
 describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integration (building intelligence v1 regression)", () => {
   let db: Db;
@@ -122,11 +121,11 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
    * already run) and drives it through a real, claimed ReportGenerationJob + the actual pipeline -
    * no fakes, no mocked DB, no generateExplanation (proving findings don't depend on Anthropic
    * being configured). */
-  async function generateRealShedReport(projectDetails: ShedProjectConfiguration) {
-    const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: TEST_PARCEL_PIN, projectType: "shed", projectDetails };
+  async function generateRealShedReport(projectDetails: ShedProjectConfiguration, parcelPin: string = TEST_PARCEL_PIN) {
+    const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: parcelPin, projectType: "shed", projectDetails };
     const [row] = await db
       .insert(screeningRequests)
-      .values({ workflowType: "EXISTING_PROPERTY", projectType: "shed", projectDetails, confirmedParcelId: TEST_PARCEL_PIN, snapshot })
+      .values({ workflowType: "EXISTING_PROPERTY", projectType: "shed", projectDetails, confirmedParcelId: parcelPin, snapshot })
       .returning({ id: screeningRequests.id });
     const screeningRequestId = row!.id;
     cleanupScreeningRequestIds.push(screeningRequestId);
@@ -183,8 +182,24 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
       }
       const selected = displayStructures.find((s) => s.outlineId === REAL_OUTLINE_ID_MAIN_HOUSE);
       expect(selected?.classification).toBe("PRIMARY_DWELLING");
+      // Unit 11 Slice 1: this parcel is verified plain NR, so zoning applicability is a KNOWN fact.
+      expect(findings.find((f) => f.subject.startsWith("Zoning applicability"))?.classification).toBe("KNOWN");
+      expect(evidence.map((e) => e.factType)).toEqual(expect.arrayContaining(["zoning", "landmark-designation"]));
     }
   );
+
+  it("[Unit 11 Slice 1] a shed on a parcel verified NOT to be NR (the former LR1 fixture) gets no NR setback/height/separation conclusion, but names its zone and keeps the permit/ECA material", async () => {
+    // The parcel, placement and lot-line roles the suite used before Slice 1 (see header): zoned LR1, not NR.
+    const lr1Placement = { anchor: { lat: 47.52175460888725, lng: -122.354484222839 }, orientationDeg: 0 };
+    const lr1Roles = { ...REAL_LOT_LINE_ROLES, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] };
+    const snapshotDetails = shedProjectDetails({ proposedPlacement: lr1Placement, lotLineRoleAssignment: lr1Roles });
+    const { artifact } = await generateRealShedReport(snapshotDetails, "3298700485");
+    const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string }[];
+    expect(findings.some((f) => /rear|side|front|height|dwelling/i.test(f.subject) && !f.subject.startsWith("Zoning") && !f.subject.startsWith("Critical area"))).toBe(false);
+    expect(findings.find((f) => f.subject.startsWith("Zoning applicability"))?.explanationBasis).toContain("LR1");
+    const evidence = artifact!.evidence as { factType: string; value: unknown }[];
+    expect(JSON.stringify(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value)).toContain("not in a Neighborhood Residential zone");
+  }, 90_000);
 
   it("[hard invariant] no primary-dwelling selection at all: dwelling separation is REQUIRES_VERIFICATION, but every other finding is still produced (missing dwelling identification affects ONLY that one finding)", async () => {
     const { artifact } = await generateRealShedReport(shedProjectDetails()); // no primaryDwellingSelection field at all

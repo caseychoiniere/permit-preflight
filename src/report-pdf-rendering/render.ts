@@ -26,6 +26,7 @@
  * existing external-verification-tracker item).
  */
 
+import { uncoveredConstraintNotice } from "../regulatory-rules-engine/zoning-applicability.js";
 import type { EvidenceReportArtifactRow } from "../db/schema.js";
 import { FindingClassification } from "../regulatory-rules-engine/types.js";
 import type { Finding } from "../regulatory-rules-engine/types.js";
@@ -176,7 +177,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     .map(
       (t) => `<div>
     <strong>${escapeHtml(t.charAt(0).toUpperCase() + t.slice(1))}</strong>
-    <p>This constraint could not yet be automatically screened for this project type - no active regulatory rule currently governs it in this system. This is not the same as a compliance finding of any kind and should not be read as a pass.</p>
+    <p>${escapeHtml(uncoveredConstraintNotice(t))}</p>
   </div>`
     )
     .join("\n  ")}`

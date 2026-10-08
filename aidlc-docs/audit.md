@@ -1840,3 +1840,12 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 
 ---
 
+
+## Unit 11 (ADUs) Slice 1 - Zoning / Overlay / Transit Property Facts and NR Applicability Gating
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (Standing) "BUILD ADUs NEXT ... KEEP MOVING" and the Continuous Autonomous Execution Policy.
+**AI Response**: Added Seattle zoning (grid-sampled share of parcel per zone, SRID-verified), frequent-transit-service-area and landmark retrievers; a pure fail-closed classifier (`zoning-applicability.ts`): wholly plain NR = NR_VERIFIED, wholly one non-NR zone = NOT_NR, anything else (any material second zone >= 2%, <90% coverage, MIO, unavailable data) = UNRESOLVED. Shed/garage/fence/deck evaluators withhold NR setback/height/separation/coverage conclusions for NOT_NR (permit determination and ECA context unchanged), state zoning as a KNOWN fact for verified NR, and flag shoreline/historic/landmark overlays as REQUIRES_VERIFICATION. Registered `seattle-zoning` / `seattle-landmarks` data sources with health recording. Web and PDF share the uncovered-constraint wording. Discovery: the long-standing integration fixture parcel 3298700485 is zoned LR1; integration tests moved to verified-NR parcel 1498301270 (120x50 rectangle, one house) with explicit LR1 withholding tests.
+**Reviewer**: ESCALATE (RESERVED_FOUNDER; decision 1d55de97-598c-4e24-82f2-38be71f249b0) over the applicability thresholds. Recorded as an authority objection. The real consistency finding (95%/5% thresholds could classify materially split parcels conclusively) was FIXED by adopting its conservative alternative (any material second zone is UNRESOLVED) with boundary tests. Garage is gated off and has no rules; the shared evaluator change is inert for it.
+**Context**: No founder-only condition hit (the change only withholds or qualifies conclusions; no new customer claim). Verification: unit 1040+ pass, integration 28 files pass, tsc clean, webpack build passes.
+
+---

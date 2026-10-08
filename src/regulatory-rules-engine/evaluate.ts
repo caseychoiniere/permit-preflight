@@ -13,6 +13,7 @@ import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
 import { EvidenceQuality, LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { InferencePolicy, RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { deriveEcaRegulatoryImplication } from "./eca-implication.js";
+import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
 import { PARCEL_SPECIFIC_APPROVAL_DISCLOSURE, computeLotCoverageExclusionTolerance } from "./lot-coverage-tolerance.js";
 import {
   ComplianceOutcome,
@@ -231,6 +232,11 @@ export interface EvaluateProjectInput {
    * when the constituent rules are ACTIVE - shedLotCoverage simply stays undefined rather than
    * throwing. */
   shedLotCoverageFacts?: Omit<ShedLotCoverageFacts, "allowanceFacts">;
+  /** Unit 11 Slice 1. Provided by the pipeline for shed/garage evaluations. NOT_NR withholds every
+   * Neighborhood Residential zoning conclusion (setback, height, separation, lot coverage) while the
+   * zone-independent building-permit determination and mapped ECA context stand. Undefined (unit tests,
+   * callers that did not retrieve zoning) leaves the pre-existing behavior unchanged. */
+  zoningApplicability?: ZoningApplicability;
 }
 
 /** BR-U4-2's exhaustiveness requirement, exercised at a real decision point (not decorative): the
@@ -299,8 +305,10 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   }
 
   const findings: Finding[] = [];
+  const notNr = input.zoningApplicability?.status === "NOT_NR";
 
   for (const rule of activeRules) {
+    if (notNr) break; // verifiably not a Neighborhood Residential zone: no NR zoning conclusion is produced
     const ruleType = (rule.ruleSpecification as { ruleType?: string }).ruleType;
     if (ruleType !== undefined && UNIT_6B_AGGREGATE_ONLY_RULE_TYPES.has(ruleType)) {
       // Consumed exclusively by the shed aggregate-computing functions below via
@@ -325,20 +333,24 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
     }
   }
 
+  if (input.zoningApplicability) findings.push(...zoningApplicabilityFindings(input.zoningApplicability, `${input.project.projectType} rules`));
+
   const outcome: EvaluationOutcome = {
     status: EvaluationStatus.COMPLETE,
     findings,
-    uncoveredConstraintTypes: computeUncoveredConstraintTypes(input.project.projectType, activeRules),
+    uncoveredConstraintTypes: notNr
+      ? ["zoning limits - setback, height, lot coverage (parcel is not in a Neighborhood Residential zone)"]
+      : computeUncoveredConstraintTypes(input.project.projectType, activeRules),
   };
 
   if (input.project.projectType === "shed") {
     const activeRuleTypes = activeRuleTypeSet(activeRules);
     const permitRequirement = evaluateShedPermitRequirementForActiveRules(input.project, input.ecaFindings, activeRuleTypes);
     if (permitRequirement) outcome.permitRequirement = permitRequirement;
-    if (allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
+    if (!notNr && allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
       outcome.accessoryHeightLimitFinding = evaluateAccessoryHeightLimit(input.project);
     }
-    if (input.shedLotCoverageFacts && ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
+    if (!notNr && input.shedLotCoverageFacts && ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
       outcome.shedLotCoverage = evaluateShedLotCoverage(input.shedLotCoverageFacts, {
         directorAlternativeRuleActive: ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_DIRECTOR_ALTERNATIVE_RULE_TYPES),
       });

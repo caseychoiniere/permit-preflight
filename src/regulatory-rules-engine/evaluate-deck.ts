@@ -12,6 +12,7 @@
  * REQUIRES_VERIFICATION naming the ones that could apply (functional-design.md §1 source-conflict note).
  */
 
+import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
 import { LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { DeckAttachment, DeckBuildingRelation, DeckSetbackLocation } from "../screening-request/types.js";
@@ -67,8 +68,6 @@ const ECA_NOTE =
 const SDCI_SETBACK_GUIDANCE =
   "SDCI's published guidance says a deck more than 18 inches above the ground cannot be placed within the required setbacks, while the code text lists further allowances.";
 const EXEMPTION_DISCLAIMER = "A building-permit exemption does not waive setback, lot-coverage, or other zoning compliance.";
-const ZONING_SCOPE_EXPLANATION =
-  "These deck rules are Seattle's Neighborhood Residential zone rules (SMC 23.44). Permit Preflight did not verify this parcel's zoning, so it cannot confirm they apply to this property; a parcel in a different zone can have different deck limits. SDCI determines the applicable zone and rules.";
 
 function ruleTypeOf(rule: RegulatoryRule): string | undefined {
   return (rule.ruleSpecification as { ruleType?: string }).ruleType;
@@ -258,15 +257,6 @@ function evaluateLotCoverage(project: DeckProjectDetails, rules: ActiveRules): {
   };
 }
 
-function zoningScopeFinding(): Finding {
-  return {
-    classification: FindingClassification.REQUIRES_VERIFICATION,
-    subject: "Zoning applicability (Neighborhood Residential zones)",
-    supportingEvidence: ["parcel zoning not verified"],
-    explanationBasis: ZONING_SCOPE_EXPLANATION,
-  };
-}
-
 // ---------------------------------------------------------------------------------------------
 // Building permit and review path
 // ---------------------------------------------------------------------------------------------
@@ -363,6 +353,8 @@ export interface EvaluateDeckInput {
   project: DeckProjectDetails;
   /** Re-filtered to ACTIVE defensively; callers pre-filter by applicableProjectType = "deck". */
   candidateActiveRules: RegulatoryRule[];
+  /** Unit 11 Slice 1. Undefined = zoning not retrieved (treated as unresolved: pre-existing behavior). */
+  zoningApplicability?: ZoningApplicability;
 }
 
 export function evaluateDeck(input: EvaluateDeckInput): DeckEvaluationOutcome {
@@ -371,16 +363,22 @@ export function evaluateDeck(input: EvaluateDeckInput): DeckEvaluationOutcome {
   const findings: Finding[] = [];
   const uncovered: string[] = [];
 
-  for (const location of LOCATION_ORDER) {
-    if (!project.setbackLocations.includes(location)) continue;
-    const r = evaluateSetbackLocation(project, location, rules);
-    if (r.finding) findings.push(r.finding);
-    if (r.uncovered) uncovered.push(r.uncovered);
+  // Verifiably not Neighborhood Residential: the NR setback and lot-coverage statements are withheld; the
+  // zone-independent building-permit determination stands.
+  if (input.zoningApplicability?.status === "NOT_NR") {
+    uncovered.push("deck zoning limits (parcel is not in a Neighborhood Residential zone)");
+  } else {
+    for (const location of LOCATION_ORDER) {
+      if (!project.setbackLocations.includes(location)) continue;
+      const r = evaluateSetbackLocation(project, location, rules);
+      if (r.finding) findings.push(r.finding);
+      if (r.uncovered) uncovered.push(r.uncovered);
+    }
+    const coverage = evaluateLotCoverage(project, rules);
+    if (coverage.finding) findings.push(coverage.finding);
+    if (coverage.uncovered) uncovered.push(coverage.uncovered);
   }
-  const coverage = evaluateLotCoverage(project, rules);
-  if (coverage.finding) findings.push(coverage.finding);
-  if (coverage.uncovered) uncovered.push(coverage.uncovered);
-  findings.push(zoningScopeFinding());
+  findings.push(...zoningApplicabilityFindings(input.zoningApplicability, "deck rules"));
 
   const permit = evaluatePermit(project, rules);
   if (permit.uncovered) uncovered.push(permit.uncovered);

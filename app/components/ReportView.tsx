@@ -9,6 +9,7 @@
  * decides how it is allowed to obtain that data.
  */
 
+import { uncoveredConstraintNotice } from "../../src/regulatory-rules-engine/zoning-applicability.js";
 import { ReportMap } from "./ReportMap.js";
 import { FindingClassification, ComplianceOutcome } from "../../src/regulatory-rules-engine/types.js";
 import { isCriticalAreaFinding } from "../../src/regulatory-rules-engine/evaluate.js";
@@ -536,11 +537,7 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
             {uncoveredConstraintTypes.map((constraintType) => (
               <div key={constraintType} role="note" className="rounded-xl border-l-4 border-slate-400 bg-slate-100 p-4">
                 <strong className="text-sm text-slate-900">{constraintType.charAt(0).toUpperCase() + constraintType.slice(1)}</strong>
-                <p className="mt-2 text-sm text-slate-600">
-                  This constraint could not yet be automatically screened for this project type - no active
-                  regulatory rule currently governs it in this system. This is not the same as a compliance
-                  finding of any kind and should not be read as a pass.
-                </p>
+                <p className="mt-2 text-sm text-slate-600">{uncoveredConstraintNotice(constraintType)}</p>
               </div>
             ))}
           </div>

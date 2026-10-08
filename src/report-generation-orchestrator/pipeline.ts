@@ -15,6 +15,9 @@ import { assemblePropertyContext, type FactRetriever } from "../property-intelli
 import { createKingCountyParcelGeometryRetriever } from "../property-intelligence/king-county-parcel-geometry.js";
 import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence/seattle-building-outlines.js";
 import { createSeattleEcaRetriever } from "../property-intelligence/seattle-eca.js";
+import { createSeattleLandmarkRetriever, createSeattleZoningRetriever } from "../property-intelligence/seattle-zoning.js";
+import type { LandmarkFactValue, ZoningFactValue } from "../property-intelligence/seattle-zoning.js";
+import { deriveZoningApplicability, type ZoningApplicability } from "../regulatory-rules-engine/zoning-applicability.js";
 import {
   classifyExistingStructures,
   findPrimaryDwelling,
@@ -376,6 +379,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     const retrievers: FactRetriever[] = [createKingCountyParcelGeometryRetriever()];
     // Unit 7 - a fence needs no Building Outlines, but the ECA layer is retrieved for its one use:
     // disclosing mapped flood-prone context next to the permit determination (never deciding it).
+    // Unit 11 Slice 1 - every existing-property project type is evaluated under Neighborhood Residential
+    // rules, so the parcel's zoning (and landmark status) is retrieved to verify that applicability.
+    if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY) {
+      retrievers.push(createSeattleZoningRetriever(), createSeattleLandmarkRetriever());
+    }
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.FENCE) {
       retrievers.push(createSeattleEcaRetriever());
     }
@@ -404,6 +412,14 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // fabricated clean result. A genuine fetch success always carries one entry per queried
     // hazard category (never an empty array for a real shed evaluation).
     const environmentalConstraintsFact = getFact<CriticalAreaFinding[]>(propertyContext, "environmental-constraints");
+
+    const zoningFact = getFact<ZoningFactValue>(propertyContext, "zoning");
+    const landmarkFact = getFact<LandmarkFactValue>(propertyContext, "landmark-designation");
+    // Fail closed: an unavailable zoning fact is UNRESOLVED (the pre-existing "zoning not verified" wording).
+    const zoningApplicability = deriveZoningApplicability(
+      zoningFact?.availabilityState === AvailabilityState.AVAILABLE ? zoningFact.value : undefined,
+      landmarkFact?.availabilityState === AvailabilityState.AVAILABLE ? landmarkFact.value : undefined
+    );
 
     // Unit 3, 2026-08-25: wires the existing recordIngestionResult contract into this already-
     // implemented authoritative retrieval path (property-intelligence/assemble.ts itself is NOT
@@ -464,6 +480,22 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       }
     }
 
+    // Unit 11 Slice 1 - same best-effort health recording for the zoning and landmark sources (existing-property only).
+    for (const [fact, sourceId, label] of [
+      [zoningFact, "seattle-zoning", "Seattle zoning"],
+      [landmarkFact, "seattle-landmarks", "Seattle landmarks"],
+    ] as const) {
+      if (!fact) continue;
+      try {
+        // UNAVAILABLE (no zoning polygon for this one parcel) is a source response, not a source failure - but only
+        // AVAILABLE/UNAVAILABLE count as healthy; SOURCE_ERROR does not.
+        const healthy = fact.availabilityState === AvailabilityState.AVAILABLE || fact.availabilityState === AvailabilityState.UNAVAILABLE;
+        await recordIngestionResult(db, sourceId, healthy ? { success: true } : { success: false, reason: `${label} retrieval failed during report generation.` });
+      } catch (err) {
+        logger.warn("DATA_SOURCE_HEALTH_RECORDING_FAILED", { sourceId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
     // Unit 5 - a new, sibling top-level branch on workflowType BEFORE the existing shed/garage
     // branch (Code Generation Part 1, Step 2/6) - never a third arm inside the EXISTING_PROPERTY
     // branch below.
@@ -475,12 +507,12 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // Unit 7 - a sibling branch, never a third arm inside the shed/garage path below: a fence has no
     // footprint, placement, lot-line roles or setback geometry, only declared inputs.
     if (snapshot.projectType === ProjectType.FENCE) {
-      await runFencePipeline(db, job, snapshot, screeningRequest.id, propertyContext, environmentalConstraintsFact?.value ?? [], deps);
+      await runFencePipeline(db, job, snapshot, screeningRequest.id, propertyContext, environmentalConstraintsFact?.value ?? [], zoningApplicability, deps);
       return;
     }
     // Unit 8 - same sibling-branch discipline as fences: a deck is declared, not placed.
     if (snapshot.projectType === ProjectType.DECK) {
-      await runDeckPipeline(db, job, snapshot, screeningRequest.id, propertyContext, deps);
+      await runDeckPipeline(db, job, snapshot, screeningRequest.id, propertyContext, zoningApplicability, deps);
       return;
     }
     // From here on the request is a shed or garage (the vacant-land, fence and deck branches returned above).
@@ -782,6 +814,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         candidateActiveInferencePolicies: rowsToInferencePolicies(activePolicyRows),
         lotCoverageFacts,
         shedLotCoverageFacts,
+        zoningApplicability,
       })
     );
 
@@ -935,6 +968,7 @@ async function runFencePipeline(
   screeningRequestId: string,
   propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
   ecaFindings: CriticalAreaFinding[],
+  zoningApplicability: ZoningApplicability,
   deps: PipelineDependencies
 ): Promise<void> {
   const project: FenceProjectDetails = { projectType: "fence", ...(snapshot.projectDetails as FenceProjectConfiguration) };
@@ -945,7 +979,7 @@ async function runFencePipeline(
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.FENCE)));
 
   const outcome = await withStageTiming("RULES_ENGINE", job.id, async () =>
-    evaluateFence({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), ecaFindings })
+    evaluateFence({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), ecaFindings, zoningApplicability })
   );
 
   const explanationResult = deps.generateExplanation
@@ -985,6 +1019,7 @@ async function runDeckPipeline(
   snapshot: ExistingPropertyScreeningRequestSnapshot,
   screeningRequestId: string,
   propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
+  zoningApplicability: ZoningApplicability,
   deps: PipelineDependencies
 ): Promise<void> {
   const project: DeckProjectDetails = { projectType: "deck", ...(snapshot.projectDetails as DeckProjectConfiguration) };
@@ -994,7 +1029,7 @@ async function runDeckPipeline(
     .from(regulatoryRules)
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.DECK)));
 
-  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows) }));
+  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), zoningApplicability }));
 
   const explanationResult = deps.generateExplanation
     ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))

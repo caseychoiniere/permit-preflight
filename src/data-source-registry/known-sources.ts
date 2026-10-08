@@ -39,6 +39,16 @@ export const KNOWN_SOURCE_DEFINITIONS: Record<string, KnownSourceDefinition> = {
     expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
     description: "City of Seattle Building Outlines 2023 (property-intelligence, building intelligence v1) - queried live, per shed report-generation request.",
   },
+  "seattle-zoning": {
+    sourceId: "seattle-zoning",
+    expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
+    description: "City of Seattle Current Land Use Zoning Detail (property-intelligence, Unit 11) - queried live, per existing-property report-generation request.",
+  },
+  "seattle-landmarks": {
+    sourceId: "seattle-landmarks",
+    expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
+    description: "City of Seattle Landmarks (property-intelligence, Unit 11) - queried live, per existing-property report-generation request.",
+  },
   "seattle-eca": {
     sourceId: "seattle-eca",
     expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,

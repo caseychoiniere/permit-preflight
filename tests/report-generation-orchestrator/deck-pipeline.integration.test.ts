@@ -19,8 +19,8 @@ import { runReportGenerationPipeline } from "../../src/report-generation-orchest
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
-const TEST_PARCEL_PIN = "3298700485";
-const AFFECTED_DATA_SOURCE_IDS = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca"];
+const TEST_PARCEL_PIN = "1498301270"; // plain NR (live-verified 2026-10-08); the former fixture 3298700485 is zoned LR1
+const AFFECTED_DATA_SOURCE_IDS = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca", "seattle-zoning", "seattle-landmarks"];
 
 const DECLARED: DeckProjectConfiguration = {
   heightAboveGradeIn: 40,
@@ -55,11 +55,11 @@ describe.skipIf(!hasDb)("Deck report generation pipeline - live end-to-end integ
     }
   });
 
-  async function generate(details: DeckProjectConfiguration) {
-    const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: TEST_PARCEL_PIN, projectType: "deck", projectDetails: details };
+  async function generate(details: DeckProjectConfiguration, parcelPin: string = TEST_PARCEL_PIN) {
+    const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: parcelPin, projectType: "deck", projectDetails: details };
     const [row] = await db
       .insert(screeningRequests)
-      .values({ workflowType: "EXISTING_PROPERTY", projectType: "deck", projectDetails: details, confirmedParcelId: TEST_PARCEL_PIN, snapshot })
+      .values({ workflowType: "EXISTING_PROPERTY", projectType: "deck", projectDetails: details, confirmedParcelId: parcelPin, snapshot })
       .returning({ id: screeningRequests.id });
     screeningIds.push(row!.id);
     const authorization: GenerationAuthorization = { type: GenerationAuthorizationType.INTERNAL_PROTOTYPE, screeningRequestId: row!.id, authorizedBy: "deck-pipeline.integration.test.ts", authorizedAt: new Date().toISOString() };
@@ -95,7 +95,7 @@ describe.skipIf(!hasDb)("Deck report generation pipeline - live end-to-end integ
       expect(bySubject("Deck setback (side setback)")?.classification).toBe("REQUIRES_VERIFICATION");
       expect(findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
       expect(bySubject("Deck and lot coverage")?.classification).toBe("REQUIRES_VERIFICATION");
-      expect(bySubject("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("REQUIRES_VERIFICATION");
+      expect(bySubject("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN"); // verified plain NR
 
       const evidence = artifact!.evidence as { factType: string; value: unknown }[];
       const factTypes = evidence.map((e) => e.factType);
@@ -124,5 +124,20 @@ describe.skipIf(!hasDb)("Deck report generation pipeline - live end-to-end integ
       expect(JSON.stringify([roof.artifact!.evidence, low.artifact!.evidence])).not.toContain("LIKELY_EXEMPT");
     },
     120_000
+  );
+
+  it(
+    "a parcel verified NOT to be NR (LR1) gets no NR setback/lot-coverage conclusion and keeps the building-permit determination",
+    async () => {
+      const { job, artifact } = await generate({ heightAboveGradeIn: 40, widthFt: 10, depthFt: 12, attachment: "DETACHED", buildingRelation: "OPEN_GROUND_BELOW", setbackLocations: ["SIDE_SETBACK"] }, "3298700485");
+      expect(job?.state).toBe("COMPLETE");
+      const findings = artifact!.findings as { subject: string; classification: string; explanationBasis: string }[];
+      expect(findings.some((f) => f.subject.startsWith("Deck setback") || f.subject === "Deck and lot coverage")).toBe(false);
+      const z = findings.find((f) => f.subject === "Zoning applicability (Neighborhood Residential zones)")!;
+      expect(z.explanationBasis).toContain("LR1");
+      const evidence = artifact!.evidence as { factType: string; value: unknown }[];
+      expect((evidence.find((e) => e.factType === "deck-permit-requirement")!.value as { buildingPermit: string }).buildingPermit).toBe("REQUIRED");
+    },
+    90_000
   );
 });

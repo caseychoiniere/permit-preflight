@@ -275,3 +275,24 @@ describe("declared inputs are echoed", () => {
     expect(run({}).declaredInputs.find((r) => r.label === "Longest beam")?.value).toBe("Not answered");
   });
 });
+
+describe("zoning applicability (Unit 11 Slice 1)", () => {
+  const overlays = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
+  const runZ = (z: Parameters<typeof evaluateDeck>[0]["zoningApplicability"], over: Partial<DeckProjectDetails> = {}) =>
+    evaluateDeck({ project: deck(over), candidateActiveRules: ALL, zoningApplicability: z });
+
+  it("verified NR: NR findings kept, zoning stated as KNOWN, overlays flagged separately", () => {
+    const out = runZ({ status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: { ...overlays, historicDistrict: true } }, { heightAboveGradeIn: 12 });
+    expect(oc(out.findings[0])).toBe("KNOWN/PASS");
+    expect(sub(out.findings, "Zoning applicability")?.classification).toBe("KNOWN");
+    expect(sub(out.findings, "Overlay districts")?.classification).toBe("REQUIRES_VERIFICATION");
+  });
+
+  it("verifiably not NR: setback and lot-coverage findings withheld, permit determination kept, zone named", () => {
+    const out = runZ({ status: "NOT_NR", zoningLabel: "LR1 (M)", overlays }, { heightAboveGradeIn: 40 });
+    expect(out.findings.some((f) => f.subject.startsWith("Deck setback") || f.subject === "Deck and lot coverage")).toBe(false);
+    expect(sub(out.findings, "Zoning applicability")?.explanationBasis).toContain("LR1 (M)");
+    expect(out.permitRequirement?.buildingPermit).toBe("REQUIRED");
+    expect(out.uncoveredConstraintTypes.join()).toContain("not in a Neighborhood Residential zone");
+  });
+});

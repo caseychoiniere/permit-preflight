@@ -109,6 +109,9 @@ function isConfigurationComplete(config: ProjectConfiguration): boolean {
   // Units 7-8 - a fence or deck has no map placement; its schema's required fields (height,
   // locations, slope and wall answers) are the whole configuration, so a schema-valid fence is complete.
   if ("locations" in config || "setbackLocations" in config) return true;
+  // Unit 11 - an ADU is evaluated against measured distances, so it needs both the map placement and the
+  // customer's lot-line roles (a footprint alone cannot be measured against the right lines).
+  if ("aduType" in config) return config.proposedPlacement !== undefined && config.lotLineRoleAssignment !== undefined;
   const hasDimensions = config.widthFt > 0 && config.depthFt > 0 && config.heightFt > 0;
   const hasPlacement = config.proposedPlacement !== undefined;
   return hasDimensions && hasPlacement;

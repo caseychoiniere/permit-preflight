@@ -1,5 +1,5 @@
 import { ProjectType } from "../../../../src/screening-request/types.js";
-import { isDeckScreeningCoverageReady, isFenceScreeningCoverageReady, isGarageScreeningCoverageReady } from "../../../../src/screening-request/authorization.js";
+import { isAduScreeningCoverageReady, isDeckScreeningCoverageReady, isFenceScreeningCoverageReady, isGarageScreeningCoverageReady } from "../../../../src/screening-request/authorization.js";
 
 /**
  * Unit 4 (business-rules.md BR-U4-9, corrected per founder review 2026-08-27) - the minimal
@@ -24,6 +24,8 @@ export async function GET() {
     ...(isFenceScreeningCoverageReady() ? [ProjectType.FENCE] : []),
     // Unit 8 - same gate discipline; hardcoded false until a founder decision.
     ...(isDeckScreeningCoverageReady() ? [ProjectType.DECK] : []),
+    // Unit 11 - hardcoded false until a founder authorizes activating the ADU rules.
+    ...(isAduScreeningCoverageReady() ? [ProjectType.ADU] : []),
   ];
   return Response.json({ availableProjectTypes }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -201,11 +201,15 @@ export const REQUIRED_SOURCE_IDS_FOR_FENCE = REQUIRED_SOURCE_IDS_FOR_SHED;
 /** Unit 8 - identical to REQUIRED_SOURCE_IDS_FOR_SHED; no new data source (ECA is best-effort context only). */
 export const REQUIRED_SOURCE_IDS_FOR_DECK = REQUIRED_SOURCE_IDS_FOR_SHED;
 
+/** Unit 11 - identical to REQUIRED_SOURCE_IDS_FOR_SHED; zoning, landmark, outline and ECA reads are best-effort and fail closed per fact. */
+export const REQUIRED_SOURCE_IDS_FOR_ADU = REQUIRED_SOURCE_IDS_FOR_SHED;
+
 function requiredSourceIdsFor(workflowType: string, projectType: string | null): string[] {
   if (workflowType === WorkflowType.VACANT_LAND) return REQUIRED_SOURCE_IDS_FOR_VACANT_LAND;
   if (projectType === ProjectType.GARAGE) return REQUIRED_SOURCE_IDS_FOR_GARAGE;
   if (projectType === ProjectType.FENCE) return REQUIRED_SOURCE_IDS_FOR_FENCE;
   if (projectType === ProjectType.DECK) return REQUIRED_SOURCE_IDS_FOR_DECK;
+  if (projectType === ProjectType.ADU) return REQUIRED_SOURCE_IDS_FOR_ADU;
   return REQUIRED_SOURCE_IDS_FOR_SHED;
 }
 
@@ -294,6 +298,28 @@ export function checkDeckCheckoutEligibility(screeningRequest: { projectType: st
     return {
       ready: false,
       reason: "Deck screening is not yet available for purchase - the required regulatory rule coverage has not been activated.",
+    };
+  }
+  return { ready: true };
+}
+
+/**
+ * ADU Screening Coverage Readiness (Unit 11) - identical two-layer discipline to garage, fence and deck.
+ * Hardcoded `false`: the ten ADU rules are advanced to APPROVED only, and activating them (and so opening
+ * ADU screening to customers) is a separate founder authorization that has not been given. Intake and
+ * evaluation remain fully testable through SUPPORTED_PROJECT_TYPES and the internal prototype path.
+ */
+export function isAduScreeningCoverageReady(): boolean {
+  return false;
+}
+
+/** Checkout-time half of ADU Screening Coverage Readiness; `{ ready: true }` for non-ADU requests. */
+export function checkAduCheckoutEligibility(screeningRequest: { projectType: string | null }): ReadinessResult {
+  if (screeningRequest.projectType !== ProjectType.ADU) return { ready: true };
+  if (!isAduScreeningCoverageReady()) {
+    return {
+      ready: false,
+      reason: "ADU screening is not yet available for purchase - the required regulatory rule coverage has not been activated.",
     };
   }
   return { ready: true };

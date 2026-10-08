@@ -26,7 +26,7 @@ const ExistingPropertyShapeSchema = z
   .object({
     workflowType: z.literal(WorkflowType.EXISTING_PROPERTY),
     confirmedParcelId: z.string().min(1),
-    projectType: z.enum([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE, ProjectType.DECK]),
+    projectType: z.enum([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE, ProjectType.DECK, ProjectType.ADU]),
     // Deliberately z.unknown() here, not the final Shed/Garage schema - z.discriminatedUnion
     // requires every branch to be a plain ZodObject (a `.superRefine`-wrapped ZodEffects is
     // rejected at the type level). `projectDetails`'s own shape - which schema applies depends on

@@ -49,6 +49,11 @@ export const KNOWN_SOURCE_DEFINITIONS: Record<string, KnownSourceDefinition> = {
     expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
     description: "City of Seattle Landmarks (property-intelligence, Unit 11) - queried live, per existing-property report-generation request.",
   },
+  "seattle-frequent-transit": {
+    sourceId: "seattle-frequent-transit",
+    expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,
+    description: "City of Seattle Frequent Transit Service Area (property-intelligence, Unit 11) - queried live, per ADU report-generation request.",
+  },
   "seattle-eca": {
     sourceId: "seattle-eca",
     expectedRefreshCadence: ExpectedRefreshCadence.ON_DEMAND,

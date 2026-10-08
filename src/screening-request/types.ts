@@ -275,13 +275,41 @@ export interface DeckProjectConfiguration {
   distanceFromDwellingFt?: number;
 }
 
+/** Unit 11 (ADUs) - Slice 3 intake for a NEW DETACHED accessory dwelling unit. Placement, lot-line roles
+ * and the existing-dwelling selection reuse the shed's map-based model (the browser submits only what the
+ * customer indicated; every distance is computed server-side). Counts and floor area are DECLARED and
+ * labeled as such in the report; nothing is defaulted, so "not answered" stays distinguishable from an
+ * explicit answer. */
+export const AduTypeValue = {
+  DETACHED_NEW: "DETACHED_NEW",
+} as const;
+export type AduTypeValue = (typeof AduTypeValue)[keyof typeof AduTypeValue];
+
+export interface AduProjectConfiguration {
+  aduType: AduTypeValue;
+  widthFt: number;
+  depthFt: number;
+  stories: number;
+  bedrooms: number;
+  heightFt: number;
+  alleyAdjacent: boolean;
+  existingPrincipalDwellingUnits: number;
+  existingAduCount: number;
+  existingHouseBuiltBefore1982?: boolean;
+  existingChargeableFloorAreaSqFt?: number;
+  proposedPlacement?: ProposedPlacement;
+  lotLineRoleAssignment?: LotLineRoleAssignment;
+  distanceInputMode?: DistanceInputMode;
+  primaryDwellingSelection?: PrimaryDwellingSelection;
+}
+
 /** Unit 4 - `ProjectDetails` (domain-entities.md). Neither member carries its own `projectType`
  * discriminant field - the sibling `ScreeningRequest.projectType` column is the actual
  * discriminant (a plain `jsonb` column has no way to enforce a matching internal tag, so code
  * must consistently branch on the SIBLING field, then narrow/cast - never trust an internal tag
  * inside untrusted JSON as authoritative on its own). See `screening-request/repository.ts` and
  * `report-generation-orchestrator/pipeline.ts` for the actual branch points. */
-export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration | FenceProjectConfiguration | DeckProjectConfiguration;
+export type ProjectConfiguration = ShedProjectConfiguration | GarageProjectConfiguration | FenceProjectConfiguration | DeckProjectConfiguration | AduProjectConfiguration;
 
 export const ValidationState = {
   DRAFT: "DRAFT",
@@ -304,6 +332,7 @@ export const ProjectType = {
   GARAGE: "garage",
   FENCE: "fence",
   DECK: "deck",
+  ADU: "adu",
 } as const;
 export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
 
@@ -313,7 +342,7 @@ export type ProjectType = (typeof ProjectType)[keyof typeof ProjectType];
  * Coverage Readiness check). Every call site that previously redeclared its own copy of this set
  * (screening-request/repository.ts, screening-request/authorization.ts,
  * checkout-fulfillment/index.ts, app/api/screening-requests/route.ts) now imports this one. */
-export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE, ProjectType.DECK]);
+export const SUPPORTED_PROJECT_TYPES = new Set<string>([ProjectType.SHED, ProjectType.GARAGE, ProjectType.FENCE, ProjectType.DECK, ProjectType.ADU]);
 
 export const VacantLandScreeningIntent = {
   VACANT_PARCEL: "VACANT_PARCEL",
@@ -670,6 +699,27 @@ export const DeckProjectConfigurationSchema = z
 
 export type DeckProjectConfigurationInput = z.infer<typeof DeckProjectConfigurationSchema>;
 
+/** Unit 11's Boundary Validator schema for ADU intake. Counts are integers; nothing is defaulted. */
+export const AduProjectConfigurationSchema = z.object({
+  aduType: z.enum([AduTypeValue.DETACHED_NEW]),
+  widthFt: z.number().finite().positive().max(80),
+  depthFt: z.number().finite().positive().max(80),
+  stories: z.number().int().min(1).max(3),
+  bedrooms: z.number().int().min(0).max(8),
+  heightFt: z.number().finite().positive().max(60),
+  alleyAdjacent: z.boolean(),
+  existingPrincipalDwellingUnits: z.number().int().min(1).max(10),
+  existingAduCount: z.number().int().min(0).max(10),
+  existingHouseBuiltBefore1982: z.boolean().optional(),
+  existingChargeableFloorAreaSqFt: z.number().finite().nonnegative().max(200_000).optional(),
+  proposedPlacement: ProposedPlacementSchema.optional(),
+  lotLineRoleAssignment: LotLineRoleAssignmentSchema.optional(),
+  distanceInputMode: z.enum([DistanceInputMode.MAP_PLACEMENT, DistanceInputMode.MANUAL_FALLBACK]).optional(),
+  primaryDwellingSelection: PrimaryDwellingSelectionSchema.optional(),
+});
+
+export type AduProjectConfigurationInput = z.infer<typeof AduProjectConfigurationSchema>;
+
 /** Single dispatch point from the sibling `projectType` column to the project-details schema (the
  * column, never a tag inside the untrusted JSON, is the discriminant). Exhaustive over ProjectType. */
 export function projectDetailsSchemaFor(projectType: string): z.ZodType<ProjectConfiguration> {
@@ -680,6 +730,8 @@ export function projectDetailsSchemaFor(projectType: string): z.ZodType<ProjectC
       return FenceProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
     case ProjectType.DECK:
       return DeckProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
+    case ProjectType.ADU:
+      return AduProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
     default:
       return ShedProjectConfigurationSchema as unknown as z.ZodType<ProjectConfiguration>;
   }

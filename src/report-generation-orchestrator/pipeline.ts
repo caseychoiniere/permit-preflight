@@ -8,15 +8,15 @@
 import { eq, and } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { screeningRequests, regulatoryRules, inferencePolicies, type ReportGenerationJobRow } from "../db/schema.js";
-import type { DeckProjectConfiguration, ExistingPropertyScreeningRequestSnapshot, FenceProjectConfiguration, GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
+import type { AduProjectConfiguration, DeckProjectConfiguration, ExistingPropertyScreeningRequestSnapshot, FenceProjectConfiguration, GarageProjectConfiguration, ShedProjectConfiguration, VacantLandScreeningRequestSnapshot } from "../screening-request/types.js";
 import { LotLineRoleStatus, MultipleFrontageAnswer, ProjectType, WorkflowType } from "../screening-request/types.js";
 import { hydrateScreeningRequestSnapshot } from "../screening-request/hydrate.js";
 import { assemblePropertyContext, type FactRetriever } from "../property-intelligence/assemble.js";
 import { createKingCountyParcelGeometryRetriever } from "../property-intelligence/king-county-parcel-geometry.js";
 import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence/seattle-building-outlines.js";
 import { createSeattleEcaRetriever } from "../property-intelligence/seattle-eca.js";
-import { createSeattleLandmarkRetriever, createSeattleZoningRetriever } from "../property-intelligence/seattle-zoning.js";
-import type { LandmarkFactValue, ZoningFactValue } from "../property-intelligence/seattle-zoning.js";
+import { createSeattleFrequentTransitRetriever, createSeattleLandmarkRetriever, createSeattleZoningRetriever } from "../property-intelligence/seattle-zoning.js";
+import type { FrequentTransitFactValue, LandmarkFactValue, ZoningFactValue } from "../property-intelligence/seattle-zoning.js";
 import { deriveZoningApplicability, type ZoningApplicability } from "../regulatory-rules-engine/zoning-applicability.js";
 import {
   classifyExistingStructures,
@@ -47,6 +47,9 @@ import { assembleFenceEvidence } from "./fence-evidence.js";
 import { evaluateDeck } from "../regulatory-rules-engine/evaluate-deck.js";
 import type { DeckProjectDetails } from "../regulatory-rules-engine/deck-types.js";
 import { assembleDeckEvidence } from "./deck-evidence.js";
+import { evaluateAdu } from "../regulatory-rules-engine/evaluate-adu.js";
+import type { AduProjectDetails } from "../regulatory-rules-engine/adu-types.js";
+import { assembleAduEvidence } from "./adu-evidence.js";
 import type { FenceEvaluationOutcome, FenceProjectDetails } from "../regulatory-rules-engine/fence-types.js";
 import { evaluateVacantLand, findActiveScenarioRule, SCENARIO_DEFINITIONS, toAppliedRuleRef } from "../regulatory-rules-engine/evaluate-vacant-land.js";
 import type { VacantLandSetbackRuleSpec } from "../regulatory-rules-engine/evaluate-vacant-land.js";
@@ -392,6 +395,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.DECK) {
       retrievers.push(createSeattleEcaRetriever());
     }
+    // Unit 11 - an ADU is placed on the parcel (needs the existing buildings), screened for critical areas, and its
+    // reduced small-lot side setback depends on frequent-transit-service-area membership.
+    if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.ADU) {
+      retrievers.push(createSeattleBuildingOutlinesRetriever(), createSeattleEcaRetriever(), createSeattleFrequentTransitRetriever());
+    }
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
       retrievers.push(createSeattleBuildingOutlinesRetriever());
       // Unit 6B - ECA screening (capability A) is shed-scoped for this unit's approved scope
@@ -481,9 +489,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     }
 
     // Unit 11 Slice 1 - same best-effort health recording for the zoning and landmark sources (existing-property only).
+    const frequentTransitFact = getFact<FrequentTransitFactValue>(propertyContext, "frequent-transit-service-area");
     for (const [fact, sourceId, label] of [
       [zoningFact, "seattle-zoning", "Seattle zoning"],
       [landmarkFact, "seattle-landmarks", "Seattle landmarks"],
+      [frequentTransitFact, "seattle-frequent-transit", "Seattle frequent transit service area"],
     ] as const) {
       if (!fact) continue;
       try {
@@ -515,7 +525,12 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       await runDeckPipeline(db, job, snapshot, screeningRequest.id, propertyContext, zoningApplicability, deps);
       return;
     }
-    // From here on the request is a shed or garage (the vacant-land, fence and deck branches returned above).
+    // Unit 11 - a placed, measured sibling branch (like the shed's spatial path, but evaluated by evaluate-adu.ts).
+    if (snapshot.projectType === ProjectType.ADU) {
+      await runAduPipeline(db, job, snapshot, screeningRequest.id, propertyContext, geometryFact, buildingFootprintsFact, environmentalConstraintsFact?.value ?? [], zoningApplicability, deps);
+      return;
+    }
+    // From here on the request is a shed or garage (the vacant-land, fence, deck and ADU branches returned above).
     const accessoryDetails = snapshot.projectDetails as ShedProjectConfiguration | GarageProjectConfiguration;
 
     // Spatial Analysis (real PostGIS) - only when the parcel geometry was actually retrieved and
@@ -1038,6 +1053,177 @@ async function runDeckPipeline(
   const evidence = [
     ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
     ...assembleDeckEvidence(outcome),
+  ];
+
+  const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>
+    createEvidenceReportArtifact(db, {
+      screeningRequestId,
+      reportGenerationJobId: job.id,
+      findings: outcome.findings,
+      evidence,
+      explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
+      ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+      dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
+    })
+  );
+
+  await markJobComplete(db, job.id, artifact.id);
+  logger.info("JOB_COMPLETE", { reportGenerationJobId: job.id, evidenceReportArtifactId: artifact.id });
+}
+
+/**
+ * Unit 11 (ADUs) - Workflow A-1. A new detached ADU is placed on the parcel and measured exactly like a
+ * shed (PostGIS distances against the King County parcel polygon, never client-supplied), then evaluated by
+ * evaluate-adu.ts against the ACTIVE `adu` rules (a structurally separate query). Persists ordinary findings
+ * plus the ADU feasibility summary and declared inputs as evidence only.
+ */
+async function runAduPipeline(
+  db: Db,
+  job: ReportGenerationJobRow,
+  snapshot: ExistingPropertyScreeningRequestSnapshot,
+  screeningRequestId: string,
+  propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
+  geometryFact: PropertyFact<Polygon> | undefined,
+  buildingFootprintsFact: PropertyFact<RawBuildingFootprint[]> | undefined,
+  ecaFindings: CriticalAreaFinding[],
+  zoningApplicability: ZoningApplicability,
+  deps: PipelineDependencies
+): Promise<void> {
+  const details = snapshot.projectDetails as AduProjectConfiguration;
+  const frequentTransitFact = getFact<FrequentTransitFactValue>(propertyContext, "frequent-transit-service-area");
+  const parcelGeometryAvailable = geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value !== undefined;
+
+  let rawParcelAreaSqFt: number | undefined;
+  let spatialEvidenceQuality: EvidenceQuality | undefined;
+  let boundaryPolygonWgs84: GeographicPoint[] | undefined;
+  let footprintProjected: Polygon | undefined;
+  let footprintWgs84: GeographicPoint[] | undefined;
+  let distances: Awaited<ReturnType<typeof computeSetbackDistances>>["distances"] | undefined;
+  let setbackEvidenceGapReason: string | undefined;
+  let roleGaps: ReturnType<typeof deriveStreetFrontageRoleGapReasons> | undefined;
+
+  if (parcelGeometryAvailable) {
+    rawParcelAreaSqFt = await computeParcelAreaSqFt(db, geometryFact!.value!);
+  }
+  if (parcelGeometryAvailable && details.proposedPlacement && details.lotLineRoleAssignment) {
+    spatialEvidenceQuality = geometryFact!.provenance.evidenceQuality;
+    const computed = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
+      computeSetbackDistances(db, geometryFact!.value!, details.proposedPlacement!, { widthFt: details.widthFt, depthFt: details.depthFt }, details.lotLineRoleAssignment!)
+    );
+    distances = computed.distances;
+    footprintProjected = computed.footprintProjected;
+    if (details.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
+      setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
+    }
+    roleGaps = deriveStreetFrontageRoleGapReasons({
+      multipleFrontageAnswer: details.lotLineRoleAssignment.multipleFrontageAnswer,
+      rearAlsoFacesStreet: details.lotLineRoleAssignment.rearAlsoFacesStreet,
+      hasUnresolvedStreetFrontage: Boolean(distances.unresolvedStreetFrontageDistancesFt && Object.keys(distances.unresolvedStreetFrontageDistancesFt).length > 0),
+    });
+    boundaryPolygonWgs84 = await transformPolygonToWgs84(db, geometryFact!.value!);
+    if (footprintProjected) footprintWgs84 = await transformPolygonToWgs84(db, footprintProjected);
+  }
+
+  // Existing buildings: classify, find the customer-confirmed dwelling, measure to it and to the nearest other one.
+  let existingStructures: ExistingStructure[] | undefined;
+  let existingStructuresWgs84Display: { outlineId: string; footprintWgs84: GeographicPoint[]; areaSqFt?: number; classification: string }[] | undefined;
+  let existingStructureCoverageFact: ExistingStructureCoverageFact | undefined;
+  let distanceToDwellingFt: number | undefined;
+  let nearestOtherStructure: AduProjectDetails["nearestOtherStructure"];
+  let dwellingSelectionNotMatchedExplanation: string | undefined;
+  let primaryDwellingFound = false;
+  const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
+  if (buildingFootprintsAvailable) {
+    const structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, details.primaryDwellingSelection);
+    existingStructures = structures;
+    existingStructuresWgs84Display = await Promise.all(
+      structures.map(async (st) => ({ outlineId: st.outlineId, footprintWgs84: await transformPolygonToWgs84(db, st.footprint), areaSqFt: st.areaSqFt, classification: st.classification }))
+    );
+    const primaryDwelling = findPrimaryDwelling(structures);
+    primaryDwellingFound = Boolean(primaryDwelling);
+    if (primaryDwelling) {
+      distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
+    }
+    for (const st of structures) {
+      if (primaryDwelling && st.outlineId === primaryDwelling.outlineId) continue;
+      const d = await computeDistanceToDwelling(db, footprintProjected!, st.footprint);
+      if (!nearestOtherStructure || d < nearestOtherStructure.distanceFt) nearestOtherStructure = { distanceFt: d, areaSqFt: st.areaSqFt };
+    }
+    const coverage = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
+      computeExistingStructureCoverageSqFt(db, geometryFact!.value!, structures.map((st) => st.footprint))
+    );
+    existingStructureCoverageFact = buildExistingStructureCoverageFact(coverage);
+  }
+  const dwellingGapCase = selectDwellingSeparationEvidenceGapCase({
+    buildingFootprintsAvailable,
+    footprintProjected: Boolean(footprintProjected),
+    primaryDwellingFound,
+    primaryDwellingSelectionStatus: details.primaryDwellingSelection?.status === "SELECTED" ? "SELECTED" : undefined,
+  });
+  const dwellingEvidenceGapReason = deriveDwellingSeparationEvidenceGapReason({ case: dwellingGapCase });
+  if (dwellingGapCase === "SELECTION_NOT_MATCHED") dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
+
+  const project: AduProjectDetails = {
+    projectType: "adu",
+    aduType: details.aduType,
+    widthFt: details.widthFt,
+    depthFt: details.depthFt,
+    stories: details.stories,
+    bedrooms: details.bedrooms,
+    heightFt: details.heightFt,
+    alleyAdjacent: details.alleyAdjacent,
+    existingPrincipalDwellingUnits: details.existingPrincipalDwellingUnits,
+    existingAduCount: details.existingAduCount,
+    existingHouseBuiltBefore1982: details.existingHouseBuiltBefore1982,
+    existingChargeableFloorAreaSqFt: details.existingChargeableFloorAreaSqFt,
+    distanceToRearLotLineFt: distances?.distanceToRearLotLineFt,
+    distanceToSideLotLineFt: distances?.distanceToSideLotLineFt,
+    distanceToFrontLotLineFt: distances?.distanceToFrontLotLineFt,
+    distanceToDwellingFt,
+    nearestOtherStructure,
+    spatialEvidenceQuality,
+    setbackEvidenceGapReason,
+    sideEdgeDistancesFt: distances?.sideEdgeDistancesFt,
+    unresolvedStreetFrontageDistancesFt: distances?.unresolvedStreetFrontageDistancesFt,
+    frontRoleEvidenceGapReason: roleGaps?.frontRoleEvidenceGapReason,
+    rearRoleEvidenceGapReason: roleGaps?.rearRoleEvidenceGapReason,
+    sideRoleEvidenceGapReason: roleGaps?.sideRoleEvidenceGapReason,
+    dwellingSeparationEvidenceGapReason: dwellingEvidenceGapReason,
+  };
+
+  const activeRuleRows = await db
+    .select()
+    .from(regulatoryRules)
+    .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.ADU)));
+
+  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () =>
+    evaluateAdu({
+      project,
+      site: {
+        parcelAreaSqFt: rawParcelAreaSqFt,
+        existingMappedCoverageSqFt: existingStructureCoverageFact?.mappedFootprintAreaSqFt,
+        inFrequentTransitServiceArea: frequentTransitFact?.availabilityState === AvailabilityState.AVAILABLE ? frequentTransitFact.value?.inFrequentTransitServiceArea : undefined,
+        ecaFindings,
+      },
+      candidateActiveRules: rowsToRegulatoryRules(activeRuleRows),
+      zoningApplicability,
+    })
+  );
+
+  const findingsForExplanation = selectFindingsForExplanation(outcome.findings);
+  const explanationResult = deps.generateExplanation
+    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(findingsForExplanation))
+    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+
+  const evidence = [
+    ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
+    ...(boundaryPolygonWgs84 ? [{ factType: "parcel-boundary-wgs84-display", value: boundaryPolygonWgs84, provenance: {} }] : []),
+    ...(footprintWgs84 ? [{ factType: "proposed-footprint-wgs84-display", value: footprintWgs84, provenance: {} }] : []),
+    ...(existingStructures ? [{ factType: "existing-structures-classified", value: existingStructures, provenance: {} }] : []),
+    ...(existingStructuresWgs84Display ? [{ factType: "existing-structures-wgs84-display", value: existingStructuresWgs84Display, provenance: {} }] : []),
+    ...(dwellingSelectionNotMatchedExplanation ? [{ factType: "dwelling-selection-outcome", value: { outcome: "SELECTION_NOT_MATCHED", explanation: dwellingSelectionNotMatchedExplanation }, provenance: {} }] : []),
+    ...(existingStructureCoverageFact ? [existingStructureCoverageEvidenceEntry(existingStructureCoverageFact)] : []),
+    ...assembleAduEvidence(outcome),
   ];
 
   const { artifact } = await withStageTiming("ARTIFACT_PERSISTENCE", job.id, () =>

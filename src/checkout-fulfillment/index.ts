@@ -14,6 +14,8 @@ import { hydrateScreeningRequestRow } from "../screening-request/hydrate.js";
 import {
   checkDeckCheckoutEligibility,
   checkFenceCheckoutEligibility,
+  checkAduCheckoutEligibility,
+  REQUIRED_SOURCE_IDS_FOR_ADU,
   checkGarageCheckoutEligibility,
   checkReadiness,
   checkVacantLandCheckoutEligibility,
@@ -67,7 +69,9 @@ export async function initiateCheckout(
           ? REQUIRED_SOURCE_IDS_FOR_FENCE
           : request.projectType === ProjectType.DECK
             ? REQUIRED_SOURCE_IDS_FOR_DECK
-            : REQUIRED_SOURCE_IDS_FOR_SHED;
+            : request.projectType === ProjectType.ADU
+              ? REQUIRED_SOURCE_IDS_FOR_ADU
+              : REQUIRED_SOURCE_IDS_FOR_SHED;
   const readiness = await checkReadiness(db, request, requiredSourceIds);
   if (!readiness.ready) return { outcome: "NOT_READY", reason: readiness.reason };
 
@@ -84,6 +88,10 @@ export async function initiateCheckout(
   // Deck Screening Coverage Readiness (Unit 8) - same shape; a no-op for non-DECK requests.
   const deckEligibility = checkDeckCheckoutEligibility(request);
   if (!deckEligibility.ready) return { outcome: "NOT_READY", reason: deckEligibility.reason };
+
+  // ADU Screening Coverage Readiness (Unit 11) - same shape; a no-op for non-ADU requests.
+  const aduEligibility = checkAduCheckoutEligibility(request);
+  if (!aduEligibility.ready) return { outcome: "NOT_READY", reason: aduEligibility.reason };
 
   // Vacant-Land Screening Coverage Readiness (BR-U5-9) - mirrors garageEligibility exactly, a
   // no-op ({ ready: true }) for non-VACANT_LAND requests.

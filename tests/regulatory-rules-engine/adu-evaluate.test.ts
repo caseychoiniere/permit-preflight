@@ -58,6 +58,30 @@ describe("headline", () => {
   });
 });
 
+describe("a mis-placed footprint (outside the parcel boundary)", () => {
+  it("below the 0.97 inside share, no position-dependent claim is made (no 0 ft setback FAIL) and the headline is CANNOT_TELL; everything else is still evaluated", () => {
+    const o = run({ footprintInsideParcelFraction: 0.6, distanceToRearLotLineFt: 0, distanceToSideLotLineFt: 0, distanceToDwellingFt: 0 });
+    for (const s of ["ADU rear setback", "ADU side setback", "ADU front setback", "Separation from the existing dwelling", "Lot coverage", "Other"]) expect(by(o, s)).toBeUndefined();
+    expect(by(o, "ADU position on the lot")!.explanationBasis).toContain("About 40%");
+    expect(o.findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+    expect(oc(by(o, "ADU size limit"))).toBe("KNOWN/PASS");
+    expect(oc(by(o, "ADU height"))).toBe("KNOWN/PASS");
+    expect(o.feasibility.headline).toBe("CANNOT_TELL");
+    expect(o.feasibility.summary).toContain("outside the property boundary");
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("Place the ADU fully inside");
+  });
+  it("at or above the tolerance (0.97) the placement is evaluated normally; a known failure elsewhere still wins as BLOCKED", () => {
+    expect(oc(by(run({ footprintInsideParcelFraction: 0.97 }), "ADU rear setback"))).toBe("KNOWN/PASS");
+    expect(oc(by(run({ footprintInsideParcelFraction: 1 }), "ADU rear setback"))).toBe("KNOWN/PASS");
+    const o = run({ footprintInsideParcelFraction: 0.5, widthFt: 40, depthFt: 40, stories: 2 });
+    expect(o.feasibility.headline).toBe("BLOCKED");
+  });
+  it("only a new detached ADU can be outside the parcel (a conversion uses a mapped building; an attached ADU has no footprint)", () => {
+    const o = run({ aduType: "CONVERSION_EXISTING", widthFt: undefined, depthFt: undefined, heightFt: undefined, footprintInsideParcelFraction: 0.1, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true } });
+    expect(by(o, "ADU position on the lot")).toBeUndefined();
+  });
+});
+
 describe("outcome-dependent gating - a claim needs only its own rule", () => {
   it("with no rules active nothing is concluded and every claim is uncovered", () => {
     const o = run({}, {}, []);

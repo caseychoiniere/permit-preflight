@@ -9,6 +9,7 @@
  * disclosed manual-browser verification steps instead.
  */
 
+import { isFootprintInsideParcel } from "../../app/components/parcel-placement-helpers.js";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -343,5 +344,43 @@ describe("toPersistedLotLineRoleAssignment (maintenance correction 2026-09-15 - 
   it("round-trips deriveLotLineSelectionForDisplay's own INSUFFICIENT output (adjacent pick) back down to the bare persisted shape", () => {
     const displayResult = deriveLotLineSelectionForDisplay(pentagonBoundary, "edge-0", "edge-1");
     expect(toPersistedLotLineRoleAssignment(displayResult)).toEqual({ status: LotLineRoleStatus.INSUFFICIENT });
+  });
+});
+
+describe("isFootprintInsideParcel (a footprint reaching over a lot line is a mis-placement)", () => {
+  // A ~120 x 50 ft rectangle near Seattle (WGS84): 120 ft ~ 0.000468 deg lng, 50 ft ~ 0.000137 deg lat.
+  const o = { lng: -122.3116, lat: 47.5861 };
+  const boundary = [
+    { lng: o.lng, lat: o.lat },
+    { lng: o.lng + 0.000468, lat: o.lat },
+    { lng: o.lng + 0.000468, lat: o.lat + 0.000137 },
+    { lng: o.lng, lat: o.lat + 0.000137 },
+  ];
+  const center = { lng: o.lng + 0.000234, lat: o.lat + 0.0000685 };
+
+  it("a small footprint at the center is inside", () => {
+    expect(isFootprintInsideParcel(center, 16, 20, 0, boundary)).toBe(true);
+    expect(isFootprintInsideParcel(center, 16, 20, 45, boundary)).toBe(true);
+  });
+  it("a footprint over the rear lot line, in the street, or entirely off the parcel is not", () => {
+    expect(isFootprintInsideParcel({ lng: o.lng + 0.000468 - 0.00001, lat: center.lat }, 16, 20, 0, boundary)).toBe(false); // ~3 ft from the east edge, 16 ft wide
+    expect(isFootprintInsideParcel({ lng: o.lng - 0.0002, lat: center.lat }, 16, 20, 0, boundary)).toBe(false);
+    expect(isFootprintInsideParcel({ lng: o.lng + 1, lat: o.lat + 1 }, 16, 20, 0, boundary)).toBe(false);
+  });
+  it("a footprint too big for the lot is not inside, and a degenerate boundary is never 'inside'", () => {
+    expect(isFootprintInsideParcel(center, 200, 20, 0, boundary)).toBe(false);
+    expect(isFootprintInsideParcel(center, 16, 20, 0, [])).toBe(false);
+  });
+  it("a concave (L-shaped) lot: a footprint spanning the notch is not inside", () => {
+    const l = [
+      { lng: o.lng, lat: o.lat },
+      { lng: o.lng + 0.000468, lat: o.lat },
+      { lng: o.lng + 0.000468, lat: o.lat + 0.00005 },
+      { lng: o.lng + 0.00015, lat: o.lat + 0.00005 },
+      { lng: o.lng + 0.00015, lat: o.lat + 0.000137 },
+      { lng: o.lng, lat: o.lat + 0.000137 },
+    ];
+    expect(isFootprintInsideParcel({ lng: o.lng + 0.0003, lat: o.lat + 0.000025 }, 16, 12, 0, l)).toBe(true);
+    expect(isFootprintInsideParcel({ lng: o.lng + 0.0003, lat: o.lat + 0.00007 }, 16, 12, 0, l)).toBe(false); // in the notch
   });
 });

@@ -390,6 +390,23 @@ export async function computeSetbackDistancesForFootprint(
 
 
 /**
+ * The share (0..1) of a placed footprint that lies inside the parcel boundary, via PostGIS (never application-level math). A footprint
+ * that reaches over a lot line has a distance of 0 ft to it, which is a mis-placement, not a setback result; callers use this to say so.
+ */
+export async function computeFootprintInsideFraction(db: Db, boundaryPolygon: Polygon, footprint: Polygon): Promise<number> {
+  assertAuthoritativeSrid(boundaryPolygon);
+  assertAuthoritativeSrid(footprint);
+  const result = await db.execute(sql`
+    SELECT ST_Area(ST_Intersection(ST_SetSRID(ST_GeomFromText(${polygonToWkt(footprint)}), ${footprint.srid}::int), ST_SetSRID(ST_GeomFromText(${polygonToWkt(boundaryPolygon)}), ${boundaryPolygon.srid}::int)))
+      / NULLIF(ST_Area(ST_SetSRID(ST_GeomFromText(${polygonToWkt(footprint)}), ${footprint.srid}::int)), 0) AS inside
+  `);
+  const row = result.rows[0] as { inside: number | string | null } | undefined;
+  const value = Number(row?.inside);
+  if (!Number.isFinite(value)) throw new Error("Footprint containment returned no value.");
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
  * Building intelligence v1 - minimum polygon-to-polygon distance between the proposed shed
  * footprint and a user-confirmed primary-dwelling footprint, via PostGIS's own ST_Distance (the
  * same distanceToEdge helper computeSetbackDistances already uses for lot-line setbacks, applied

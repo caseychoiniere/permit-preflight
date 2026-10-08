@@ -75,6 +75,35 @@ export function shedFootprintGeoJson(anchor: GeographicPoint | null, widthFt: nu
   return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [closedRing] } };
 }
 
+function pointInPolygonLngLat(p: GeographicPoint, polygon: GeographicPoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i]!;
+    const b = polygon[j]!;
+    if (a.lat > p.lat !== b.lat > p.lat && p.lng < ((b.lng - a.lng) * (p.lat - a.lat)) / (b.lat - a.lat) + a.lng) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * True when the whole placed footprint (its corners, edge midpoints and center) lies inside the parcel boundary. A footprint that
+ * reaches over a lot line has a distance of 0 ft to it, which would read as "0 ft from the rear lot line" - a misleading result for what
+ * is really a mis-placed footprint - so the Placement step requires it to be moved inside. Display geometry only (WGS84 ring); the
+ * authoritative distances are still computed server-side.
+ */
+export function isFootprintInsideParcel(
+  anchor: GeographicPoint,
+  widthFt: number,
+  depthFt: number,
+  orientationDeg: number,
+  boundaryWgs84: GeographicPoint[]
+): boolean {
+  if (boundaryWgs84.length < 3) return false;
+  const ring = footprintPreviewRing(anchor, widthFt, depthFt, orientationDeg);
+  const sample = [...ring, ...ring.map((p, i) => midpoint(p, ring[(i + 1) % ring.length]!)), anchor];
+  return sample.every((p) => pointInPolygonLngLat(p, boundaryWgs84));
+}
+
 export interface EdgeSegment {
   edgeRef: string;
   a: GeographicPoint;
@@ -211,6 +240,8 @@ export interface PlacementCompletenessInput {
   hasBuildingsToAskAbout: boolean;
   /** What is being placed, for the checklist wording only ("shed" when omitted). */
   structureNoun?: string;
+  /** True when a footprint is placed but extends outside the parcel boundary (adds "Move the ... fully inside the property boundary"). */
+  footprintOutsideParcel?: boolean;
   /** Replaces the "Place the ... on the map" item (an ADU conversion chooses a mapped building instead of placing one). */
   placementMissingMessage?: string;
   /** True when the building chosen for conversion is also the one confirmed as the main house. */
@@ -246,6 +277,7 @@ export function checkPlacementCompleteness(input: PlacementCompletenessInput): P
   if (input.lotLineDecided && !input.multipleFrontageAnswered) missing.push("Answer whether this property has street frontage on more than one side");
   if (input.needsStreetFrontageEdges) missing.push("Select the additional street-facing property line(s)");
   if (!input.hasPlacement) missing.push(input.placementMissingMessage ?? `Place the ${input.structureNoun ?? "shed"} on the map`);
+  if (input.hasPlacement && input.footprintOutsideParcel) missing.push(`Move the ${input.structureNoun ?? "shed"} fully inside the property boundary`);
   if (input.convertedIsMainHouse) missing.push("Choose a building other than your main house to convert");
   if (input.hasBuildingsToAskAbout && !input.dwellingAnswered) missing.push('Confirm your main house, or choose "I\'m not sure"');
   return { complete: missing.length === 0, missing };

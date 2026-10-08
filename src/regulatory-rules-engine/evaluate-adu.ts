@@ -253,6 +253,13 @@ export function describeAduDeclaredInputs(project: AduProjectDetails): AduDeclar
 // Findings
 // ---------------------------------------------------------------------------------------------
 
+/** A placed footprint with less than this share inside the parcel boundary is treated as mis-placed (the small slack absorbs mapping error at a lot line). */
+export const MIN_FOOTPRINT_INSIDE_FRACTION = 0.97;
+
+function footprintOutsideParcel(project: AduProjectDetails): boolean {
+  return project.aduType === "DETACHED_NEW" && project.footprintInsideParcelFraction !== undefined && project.footprintInsideParcelFraction < MIN_FOOTPRINT_INSIDE_FRACTION;
+}
+
 const SUBJECT = {
   COUNT: "Number of ADUs on the lot",
   DENSITY: "Dwelling units allowed on the lot (density)",
@@ -270,6 +277,7 @@ const SUBJECT = {
   TREES: "Tree requirement",
   DESIGN: "Design standards (pedestrian access, street-facing entry)",
   ECA: "Environmentally critical areas",
+  POSITION: "ADU position on the lot",
   CONVERSION: "Conversion of an existing accessory structure",
   CONVERSION_SITING: "Setbacks and lot coverage (conversion)",
   CONVERSION_STRUCTURE: "Building to convert",
@@ -957,6 +965,7 @@ function buildFeasibility(input: {
   uncovered: string[];
   placementMissing: boolean;
   conversion: boolean;
+  outsideParcel: boolean;
   mappedEca: string[];
 }): AduFeasibility {
   const blockers = input.evaluated.map((e) => e.blocker).filter((v): v is string => Boolean(v));
@@ -982,7 +991,9 @@ function buildFeasibility(input: {
     summary = `Permit Preflight could not evaluate every ADU requirement (${input.uncovered.join("; ")}), so it cannot give a feasibility read. What it did evaluate is listed below.`;
   } else if (input.placementMissing) {
     headline = "CANNOT_TELL";
-    summary = input.conversion
+    summary = input.outsideParcel
+      ? "The ADU footprint you placed reaches outside the property boundary, so its distances to the property lines and the house could not be evaluated. Move it fully inside the parcel to get a read on setbacks and separation."
+      : input.conversion
       ? "The building to convert could not be matched to a mapped building on the parcel (or its distances could not be measured), so its size and position could not be evaluated. Choose it on the map to get a read on the conversion."
       : "The ADU's position on the lot was not established, so its distances to the property lines and the existing house could not be measured. Place it on the map to get a read on setbacks and separation.";
   } else if (constraints.length > 0) {
@@ -1067,6 +1078,15 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
           evaluateDesign(project, rules)
         );
       }
+    } else if (footprintOutsideParcel(project)) {
+      // The footprint reaches over a lot line: its distances to the lot lines and the house are not meaningful (a 0 ft distance is a mis-placement, not a
+      // setback result), so no position-dependent claim is made. Everything that does not depend on where it is placed is still evaluated.
+      const pct = Math.round((1 - (project.footprintInsideParcelFraction ?? 0)) * 100);
+      evaluated.push({
+        finding: verify(SUBJECT.POSITION, undefined, [`footprintInsideParcelFraction=${(project.footprintInsideParcelFraction ?? 0).toFixed(2)}`], `About ${pct}% of the ADU footprint you placed lies outside the property boundary shown, so its distances to the property lines and the house are not meaningful and were not evaluated. Move the footprint fully inside the parcel to get a read on setbacks, separation and lot coverage.`),
+        verifyItem: "Place the ADU fully inside the parcel to evaluate setbacks, separation and lot coverage.",
+      });
+      evaluated.push(evaluateCount(project, rules), evaluateDensity(project, site, rules), evaluateSize(project, rules), evaluateHeight(project, rules), evaluateFar(project, site, rules), evaluateAmenity(project, site, rules), evaluateTrees(project, site, rules), evaluateDesign(project, rules));
     } else {
       evaluated.push(
         evaluateCount(project, rules),
@@ -1096,8 +1116,9 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
     zoning: input.zoningApplicability,
     evaluated,
     uncovered,
-    placementMissing: !notNr && !isAttached(project) && (isConversion(project) ? project.conversion?.structureAreaSqFt === undefined || (conversionAllowance(project) === "NO" && placementGap(project) !== undefined) : placementGap(project) !== undefined),
+    placementMissing: !notNr && !isAttached(project) && (footprintOutsideParcel(project) || (isConversion(project) ? project.conversion?.structureAreaSqFt === undefined || (conversionAllowance(project) === "NO" && placementGap(project) !== undefined) : placementGap(project) !== undefined)),
     conversion: isConversion(project),
+    outsideParcel: footprintOutsideParcel(project),
     mappedEca: eca.mapped,
   });
 

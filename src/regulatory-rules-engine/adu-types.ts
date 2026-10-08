@@ -60,6 +60,8 @@ export interface AduProjectDetails {
   /** Total chargeable floor area of all existing structures, as the customer declares it. */
   existingChargeableFloorAreaSqFt?: number;
 
+  /** Share (0..1) of a placed new ADU's footprint inside the mapped parcel boundary; below the tolerance it is a mis-placement and no distance is meaningful. */
+  footprintInsideParcelFraction?: number;
   distanceToRearLotLineFt?: number;
   distanceToSideLotLineFt?: number;
   distanceToFrontLotLineFt?: number;

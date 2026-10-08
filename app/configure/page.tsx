@@ -22,7 +22,7 @@
 
 import { useEffect, useState } from "react";
 import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection, type ExistingStructureDisplay, type DwellingSelection } from "../components/ParcelPlacementMap.js";
-import { checkPlacementCompleteness, toPersistedLotLineRoleAssignment } from "../components/parcel-placement-helpers.js";
+import { checkPlacementCompleteness, isFootprintInsideParcel, toPersistedLotLineRoleAssignment } from "../components/parcel-placement-helpers.js";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
 import { DistanceInputMode, FoundationType, LotLineRoleStatus, MultipleFrontageAnswer, ProjectType, ShedAttachment, ShedIntendedUse } from "../../src/screening-request/types.js";
 import { evaluateAttachment, evaluateFoundationExemption, evaluateRoofArea, foundationStfiDisqualification } from "../../src/regulatory-rules-engine/evaluate.js";
@@ -185,6 +185,7 @@ export default function ConfigurePage() {
   const placementCompleteness = checkPlacementCompleteness({
     lotLineDecided: lotLineSelection !== null,
     hasPlacement: isConversion ? convertedOutlineId !== null : placement !== null,
+    footprintOutsideParcel: !isConversion && placement !== null && boundaryPolygonWgs84 !== null && !isFootprintInsideParcel(placement.anchor, dimensions.widthFt, dimensions.depthFt, placement.orientationDeg, boundaryPolygonWgs84),
     placementMissingMessage: isConversion ? "Choose the building you would convert" : undefined,
     convertedIsMainHouse: isConversion && convertedOutlineId !== null && dwellingSelection?.status === "SELECTED" && dwellingSelection.outlineId === convertedOutlineId,
     hasBuildingsToAskAbout: (projectType === ProjectType.SHED || projectType === ProjectType.ADU) && existingStructures.length > 0,

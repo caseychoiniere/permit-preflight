@@ -40,6 +40,7 @@ import {
   computeSetbackConstrainedArea,
   computeSetbackDistances,
   computeSetbackDistancesForFootprint,
+  computeFootprintInsideFraction,
   transformPolygonToWgs84,
 } from "../spatial-analysis/postgis-adapter.js";
 import { evaluateProject, isCriticalAreaFinding, evaluateEcaLotAreaAdjustment } from "../regulatory-rules-engine/evaluate.js";
@@ -1124,6 +1125,7 @@ async function runAduPipeline(
   let primaryDwellingFound = false;
   let convertedStructure: ExistingStructure | undefined;
   let structureNotMatchedReason: string | undefined;
+  let footprintInsideParcelFraction: number | undefined;
 
   const buildingsFetched = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value);
   let structures: ExistingStructure[] | undefined;
@@ -1157,6 +1159,7 @@ async function runAduPipeline(
     );
     distances = computed.distances;
     footprintProjected = computed.footprintProjected;
+    if (footprintProjected) footprintInsideParcelFraction = await computeFootprintInsideFraction(db, geometryFact!.value!, footprintProjected);
   }
 
   const roles = newDetails?.lotLineRoleAssignment ?? conversionDetails?.lotLineRoleAssignment;
@@ -1240,6 +1243,7 @@ async function runAduPipeline(
     distanceToFrontLotLineFt: distances?.distanceToFrontLotLineFt,
     distanceToDwellingFt,
     nearestOtherStructure,
+    footprintInsideParcelFraction,
     spatialEvidenceQuality,
     setbackEvidenceGapReason,
     sideEdgeDistancesFt: distances?.sideEdgeDistancesFt,

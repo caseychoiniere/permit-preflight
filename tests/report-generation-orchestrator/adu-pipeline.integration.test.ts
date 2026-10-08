@@ -188,6 +188,29 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
   );
 
   it(
+    "a footprint placed in the street, or straddling the rear lot line, is a mis-placement: no 0 ft setback FAIL, CANNOT_TELL with the reason, placement-independent claims still made",
+    async () => {
+      const inStreet = { anchor: { lat: 47.58608874074506, lng: -122.3120200879064 }, orientationDeg: 0 };
+      const straddle = { anchor: { lat: 47.58609585030874, lng: -122.31147314645942 }, orientationDeg: 0 };
+      for (const [name, placement] of [["in the street", inStreet], ["straddling the rear lot line", straddle]] as const) {
+        const { job, artifact } = await generate(adu({ proposedPlacement: placement }));
+        expect(job?.state, name).toBe("COMPLETE");
+        const findings = artifact!.findings as F[];
+        const by = (s: string) => findings.find((f) => f.subject === s);
+        expect(by("ADU position on the lot")?.classification, name).toBe("REQUIRES_VERIFICATION");
+        expect(by("ADU position on the lot")!.explanationBasis, name).toContain("outside the property boundary");
+        for (const s of ["ADU rear setback", "ADU side setback", "ADU front setback", "Separation from the existing dwelling", "Lot coverage"]) expect(by(s), `${name}: ${s}`).toBeUndefined();
+        expect(by("ADU size limit"), name).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
+        expect(findings.some((f) => f.complianceOutcome === "FAIL"), name).toBe(false);
+        const feasibility = feasibilityOf(artifact);
+        expect(feasibility.headline, name).toBe("CANNOT_TELL");
+        expect(feasibility.summary, name).toContain("outside the property boundary");
+      }
+    },
+    180_000
+  );
+
+  it(
     "a parcel verified NOT to be NR (LR1) gets no ADU zoning conclusion: CANNOT_TELL, zone named, nothing passes or fails",
     async () => {
       const lr1Roles = { ...ROLES, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] };

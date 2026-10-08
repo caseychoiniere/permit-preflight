@@ -201,6 +201,21 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
     expect(JSON.stringify(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value)).toContain("not in a Neighborhood Residential zone");
   }, 90_000);
 
+  it("[footprint containment] a shed placed in the street or over a lot line is a mis-placement: no 0 ft setback FAIL, every position-dependent finding is REQUIRES_VERIFICATION with the reason, and the report still completes", async () => {
+    const inStreet = { anchor: { lat: 47.58608874074506, lng: -122.3120200879064 }, orientationDeg: 0 }; // SRID-2926 (1275530, 217291): 19 ft west of the front lot line
+    const { job, artifact } = await generateRealShedReport(shedProjectDetails({ proposedPlacement: inStreet, primaryDwellingSelection: { status: "SELECTED", outlineId: REAL_OUTLINE_ID_MAIN_HOUSE, method: "USER_CONFIRMED" } }));
+    expect(job?.state).toBe("COMPLETE");
+    const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string }[];
+    const positional = findings.filter((f) => /rear|side|front|dwelling/i.test(f.subject) && !f.subject.startsWith("Zoning") && !f.subject.startsWith("Critical area"));
+    expect(positional.length).toBeGreaterThan(0);
+    for (const f of positional) {
+      expect(f.classification, f.subject).toBe("REQUIRES_VERIFICATION");
+      expect(f.complianceOutcome, f.subject).toBeUndefined();
+      expect(f.explanationBasis, f.subject).toContain("outside the property boundary");
+    }
+    expect(findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
+  }, 90_000);
+
   it("[hard invariant] no primary-dwelling selection at all: dwelling separation is REQUIRES_VERIFICATION, but every other finding is still produced (missing dwelling identification affects ONLY that one finding)", async () => {
     const { artifact } = await generateRealShedReport(shedProjectDetails()); // no primaryDwellingSelection field at all
     const findings = artifact!.findings as { subject: string; classification: string }[];

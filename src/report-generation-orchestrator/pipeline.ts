@@ -49,7 +49,7 @@ import { assembleFenceEvidence } from "./fence-evidence.js";
 import { evaluateDeck } from "../regulatory-rules-engine/evaluate-deck.js";
 import type { DeckProjectDetails } from "../regulatory-rules-engine/deck-types.js";
 import { assembleDeckEvidence } from "./deck-evidence.js";
-import { evaluateAdu } from "../regulatory-rules-engine/evaluate-adu.js";
+import { evaluateAdu, MIN_FOOTPRINT_INSIDE_FRACTION } from "../regulatory-rules-engine/evaluate-adu.js";
 import type { AduProjectDetails } from "../regulatory-rules-engine/adu-types.js";
 import { assembleAduEvidence } from "./adu-evidence.js";
 import type { FenceEvaluationOutcome, FenceProjectDetails } from "../regulatory-rules-engine/fence-types.js";
@@ -608,6 +608,8 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     let frontRoleEvidenceGapReason: string | undefined;
     let rearRoleEvidenceGapReason: string | undefined;
     let sideRoleEvidenceGapReason: string | undefined;
+    // Set when the placed footprint lies (partly) outside the parcel boundary: nothing position-dependent is then reported.
+    let footprintOutsideParcelReason: string | undefined;
 
     if (geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value) {
       rawParcelAreaSqFt = await computeParcelAreaSqFt(db, geometryFact.value);
@@ -624,14 +626,25 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
           accessoryDetails.lotLineRoleAssignment!
         )
       );
-      distanceToRearLotLineFt = distances.distanceToRearLotLineFt;
-      distanceToSideLotLineFt = distances.distanceToSideLotLineFt;
-      distanceToFrontLotLineFt = distances.distanceToFrontLotLineFt;
-      sideEdgeDistancesFt = distances.sideEdgeDistancesFt;
-      unresolvedStreetFrontageDistancesFt = distances.unresolvedStreetFrontageDistancesFt;
-      streetFrontageHeuristics = distances.streetFrontageHeuristics;
       footprintProjected = computedFootprint;
-      if (accessoryDetails.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
+      // A footprint that reaches over a lot line (or sits in the street) has a distance of 0 ft to it, which is a mis-placement and not a setback
+      // result: no distance is reported for it, and the lot-line and dwelling findings say why they could not be evaluated.
+      const insideFraction = computedFootprint ? await computeFootprintInsideFraction(db, geometryFact.value!, computedFootprint) : 1;
+      footprintOutsideParcelReason =
+        insideFraction < MIN_FOOTPRINT_INSIDE_FRACTION
+          ? `about ${Math.round((1 - insideFraction) * 100)}% of the footprint you placed lies outside the property boundary shown, so its distances to the property lines and the house are not meaningful. Move it fully inside the parcel.`
+          : undefined;
+      if (!footprintOutsideParcelReason) {
+        distanceToRearLotLineFt = distances.distanceToRearLotLineFt;
+        distanceToSideLotLineFt = distances.distanceToSideLotLineFt;
+        distanceToFrontLotLineFt = distances.distanceToFrontLotLineFt;
+        sideEdgeDistancesFt = distances.sideEdgeDistancesFt;
+        unresolvedStreetFrontageDistancesFt = distances.unresolvedStreetFrontageDistancesFt;
+        streetFrontageHeuristics = distances.streetFrontageHeuristics;
+      }
+      if (footprintOutsideParcelReason) {
+        setbackEvidenceGapReason = `The distances could not be evaluated: ${footprintOutsideParcelReason}`;
+      } else if (accessoryDetails.lotLineRoleAssignment.status === LotLineRoleStatus.INSUFFICIENT) {
         setbackEvidenceGapReason = "The front, rear, and side property lines could not be confidently identified for this parcel's shape.";
       }
 
@@ -724,7 +737,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         const primaryDwelling = findPrimaryDwelling(structures);
         primaryDwellingFound = Boolean(primaryDwelling);
         primaryDwellingSelectionStatus = shedDetails.primaryDwellingSelection?.status === "SELECTED" ? "SELECTED" : undefined;
-        if (primaryDwelling) {
+        if (primaryDwelling && !footprintOutsideParcelReason) {
           distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
         }
         // Unit 6B Capability C - reuses these SAME already-classified footprints (never a second
@@ -752,6 +765,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         primaryDwellingSelectionStatus,
       });
       dwellingEvidenceGapReason = deriveDwellingSeparationEvidenceGapReason({ case: dwellingGapCase });
+      if (footprintOutsideParcelReason && distanceToDwellingFt === undefined) dwellingEvidenceGapReason = `The distance could not be evaluated: ${footprintOutsideParcelReason}`;
       if (dwellingGapCase === "SELECTION_NOT_MATCHED") {
         // The user selected a specific building during configuration, but it's not among the
         // footprints this fresh, generation-time re-fetch returned (removed/redrawn upstream, or

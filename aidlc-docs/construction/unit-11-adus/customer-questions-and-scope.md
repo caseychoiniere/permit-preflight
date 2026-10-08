@@ -37,5 +37,8 @@ the real governed accessory-structure rule foundation, ADU rules, FAR/amenity/tr
 - **Slice 4 - Conversion of an existing accessory structure** (the notwithstanding-setbacks path + minimum-standards disclosure) and **Slice 5 - attached ADU**.
 - Each slice is independently valuable; ordinary parcels are never held up by an edge case (edge cases return REQUIRES_VERIFICATION with the limitation recorded).
 
+## Slice status
+See `slice-status.md` (Slice 1 done; Slice 2 deferred off the ADU critical path; Slice 3 built with rules APPROVED and availability off).
+
 ## Founder-only checks (none triggered so far)
 No pricing/scope/privacy/payment/irreversible-architecture/launch decision is involved. The only possible trigger would be an interpretation with materially different defensible customer outcomes; none has appeared (the text is explicit on size, density, separation, setbacks, coverage and FAR). Rule activation remains a separate, founder-authorized step per rule set.

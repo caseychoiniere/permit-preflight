@@ -3857,3 +3857,10 @@ Design skipped (no new infrastructure or data source).
 - **Shed STFI/ECA correctness fix:** `STFI_LIKELY` is returned only when the ECA criterion is actually MET; an unresolved ECA now yields `REQUIRES_VERIFICATION` with an explanatory note while the permit stays `REQUIRED`; deterministic full-review triggers still yield `FULL_REVIEW_LIKELY`. Tests + web/PDF parity added.
 - **Consolidation record:** `aidlc-docs/decisions/2026-10-08-mvp-consolidation-readiness.md` (garage: not ready - zero real rules; shed setbacks are staging fixtures - folded into the ADU foundation).
 
+
+## UNIT 11 (ADUs) 2026-10-08 — Slice 1 done; Slice 3 (detached ADU) built, rules APPROVED, availability OFF
+
+- **Slice 1 (9365c8c):** zoning/landmark/frequent-transit facts; fail-closed NR applicability; NR conclusions withheld for verifiably non-NR parcels across shed/garage/fence/deck. The old "NR test parcel" 3298700485 is LR1.
+- **Slice 3:** ADU evaluator, ten Tier-1 rules (APPROVED, zero ACTIVE), pipeline branch, intake, report/PDF, previews. `isAduScreeningCoverageReady()` = false; checkout blocked; ADU offered only in a local development build.
+- **Slice 2 (real shed/garage accessory rules)** deferred off the ADU path; **Slices 4 (conversion) and 5 (attached)** next. Status table: `aidlc-docs/construction/unit-11-adus/slice-status.md`.
+- **Founder decisions open (non-blocking):** activate the ADU rules / flip the availability flag; confirm or override the 2 ft mapping margin and the zoning policy.

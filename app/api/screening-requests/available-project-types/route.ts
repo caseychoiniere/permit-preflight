@@ -25,7 +25,9 @@ export async function GET() {
     // Unit 8 - same gate discipline; hardcoded false until a founder decision.
     ...(isDeckScreeningCoverageReady() ? [ProjectType.DECK] : []),
     // Unit 11 - hardcoded false until a founder authorizes activating the ADU rules.
-    ...(isAduScreeningCoverageReady() ? [ProjectType.ADU] : []),
+    // In a local development build the ADU path is also offered so the unreleased flow can be exercised end to end;
+    // checkout stays blocked by checkAduCheckoutEligibility, and a production build never takes this branch.
+    ...(isAduScreeningCoverageReady() || process.env.NODE_ENV === "development" ? [ProjectType.ADU] : []),
   ];
   return Response.json({ availableProjectTypes }, { headers: { "Cache-Control": "no-store" } });
 }

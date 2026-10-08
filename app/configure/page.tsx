@@ -35,12 +35,14 @@ import { SampleReportPreview } from "../components/SampleReportPreview.js";
 import { ReviewPlacementMap } from "../components/ReviewPlacementMap.js";
 import { FenceDetailsForm } from "./FenceDetailsForm.js";
 import { DeckDetailsForm } from "./DeckDetailsForm.js";
+import { AduDetailsForm, type AduDeclaredDetails } from "./AduDetailsForm.js";
+import { describeAduDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-adu.js";
 import { describeDeckDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-deck.js";
 import { describeFenceDeclaredInputs } from "../../src/regulatory-rules-engine/evaluate-fence.js";
 import type { DeckProjectConfiguration, FenceProjectConfiguration } from "../../src/screening-request/types.js";
 
 type Step = "ADDRESS" | "TYPE" | "DETAILS" | "PLACEMENT" | "SUMMARY";
-type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | null;
+type SelectedProjectType = typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | typeof ProjectType.ADU | null;
 /** undefined = not answered (never coerced to a concrete value); tri-state matches
  * frontend-components.md's explicit 3-choice contract for both garage-only fields. */
 type TriState = boolean | undefined;
@@ -156,6 +158,8 @@ export default function ConfigurePage() {
   const [fenceConfig, setFenceConfig] = useState<FenceProjectConfiguration | null>(null);
   // Unit 8 - the validated deck declaration (also no placement step).
   const [deckConfig, setDeckConfig] = useState<DeckProjectConfiguration | null>(null);
+  // Unit 11 - the declared ADU details; the map step adds placement, lot-line roles and the dwelling selection.
+  const [aduDetails, setAduDetails] = useState<AduDeclaredDetails | null>(null);
   const [placement, setPlacement] = useState<PlacementSelection | null>(null);
   const [lotLineSelection, setLotLineSelection] = useState<LotLineSelection | null>(null);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
@@ -172,7 +176,8 @@ export default function ConfigurePage() {
   const placementCompleteness = checkPlacementCompleteness({
     lotLineDecided: lotLineSelection !== null,
     hasPlacement: placement !== null,
-    hasBuildingsToAskAbout: projectType === ProjectType.SHED && existingStructures.length > 0,
+    hasBuildingsToAskAbout: (projectType === ProjectType.SHED || projectType === ProjectType.ADU) && existingStructures.length > 0,
+    structureNoun: projectType === ProjectType.ADU ? "ADU" : projectType === ProjectType.GARAGE ? "garage" : "shed",
     dwellingAnswered: dwellingSelection !== null,
     // Maintenance correction (2026-09-15, founder direction) - both derive directly from the same
     // lotLineSelection object ParcelPlacementMap already reports upward (it owns the tri-state
@@ -279,7 +284,7 @@ export default function ConfigurePage() {
     }
   }
 
-  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK) {
+  async function selectProjectType(type: typeof ProjectType.SHED | typeof ProjectType.GARAGE | typeof ProjectType.FENCE | typeof ProjectType.DECK | typeof ProjectType.ADU) {
     const res = await fetch("/api/screening-requests", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -327,6 +332,14 @@ export default function ConfigurePage() {
     setStep("SUMMARY");
   }
 
+  /** Unit 11 - the declared ADU details feed the map step's footprint (and are re-sent with the placement). */
+  function submitAduDetails(details: AduDeclaredDetails) {
+    setServerErrors([]);
+    setAduDetails(details);
+    setDimensions({ widthFt: details.widthFt, depthFt: details.depthFt, heightFt: details.heightFt, alleyAdjacent: details.alleyAdjacent });
+    setStep("PLACEMENT");
+  }
+
   async function submitPlacement() {
     if (!screeningRequestId || !placement || !lotLineSelection) return;
     setServerErrors([]);
@@ -334,7 +347,7 @@ export default function ConfigurePage() {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        ...dimensions,
+        ...(projectType === ProjectType.ADU && aduDetails ? aduDetails : dimensions),
         ...(projectType === ProjectType.GARAGE ? { existingStructuresFootprintSqFt, stackedDwellingUnits } : {}),
         proposedPlacement: placement,
         lotLineRoleAssignment: { ...toPersistedLotLineRoleAssignment(lotLineSelection), method: "USER_INDICATED" },
@@ -343,7 +356,7 @@ export default function ConfigurePage() {
         // scope). Omitted entirely when the user was never shown a dwelling-confirmation prompt at
         // all (existingStructures was empty) - never fabricated as UNKNOWN in that case; the
         // pipeline's own fresh fetch already resolves "nothing to select" the same way either way.
-        ...(projectType === ProjectType.SHED && dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
+        ...((projectType === ProjectType.SHED || projectType === ProjectType.ADU) && dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
         // Unit 6B Capability B - shed permit-requirement intake. roofOverhang/structuralSpanInfo
         // are only sent when their progressive question was actually shown and answered - `undefined`
         // stays `undefined` (never coerced), matching ShedProjectConfigurationSchema exactly.
@@ -504,6 +517,11 @@ export default function ConfigurePage() {
                 Screen a deck
               </Button>
             )}
+            {availableProjectTypes.includes(ProjectType.ADU) && (
+              <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU)}>
+                Screen a detached ADU (backyard cottage)
+              </Button>
+            )}
           </div>
           <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
             &larr; Previous
@@ -515,7 +533,11 @@ export default function ConfigurePage() {
 
       {step === "DETAILS" && projectType === ProjectType.DECK && <DeckDetailsForm onSubmit={submitDeck} onBack={goToPreviousStep} serverErrors={serverErrors} />}
 
-      {step === "DETAILS" && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && (
+      {step === "DETAILS" && projectType === ProjectType.ADU && (
+        <AduDetailsForm onSubmit={submitAduDetails} onBack={goToPreviousStep} serverErrors={serverErrors} initial={aduDetails ?? undefined} />
+      )}
+
+      {step === "DETAILS" && projectType !== ProjectType.FENCE && projectType !== ProjectType.DECK && projectType !== ProjectType.ADU && (
         <Card>
           <h1 className="text-lg font-semibold text-slate-900">{projectType === ProjectType.GARAGE ? "Detached garage details" : "Shed details"}</h1>
 
@@ -908,11 +930,12 @@ export default function ConfigurePage() {
               boundaryPolygonWgs84={boundaryPolygonWgs84}
               widthFt={dimensions.widthFt}
               depthFt={dimensions.depthFt}
+              structureNoun={projectType === ProjectType.ADU ? "ADU" : projectType === ProjectType.GARAGE ? "garage" : "shed"}
               onPlacementChange={setPlacement}
               onLotLineRolesChange={setLotLineSelection}
               initialPlacement={placement ?? undefined}
               initialLotLineSelection={lotLineSelection ?? undefined}
-              existingStructures={projectType === ProjectType.SHED ? existingStructures : []}
+              existingStructures={projectType === ProjectType.SHED || projectType === ProjectType.ADU ? existingStructures : []}
               onDwellingSelectionChange={setDwellingSelection}
               initialDwellingSelection={dwellingSelection ?? undefined}
             />
@@ -1034,12 +1057,21 @@ export default function ConfigurePage() {
                 <dd className="font-medium text-slate-900">{parcelId}</dd>
               </div>
               <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <dt className="text-slate-500">{projectType === ProjectType.GARAGE ? "Detached garage" : "Shed"}</dt>
+                <dt className="text-slate-500">{projectType === ProjectType.GARAGE ? "Detached garage" : projectType === ProjectType.ADU ? "Detached ADU" : "Shed"}</dt>
                 <dd className="font-medium text-slate-900">
                   {dimensions.widthFt}ft x {dimensions.depthFt}ft x {dimensions.heightFt}ft
                   {dimensions.alleyAdjacent ? " (alley-adjacent)" : ""}
                 </dd>
               </div>
+              {projectType === ProjectType.ADU && aduDetails &&
+                describeAduDeclaredInputs({ projectType: "adu", ...aduDetails })
+                  .filter((row) => !["Type of ADU", "Footprint", "Height", "Rear lot line is on an alley"].includes(row.label))
+                  .map((row) => (
+                    <div key={row.label} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                      <dt className="text-slate-500">{row.label}</dt>
+                      <dd className="font-medium text-slate-900">{row.value}</dd>
+                    </div>
+                  ))}
               {projectType === ProjectType.GARAGE && (
                 <>
                   <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
@@ -1065,7 +1097,7 @@ export default function ConfigurePage() {
                   orientationDeg={placement.orientationDeg}
                   widthFt={dimensions.widthFt}
                   depthFt={dimensions.depthFt}
-                  existingStructures={projectType === ProjectType.SHED ? existingStructures : []}
+                  existingStructures={projectType === ProjectType.SHED || projectType === ProjectType.ADU ? existingStructures : []}
                   selectedDwellingOutlineId={dwellingSelection?.status === "SELECTED" ? dwellingSelection.outlineId : undefined}
                   frontEdgeRef={lotLineSelection?.frontEdgeRef}
                   rearEdgeRef={lotLineSelection?.rearEdgeRef}

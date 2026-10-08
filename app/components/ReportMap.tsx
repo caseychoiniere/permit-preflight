@@ -113,7 +113,7 @@ export function ReportMap({ evidence }: Props) {
 
   return (
     <div>
-      <div ref={mapContainerRef} className="h-80 w-full" role="img" aria-label="Map showing the parcel boundary and proposed shed footprint" />
+      <div ref={mapContainerRef} className="h-80 w-full" role="img" aria-label="Map showing the parcel boundary and proposed structure footprint" />
       <p className="px-5 py-3 text-xs text-slate-500">Map view is a visual summary only - see the findings list above for the complete, accessible record of every finding.</p>
     </div>
   );

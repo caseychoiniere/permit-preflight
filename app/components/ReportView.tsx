@@ -9,6 +9,7 @@
  * decides how it is allowed to obtain that data.
  */
 
+import { ADU_DECLARED_NOTE, ADU_HEADLINE_LABEL, ADU_SCREENING_NOTE, ADU_SECTION_TITLES, type AduFeasibilityDisplay } from "../../src/report-generation-orchestrator/adu-display.js";
 import { uncoveredConstraintNotice } from "../../src/regulatory-rules-engine/zoning-applicability.js";
 import { ReportMap } from "./ReportMap.js";
 import { FindingClassification, ComplianceOutcome } from "../../src/regulatory-rules-engine/types.js";
@@ -254,6 +255,9 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
   // Unit 8 (Decks) - same arrangement: declared inputs echoed, permit aggregate as evidence only.
   const deckDeclaredInputs = report.evidence.find((e) => e.factType === "deck-declared-inputs")?.value as FenceDeclaredInputDisplay[] | undefined;
   const deckPermit = report.evidence.find((e) => e.factType === "deck-permit-requirement")?.value as DeckPermitRequirementDisplay | undefined;
+  // Unit 11 (ADUs) - feasibility summary and declared inputs are evidence only (never findings).
+  const aduFeasibility = report.evidence.find((e) => e.factType === "adu-feasibility")?.value as AduFeasibilityDisplay | undefined;
+  const aduDeclaredInputs = report.evidence.find((e) => e.factType === "adu-declared-inputs")?.value as FenceDeclaredInputDisplay[] | undefined;
 
   return (
     <div>
@@ -275,6 +279,57 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
       <Card className="mb-6 p-0 overflow-hidden">
         <ReportMap evidence={report.evidence} />
       </Card>
+
+      {aduFeasibility && (
+        <section aria-label={ADU_SECTION_TITLES.headline} className="mb-8">
+          <Card>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{ADU_SECTION_TITLES.headline}</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{ADU_HEADLINE_LABEL[aduFeasibility.headline]}</p>
+            <p className="mt-2 text-sm text-slate-600">{aduFeasibility.summary}</p>
+            {(aduFeasibility.blockers.length > 0 || aduFeasibility.constraints.length > 0) && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-slate-900">{ADU_SECTION_TITLES.stop}</h4>
+                <ul className="mt-1 list-disc pl-5 text-sm text-slate-600">
+                  {aduFeasibility.blockers.map((b, i) => (
+                    <li key={`b${i}`}>{b}</li>
+                  ))}
+                  {aduFeasibility.constraints.map((c, i) => (
+                    <li key={`c${i}`}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-4">
+              <h4 className="text-sm font-semibold text-slate-900">{ADU_SECTION_TITLES.verify}</h4>
+              <ol className="mt-1 list-decimal pl-5 text-sm text-slate-600">
+                {aduFeasibility.verifyBeforeDesign.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ol>
+            </div>
+            <p className="mt-4 text-xs text-slate-400">{ADU_SCREENING_NOTE}</p>
+          </Card>
+        </section>
+      )}
+
+      {aduDeclaredInputs && aduDeclaredInputs.length > 0 && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">{ADU_SECTION_TITLES.told}</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              <p className="text-sm text-slate-500">{ADU_DECLARED_NOTE}</p>
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                {aduDeclaredInputs.map((d, i) => (
+                  <div key={i} className="flex gap-2">
+                    <dt className="text-slate-500">{d.label}:</dt>
+                    <dd className="text-slate-900">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+          </div>
+        </>
+      )}
 
       <h3 className="mb-3 text-base font-semibold text-slate-900">Findings</h3>
       <div className="mb-8 flex flex-col gap-3">
@@ -526,6 +581,21 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
                 <p className="mt-2 text-xs text-slate-400">Citations: {scenario.citations.join(", ")}</p>
               </Card>
             ))}
+          </div>
+        </>
+      )}
+
+      {aduFeasibility && aduFeasibility.notEvaluated.length > 0 && (
+        <>
+          <h3 className="mb-3 text-base font-semibold text-slate-900">{ADU_SECTION_TITLES.notEvaluated}</h3>
+          <div className="mb-8 flex flex-col gap-3">
+            <Card>
+              {aduFeasibility.notEvaluated.map((n, i) => (
+                <p key={i} className={i === 0 ? "text-sm text-slate-500" : "mt-2 text-sm text-slate-500"}>
+                  {n}
+                </p>
+              ))}
+            </Card>
           </div>
         </>
       )}

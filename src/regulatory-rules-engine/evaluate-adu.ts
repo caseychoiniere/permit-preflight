@@ -18,11 +18,10 @@ import { LifecycleState } from "../regulatory-rule-governance/types.js";
 import { EvidenceQuality } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { MappedIntersectionResult } from "../spatial-analysis/types.js";
-import { deriveEcaRegulatoryImplication } from "./eca-implication.js";
-import { CRITICAL_AREA_FINDING_SUBJECT_PREFIX, evaluateEcaLotAreaAdjustment, evaluateShedLotCoverage } from "./evaluate.js";
+import { evaluateEcaLotAreaAdjustment, evaluateShedLotCoverage } from "./evaluate.js";
 import { ComplianceOutcome, FindingClassification } from "./types.js";
 import type { Finding } from "./types.js";
-import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
+import { ZONING_DATA_UNAVAILABLE_REASON, zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
 import { AduRuleType } from "./adu-types.js";
 import type {
   AduAmenitySpec,
@@ -262,7 +261,10 @@ function evaluateDensity(project: AduProjectDetails, site: AduSiteFacts, rules: 
     };
   }
   const area = site.parcelAreaSqFt;
-  const allowedByFormula = Math.floor(area / r.spec.lotSqFtPerUnit + (1 - r.spec.roundUpFractionOver));
+  const exactUnits = area / r.spec.lotSqFtPerUnit;
+  const wholeUnits = Math.floor(exactUnits);
+  // A fraction OVER the threshold (0.85) rounds up; exactly the threshold does not (SMC 23.44.060.D.1).
+  const allowedByFormula = wholeUnits + (exactUnits - wholeUnits > r.spec.roundUpFractionOver + 1e-9 ? 1 : 0);
   const adjustment = evaluateEcaLotAreaAdjustment(site.ecaFindings);
   const mapIndicated = adjustment.status === "REQUIRES_VERIFICATION" ? (adjustment.mapIndicatedCategories?.length ?? 0) > 0 : false;
   const exclusionsNote =
@@ -623,7 +625,7 @@ function evaluateTrees(project: AduProjectDetails, site: AduSiteFacts, rules: Ac
   const r = rules.find<AduTreesSpec>(AduRuleType.TREES);
   if (!r) return { uncovered: "tree requirement" };
   if (site.parcelAreaSqFt === undefined) {
-    return { finding: verify(SUBJECT.TREES, r.rule, [], "The tree requirement could not be calculated because the lot area was not available."), verifyItem: "Plan for planting or keeping trees to meet the tree-point requirement." };
+    return { finding: verify(SUBJECT.TREES, r.rule, [], "The tree requirement could not be calculated because the lot area was not available."), verifyItem: TREE_INVENTORY_ITEM };
   }
   const units = unitsAfterAdu(project);
   const band = sqFtPerUnitBand(r.spec.bands, site.parcelAreaSqFt / units);
@@ -632,7 +634,7 @@ function evaluateTrees(project: AduProjectDetails, site: AduSiteFacts, rules: Ac
   const trees = site.parcelAreaSqFt / r.spec.lotSqFtPerNewTree;
   return {
     finding: verify(SUBJECT.TREES, r.rule, [`pointsRequired=${points.toFixed(1)}`, `newTreesAlternative=${trees.toFixed(1)}`], `A development with a new dwelling unit must plant or keep trees to earn ${points.toFixed(1)} tree points (one per ${sf(sqFtPerPoint)} sq ft of lot area at this density) or plant one new tree per ${sf(r.spec.lotSqFtPerNewTree)} sq ft (about ${Math.ceil(trees)}), whichever is greater (SMC 23.44.120). Existing trees on the lot count by trunk diameter. Whether your site can meet it is not determined here.`),
-    verifyItem: "Take a tree inventory (existing trees count toward the points).",
+    verifyItem: TREE_INVENTORY_ITEM,
   };
 }
 
@@ -653,20 +655,6 @@ function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluat
   };
 }
 
-function evaluateEca(site: AduSiteFacts): Finding[] {
-  const findings: Finding[] = [];
-  for (const eca of site.ecaFindings) {
-    const implication = deriveEcaRegulatoryImplication(eca);
-    findings.push({
-      classification: implication.classification,
-      subject: `${CRITICAL_AREA_FINDING_SUBJECT_PREFIX}${eca.hazardType}`,
-      supportingEvidence: [`CriticalAreaFinding(${eca.hazardType})`],
-      explanationBasis: implication.reason,
-    });
-  }
-  return findings;
-}
-
 function ecaSummaryFinding(site: AduSiteFacts): { finding: Finding; mapped: string[] } {
   const mapped = site.ecaFindings.filter((f) => f.mappedIntersectionResult !== MappedIntersectionResult.NO_INTERSECTION).map((f) => f.hazardType.replace(/_/g, " "));
   const text =
@@ -682,11 +670,12 @@ function ecaSummaryFinding(site: AduSiteFacts): { finding: Finding; mapped: stri
 // Feasibility headline and checklist
 // ---------------------------------------------------------------------------------------------
 
+const TREE_INVENTORY_ITEM = "Take a tree inventory and plan how the tree requirement would be met.";
 const BASE_VERIFY_BEFORE_DESIGN: readonly string[] = [
   "Get a boundary and topographic survey so the lot lines, lot area and grades are measured, not mapped.",
   "Ask SDCI (or a land-use professional) to confirm the zone, overlays and any critical areas for this parcel.",
   "Check sewer, water and stormwater capacity and the cost of the connections, including King County's sewer capacity charge.",
-  "Take a tree inventory and plan how the tree requirement would be met.",
+  TREE_INVENTORY_ITEM,
   "Confirm with SDCI that no recorded covenant or other title matter limits an ADU.",
 ];
 
@@ -694,7 +683,6 @@ function buildFeasibility(input: {
   zoning: ZoningApplicability | undefined;
   evaluated: Evaluated[];
   uncovered: string[];
-  rulesHaveCoverage: boolean;
   placementMissing: boolean;
   mappedEca: string[];
 }): AduFeasibility {
@@ -708,12 +696,17 @@ function buildFeasibility(input: {
   if (zone?.status === "NOT_NR") {
     headline = "CANNOT_TELL";
     summary = `Seattle's zoning data places this parcel in ${zone.zoningLabel}, not a Neighborhood Residential zone. Permit Preflight's ADU checks are for Neighborhood Residential zones, so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply.`;
+  } else if (zone?.status !== "NR_VERIFIED") {
+    headline = "CANNOT_TELL";
+    summary = `Permit Preflight could not verify that this parcel is in a Neighborhood Residential zone${zone && zone.status === "UNRESOLVED" && zone.reason !== ZONING_DATA_UNAVAILABLE_REASON ? ` (${zone.reason})` : zone ? "" : " (zoning was not checked)"}, and its ADU checks are for those zones, so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply.`;
   } else if (blockers.length > 0) {
     headline = "BLOCKED";
     summary = `As entered, this ADU does not appear to be allowed: ${blockers.length === 1 ? "1 requirement is not met" : `${blockers.length} requirements are not met`}. Review the items below; changing the size, height or position may resolve them.`;
-  } else if (input.uncovered.length > 0 && !input.rulesHaveCoverage) {
+  } else if (input.uncovered.length > 0) {
+    // A known failure above stands even with partial coverage, but "looks feasible" is a cross-constraint read
+    // and is never offered while any governed claim could not be evaluated.
     headline = "CANNOT_TELL";
-    summary = "Permit Preflight could not evaluate this ADU: the rules it depends on are not available in this system.";
+    summary = `Permit Preflight could not evaluate every ADU requirement (${input.uncovered.join("; ")}), so it cannot give a feasibility read. What it did evaluate is listed below.`;
   } else if (input.placementMissing) {
     headline = "CANNOT_TELL";
     summary = "The ADU's position on the lot was not established, so its distances to the property lines and the existing house could not be measured. Place it on the map to get a read on setbacks and separation.";
@@ -726,7 +719,7 @@ function buildFeasibility(input: {
   }
 
   const zoningVerify: string[] = [];
-  if (zone && zone.status !== "NR_VERIFIED") zoningVerify.push("Confirm the parcel's zone with SDCI; it could not be verified as Neighborhood Residential.");
+  if (!zone || zone.status !== "NR_VERIFIED") zoningVerify.push("Confirm the parcel's zone with SDCI; it could not be verified as Neighborhood Residential.");
   if (zone && zone.status !== "UNRESOLVED" && (zone.overlays.shorelineDistrict || zone.overlays.historicDistrict || zone.overlays.landmarkParcel || zone.overlays.overlayLabels.length > 0)) {
     zoningVerify.push("Confirm the overlay (shoreline, historic or landmark) rules with SDCI; they can change or add requirements for an ADU.");
   }
@@ -737,7 +730,7 @@ function buildFeasibility(input: {
     summary,
     blockers,
     constraints,
-    verifyBeforeDesign: [...zoningVerify, ...eca, ...verifyItems, ...BASE_VERIFY_BEFORE_DESIGN],
+    verifyBeforeDesign: [...new Set([...zoningVerify, ...eca, ...verifyItems, ...BASE_VERIFY_BEFORE_DESIGN])],
     notEvaluated: [...ADU_NOT_EVALUATED],
   };
 }
@@ -755,13 +748,18 @@ export interface EvaluateAduInput {
 export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
   const rules = indexActiveRules(input.candidateActiveRules);
   const { project, site } = input;
-  const notNr = input.zoningApplicability?.status === "NOT_NR";
+  // The ADU rules are Neighborhood Residential rules, so any zoning result that does not verify plain NR (a
+  // different zone, a split between zones, a Major Institution Overlay, or zoning data that was unavailable)
+  // produces no ADU conclusion at all. (Other project types keep their conclusions on an unresolved result; an
+  // ADU's feasibility is not meaningful without the zone.)
+  const zoningStatus = input.zoningApplicability?.status;
+  const notNr = zoningStatus !== "NR_VERIFIED";
   const findings: Finding[] = [];
   const uncovered: string[] = [];
   const evaluated: Evaluated[] = [];
 
   if (notNr) {
-    uncovered.push("ADU zoning limits (parcel is not in a Neighborhood Residential zone)");
+    uncovered.push(zoningStatus === "NOT_NR" ? "ADU zoning limits (parcel is not in a Neighborhood Residential zone)" : "ADU zoning limits (the parcel's zone could not be verified as a Neighborhood Residential zone)");
   } else {
     evaluated.push(
       evaluateCount(project, rules),
@@ -783,15 +781,13 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
   }
 
   const eca = ecaSummaryFinding(site);
-  findings.push(eca.finding, ...evaluateEca(site));
+  findings.push(eca.finding);
   findings.push(...zoningApplicabilityFindings(input.zoningApplicability, "ADU rules"));
 
-  const rulesHaveCoverage = evaluated.some((e) => e.finding !== undefined);
   const feasibility = buildFeasibility({
     zoning: input.zoningApplicability,
     evaluated,
     uncovered,
-    rulesHaveCoverage,
     placementMissing: !notNr && placementGap(project) !== undefined,
     mappedEca: eca.mapped,
   });

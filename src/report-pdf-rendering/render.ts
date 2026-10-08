@@ -26,6 +26,7 @@
  * existing external-verification-tracker item).
  */
 
+import { ADU_DECLARED_NOTE, ADU_HEADLINE_LABEL, ADU_SCREENING_NOTE, ADU_SECTION_TITLES, type AduFeasibilityDisplay } from "../report-generation-orchestrator/adu-display.js";
 import { uncoveredConstraintNotice } from "../regulatory-rules-engine/zoning-applicability.js";
 import type { EvidenceReportArtifactRow } from "../db/schema.js";
 import { FindingClassification } from "../regulatory-rules-engine/types.js";
@@ -183,6 +184,37 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
     .join("\n  ")}`
       : "";
 
+  // Unit 11 (ADUs) - the same persisted evidence entries ReportView.tsx reads, printed with identical text.
+  const aduFeasibility = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "adu-feasibility")?.value as AduFeasibilityDisplay | undefined;
+  const aduDeclared = (artifact.evidence as { factType: string; value?: unknown }[]).find((e) => e.factType === "adu-declared-inputs")?.value as { label: string; value: string }[] | undefined;
+  const aduHeadlineHtml = aduFeasibility
+    ? `<h2>${ADU_SECTION_TITLES.headline}</h2>
+  <div>
+    <strong>${escapeHtml(ADU_HEADLINE_LABEL[aduFeasibility.headline])}</strong>
+    <p>${escapeHtml(aduFeasibility.summary)}</p>
+    ${
+      aduFeasibility.blockers.length + aduFeasibility.constraints.length > 0
+        ? `<h3>${ADU_SECTION_TITLES.stop}</h3><ul>${[...aduFeasibility.blockers, ...aduFeasibility.constraints].map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
+        : ""
+    }
+    <h3>${ADU_SECTION_TITLES.verify}</h3>
+    <ol>${aduFeasibility.verifyBeforeDesign.map((v) => `<li>${escapeHtml(v)}</li>`).join("")}</ol>
+    <p>${escapeHtml(ADU_SCREENING_NOTE)}</p>
+  </div>`
+    : "";
+  const aduDeclaredHtml =
+    aduDeclared && aduDeclared.length > 0
+      ? `<h2>${ADU_SECTION_TITLES.told}</h2>
+  <div>
+    <p>${escapeHtml(ADU_DECLARED_NOTE)}</p>
+    <ul>
+      ${aduDeclared.map((d) => `<li>${escapeHtml(d.label)}: ${escapeHtml(d.value)}</li>`).join("\n      ")}
+    </ul>
+  </div>`
+      : "";
+  const aduNotEvaluatedHtml =
+    aduFeasibility && aduFeasibility.notEvaluated.length > 0 ? `<h2>${ADU_SECTION_TITLES.notEvaluated}</h2>\n  ${aduFeasibility.notEvaluated.map((n) => `<p>${escapeHtml(n)}</p>`).join("\n  ")}` : "";
+
   const fenceDeclaredHtml =
     fenceDeclaredInputs && fenceDeclaredInputs.length > 0
       ? `<h2>What you told us</h2>
@@ -294,12 +326,15 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
 <body>
   <h1>Permit Preflight - Screening Report</h1>
   <p>Generated: ${escapeHtml(artifact.generatedAt.toISOString())}</p>
+  ${aduHeadlineHtml}
+  ${aduDeclaredHtml}
   <h2>Findings</h2>
   ${findingsHtml}
   ${fenceDeclaredHtml}
   ${fencePermitHtml}
   ${deckDeclaredHtml}
   ${deckPermitHtml}
+  ${aduNotEvaluatedHtml}
   ${uncoveredHtml}
   ${permitHtml}
   ${lotCoverageHtml}

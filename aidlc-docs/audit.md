@@ -1849,3 +1849,12 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: No founder-only condition hit (the change only withholds or qualifies conclusions; no new customer claim). Verification: unit 1040+ pass, integration 28 files pass, tsc clean, webpack build passes.
 
 ---
+
+## Unit 11 (ADUs) Slice 3 - Detached ADU Feasibility Built; Ten Rules Advanced to APPROVED (Not Activated)
+**Timestamp**: 2026-10-08T00:00:00Z
+**User Input**: (Standing) "BUILD ADUs NEXT ... KEEP MOVING" and the Continuous Autonomous Execution Policy; ADU rules are advanced to APPROVED only and activation is not authorized.
+**AI Response**: Re-read the current SMC (Municode, Ord. 127376): found that the shed staging fixtures' numbers match current text except small-lot/FTSA side setback, front setback with 3+ units and the 5 ft floor-area separation, so Slice 2 (real shed/garage rules) was moved off the ADU critical path and Slice 3 built with ADU-specific governed rows. Built the pure evaluator, ten Tier-1 candidates (45 executable cases), the measured pipeline branch, intake form, report/PDF sections with a parity test, dev preview scenarios and checkout/availability gates (off). Browser-verified the intake flow (type, details validation, placement labels, lot-line selection, review map) and the checkout gate message; verified real PDF bytes. Ran `scripts/unit-11-adu-governance.ts`: 10 rules RESEARCHED..TRIAGED -> SOURCE_VERIFIED -> TESTED -> APPROVED (live DB afterwards: adu APPROVED 10; shed ACTIVE 17, fence 8, deck 6 unchanged; zero ADU ACTIVE).
+**Reviewer**: ESCALATE (RESERVED_FOUNDER; decision e781c605-1475-46be-b813-95e3d481422b) over product scope, Tier-1/APPROVED advancement, the 2 ft margin and the zoning policy. Recorded as authority objections (the founder directed ADUs next and delegated lifecycle advancement to APPROVED). Its real findings were FIXED: UNRESOLVED zoning now suppresses all ADU conclusions; partial rule coverage can no longer yield LOOKS_FEASIBLE; the 0.85 rounding boundary is exact; per-hazard "Critical area" findings (PDF-only) removed so web and PDF carry identical text.
+**Context**: No founder-only condition hit. Open for the founder: activating the ten ADU rules and flipping `isAduScreeningCoverageReady()`. Next: Slice 4 (conversion), Slice 5 (attached), then the real shed/garage rules (Slice 2).
+
+---

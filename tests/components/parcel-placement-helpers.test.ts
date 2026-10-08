@@ -119,6 +119,7 @@ describe("checkPlacementCompleteness (regression items 14/15/16, the Next-button
     const result = checkPlacementCompleteness({ ...complete, hasPlacement: false });
     expect(result.complete).toBe(false);
     expect(result.missing).toContain("Place the shed on the map");
+    expect(checkPlacementCompleteness({ ...complete, hasPlacement: false, structureNoun: "ADU" }).missing).toContain("Place the ADU on the map");
   });
 
   it('[hard invariant, item 14] incomplete when buildings exist but the dwelling question was never answered - the "never interacted with" case that caused a real customer to buy a report without confirming the dwelling', () => {

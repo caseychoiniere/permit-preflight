@@ -127,6 +127,8 @@ interface Props {
    * project-details. */
   widthFt: number;
   depthFt: number;
+  /** What is being placed, for the visible labels only ("shed" by default; "ADU", "garage"). */
+  structureNoun?: string;
   onPlacementChange: (placement: PlacementSelection) => void;
   onLotLineRolesChange: (selection: LotLineSelection) => void;
   /** Building intelligence v1 - real building footprints on this parcel (Seattle Building Outlines
@@ -354,11 +356,16 @@ function autoDetectFront(map: maplibregl.Map, edgeMidpoints: EdgeMidpoint[]): st
 }
 // -------------------------------------------------------------------------------------------
 
+function cap(noun: string): string {
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
 export function ParcelPlacementMap({
   boundaryPolygonWgs84,
   boundaryPolygon,
   widthFt,
   depthFt,
+  structureNoun = "shed",
   onPlacementChange,
   onLotLineRolesChange,
   initialPlacement,
@@ -557,7 +564,7 @@ export function ParcelPlacementMap({
   /** Shared by the keyboard nudge buttons - identical `setAnchor` call a map click/drag already
    * makes, just computing the new point from a small feet-based offset instead of reading it from
    * MapLibre's own pointer event. If nothing is placed yet, nudging starts from the parcel centroid
-   * (same fallback the "Place shed at parcel center" button below uses) so the keyboard-only path
+   * (same fallback the "Place {structureNoun} at parcel center" button below uses) so the keyboard-only path
    * never requires a map tap first. */
   function nudgeAnchor(direction: NudgeDirection) {
     setAnchor((prev) => nudge(prev ?? centroid(boundaryPolygonWgs84), direction, NUDGE_STEP_FT));
@@ -874,7 +881,7 @@ export function ParcelPlacementMap({
           {selectingRole === "streetFrontage" && "Tap each parcel edge that faces an additional street - tap a highlighted edge again to remove it, then press Done."}
         </p>
         <div className="relative h-[400px] w-full overflow-hidden rounded-xl border border-slate-200 shadow-sm">
-          <div ref={mapContainerRef} className="h-full w-full" role="application" aria-label="Parcel map for shed placement" />
+          <div ref={mapContainerRef} className="h-full w-full" role="application" aria-label={`Parcel map for ${structureNoun} placement`} />
           {labelPositions
             .filter((m) => selectingRole !== null || m.edgeRef === frontEdgeRef || m.edgeRef === rearEdgeRef || streetFrontageEdgeRefs.includes(m.edgeRef))
             .map((m) => {
@@ -1100,40 +1107,40 @@ export function ParcelPlacementMap({
           </fieldset>
         )}
         <fieldset className="rounded-lg border border-slate-200 p-4">
-          <legend className="px-1 text-sm font-semibold text-slate-900">Shed placement</legend>
+          <legend className="px-1 text-sm font-semibold text-slate-900">{cap(structureNoun)} placement</legend>
           <p className="text-sm text-slate-600">
-            Click the map to place the shed, drag it to fine-tune the location, or use the controls below. This is an approximate placement, not a survey or construction plan.
+            Click the map to place the {structureNoun}, drag it to fine-tune the location, or use the controls below. This is an approximate placement, not a survey or construction plan.
           </p>
           {!anchor && (
             <Button variant="primary" className="mt-3" onClick={() => setAnchor(centroid(boundaryPolygonWgs84))}>
-              Place shed at parcel center
+              Place {structureNoun} at parcel center
             </Button>
           )}
           {/* Compact directional pad (requirement 9) - replaces the previous tall N/S/E/W stack. */}
           <div className="mt-3 grid w-fit grid-cols-3 grid-rows-2 gap-1">
             <span />
-            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("N")} disabled={!anchor} aria-label="Move shed north">
+            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("N")} disabled={!anchor} aria-label={`Move ${structureNoun} north`}>
               &uarr;
             </Button>
             <span />
-            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("W")} disabled={!anchor} aria-label="Move shed west">
+            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("W")} disabled={!anchor} aria-label={`Move ${structureNoun} west`}>
               &larr;
             </Button>
-            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("S")} disabled={!anchor} aria-label="Move shed south">
+            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("S")} disabled={!anchor} aria-label={`Move ${structureNoun} south`}>
               &darr;
             </Button>
-            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("E")} disabled={!anchor} aria-label="Move shed east">
+            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => nudgeAnchor("E")} disabled={!anchor} aria-label={`Move ${structureNoun} east`}>
               &rarr;
             </Button>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Each press moves the shed about {NUDGE_STEP_FT} ft. {anchor ? "Shed is placed - you can also drag it directly on the map." : "Shed is not yet placed."}
+            Each press moves the {structureNoun} about {NUDGE_STEP_FT} ft. {anchor ? `${cap(structureNoun)} is placed - you can also drag it directly on the map.` : `${cap(structureNoun)} is not yet placed.`}
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => rotateBy(-15)} aria-label="Rotate shed left 15 degrees">
+            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => rotateBy(-15)} aria-label={`Rotate ${structureNoun} left 15 degrees`}>
               &#8630;
             </Button>
-            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => rotateBy(15)} aria-label="Rotate shed right 15 degrees">
+            <Button variant="secondary" className="px-2.5 py-1.5" onClick={() => rotateBy(15)} aria-label={`Rotate ${structureNoun} right 15 degrees`}>
               &#8631;
             </Button>
             <span className="text-xs text-slate-600">{orientationDeg}&deg; from north</span>
@@ -1145,7 +1152,7 @@ export function ParcelPlacementMap({
               min={0}
               max={359}
               value={orientationDeg}
-              aria-label="Shed rotation, fine adjustment in degrees"
+              aria-label={`${cap(structureNoun)} rotation, fine adjustment in degrees`}
               onChange={(e) => setOrientationDeg(Number(e.target.value))}
               className="mt-1 block w-full accent-indigo-600"
             />

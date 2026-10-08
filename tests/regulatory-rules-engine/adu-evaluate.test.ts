@@ -115,6 +115,14 @@ describe("units, floor area and FAR bands", () => {
 });
 
 describe("density (SMC 23.44.060)", () => {
+  it("rounds up only a fraction OVER 0.85: exactly 0.85 does not", () => {
+    const allowed = (area: number) => Number(by(run({ existingAduCount: 1 }, { parcelAreaSqFt: area }), "Dwelling units allowed on the lot (density)")!.supportingEvidence.find((e) => e.startsWith("unitsAllowedByLotArea="))!.split("=")[1]);
+    expect(allowed(3562.5)).toBe(2); // 2.85 exactly
+    expect(allowed(3562.6)).toBe(3);
+    expect(allowed(3562.4)).toBe(2);
+    expect(allowed(1250 * 4.85)).toBe(4);
+    expect(allowed(1250 * 4.851)).toBe(5);
+  });
   it("fractions over 0.85 round up: 3,563 sq ft allows 3 units, 3,562 does not (without the small-lot allowance)", () => {
     const d = (area: number) => oc(by(run({ existingAduCount: 1 }, { parcelAreaSqFt: area }), "Dwelling units allowed on the lot (density)"));
     expect(d(3563)).toBe("KNOWN/PASS");
@@ -196,7 +204,8 @@ describe("lot coverage, amenity, design, ECA", () => {
     const f = by(o, "Environmentally critical areas")!;
     expect(f.classification).toBe("REQUIRES_VERIFICATION");
     expect(f.explanationBasis).toContain("steep slope");
-    expect(o.findings.filter((x) => x.subject.startsWith("Critical area: ")).length).toBe(2);
+    // One summary finding on both surfaces; per-hazard "Critical area:" findings are not emitted (they printed on the PDF only).
+    expect(o.findings.filter((x) => x.subject.startsWith("Critical area: ")).length).toBe(0);
     expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("steep slope");
   });
   it("overlay and unresolved-zoning findings are carried and added to the checklist", () => {
@@ -206,6 +215,26 @@ describe("lot coverage, amenity, design, ECA", () => {
     const u = run({}, {}, ALL, { status: "UNRESOLVED", reason: "the parcel is split between zones (NR 60%, LR2 40%)" });
     expect(u.feasibility.verifyBeforeDesign.join(" ")).toContain("could not be verified as Neighborhood Residential");
     expect(by(u, "Zoning applicability (Neighborhood Residential zones)")!.explanationBasis).toContain("split between zones");
+  });
+  it.each([
+    ["a split between zones", { status: "UNRESOLVED", reason: "the parcel is split between zones (NR 60%, LR2 40%)" } as ZoningApplicability],
+    ["zoning data that was unavailable", { status: "UNRESOLVED", reason: "Seattle's zoning data was not available for this evaluation" } as ZoningApplicability],
+    ["zoning that was never checked", undefined],
+  ])("%s produces NO ADU conclusion (the ADU rules are NR rules): CANNOT_TELL, nothing passes or fails, the zone is on the checklist", (_name, zoning) => {
+    const o = evaluateAdu({ project: baseAduProject(), site: baseAduSite(), candidateActiveRules: ALL, zoningApplicability: zoning });
+    expect(o.feasibility.headline).toBe("CANNOT_TELL");
+    expect(o.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
+    expect(o.findings.some((f) => f.subject.startsWith("ADU "))).toBe(false);
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("could not be verified as Neighborhood Residential");
+    expect(o.uncoveredConstraintTypes.join()).toContain("could not be verified");
+    expect(o.feasibility.summary).toContain("could not verify");
+  });
+  it("a known failure stands as BLOCKED even when some rules are not ACTIVE, but partial coverage is never LOOKS_FEASIBLE", () => {
+    const partial = without(AduRuleType.HEIGHT, AduRuleType.TREES);
+    expect(run({}, {}, partial).feasibility.headline).toBe("CANNOT_TELL");
+    expect(run({}, {}, partial).feasibility.summary).toContain("could not evaluate every ADU requirement");
+    expect(run({ distanceToDwellingFt: 1 }, {}, partial).feasibility.headline).toBe("BLOCKED");
+    expect(run({}, {}, ALL).feasibility.headline).toBe("LOOKS_FEASIBLE");
   });
   it("declared inputs echo what the customer told us, including unanswered items", () => {
     const rows = run({ existingHouseBuiltBefore1982: undefined }).declaredInputs;

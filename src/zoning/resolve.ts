@@ -38,6 +38,8 @@ export interface AmbiguousClaim {
   /** Why the claim cannot be settled: the zones involved resolve it differently, or the zoning needed is unknown. */
   reason: string;
   byZone: { zone: string; rule?: string }[];
+  /** True when two active rows claim the same standard in the same zone (an authoring defect): the claim is not answered. */
+  conflict?: boolean;
 }
 
 export interface ZoningResolution {
@@ -157,8 +159,10 @@ export function resolveApplicableRules(input: ResolveInput): ZoningResolution {
   for (const [ruleType, rows] of byType) {
     const kind = claimKindOf(ruleType);
     if (kind === "ZONE_INDEPENDENT") {
-      if (rows.length > 1) conflictingRuleTypes.push(ruleType);
-      else rules.push(rows[0]!);
+      if (rows.length > 1) {
+        conflictingRuleTypes.push(ruleType);
+        ambiguousClaims.push({ ruleType, subject: rows[0]!.subject, kind: "LOCATION", reason: "more than one active rule claims this standard", byZone: [], conflict: true });
+      } else rules.push(rows[0]!);
       continue;
     }
     const zoneSet = kind === "LOT" ? lotZoneSet : locationZoneSet;
@@ -186,6 +190,15 @@ export function resolveApplicableRules(input: ResolveInput): ZoningResolution {
     }
     if (conflict) {
       conflictingRuleTypes.push(ruleType);
+      ambiguousClaims.push({
+        ruleType,
+        subject: rows[0]!.subject,
+        kind,
+        reason: "more than one active rule claims this standard for the zone",
+        byZone: [],
+        conflict: true,
+      });
+      if (kind === "LOCATION") locationAmbiguous = true;
       continue;
     }
     const ids = new Set(signatures.map((s) => s.row?.id ?? "NONE"));

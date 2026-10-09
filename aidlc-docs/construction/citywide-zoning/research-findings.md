@@ -1,0 +1,35 @@
+# Citywide zoning coverage - research findings (current Seattle sources, read live 2026-10-09)
+
+Sources: Municode Library CURRENT text of SMC Title 23 (Ord. 127376, 2025; 127375, 2025), read in the in-app browser; Seattle GIS `Current_Land_Use_Zoning_Detail_2` (325 distinct real designation rows saved as `tests/fixtures/seattle-zoning-designations.json`; layer attributes ZONING, BASE_ZONE, ZONELUT, CLASS_DESC, CATEGORY_DESC, MHA_VALUE, CHAPTER). Every figure below is the operative text; each rule candidate cites its sections and carries the interpretive caveats.
+
+## Taxonomy
+The layer's `ZONING` value is parsed (src/zoning/designation.ts) into family, zone code, MHA suffix (M/M1/M2), RC, pedestrian P, height suffix and MIO prefix, cross-checked against ZONELUT / BASE_ZONE / MHA presence. 325/325 real values parse; contradictions or unrecognized values are UNKNOWN (fail closed). "LR2 (0.75)" is an older incentive base-FAR suffix: kept as an unrecognized suffix, so claims that depend on MHA presence are not made for it. Governing chapters: NR 23.44; LR/MR/HR 23.45; RC 23.46 (+ underlying residential zone); NC/C 23.47A; SM 23.48; Downtown 23.49; Industrial 23.50/23.50A; MIO 23.69; MPC-YT 23.75.
+
+## Split zoning - SMC 23.45.508.G
+"the development standards of each zone shall be applied in that zone, and may not be used in any other zone, except that if both zones have the same development standards, the development standard shall be applied to the lot as a whole. If a lot or development site includes more than one zoning designation and a development standard is based on lot area, the lot area used ... shall be the portion of the contiguous area with the corresponding zoning designation."
+Implementation: location claims use the zones under the proposed footprint (when it is placed on a lot with more than one designation); lot-wide claims use the lot's zones; a claim is answered only when every zone involved resolves it to the same single rule row; otherwise REQUIRES_VERIFICATION for that claim only. No majority zone is ever chosen.
+
+## RC - SMC 23.46.002.B
+"Developments that do not include commercial uses permitted according to this Chapter 23.46 are regulated according to the standards for the applicable residential zone." RC is therefore not treated as changing the residential accessory-structure standards.
+
+## Multifamily (LR1-LR3, MR, HR) - SMC 23.45
+- 23.45.518.H.1: "Detached garages, carports, or other accessory structures that are not accessory dwelling units are allowed in required rear or side setbacks, subject to: a. Any accessory structure located between a principal structure and a side lot line shall provide the setback required for the principal structure; b. Any portion of an accessory structure located more than 25 feet from a rear lot line shall be set back at least 5 feet from the side lot line; c. ... at least 7 feet from any lot line that abuts a street; and d. ... separated by at least 3 feet from all principal structures, including the eaves ..." Nothing allows a structure in the required FRONT setback (Table A: LR front 7 ft average / 5 ft minimum; rear 7/5 or 0 at an alley; side 5 ft; MR Table B: front and street side 7/5, rear 15 or 10 at an alley, interior side 7/5; HR structures of 85 ft or less follow the MR setbacks).
+- 23.45.514.C: accessory structures other than ADUs in required setbacks or separations are limited to 12 ft (garage ridge +3 ft if pitched at least 4:12). Table A heights: LR1 32; LR2 and LR3 40 (50 for LR3 in regional/urban centers and SAODs), 32 without an MHA suffix. Table B: MR 80 (60 without MHA), HR 440.
+- 23.45.519.A: 5 ft between structures containing floor area in LR and MR zones (not HR).
+- 23.45.510: floor area ratio (LR1 1.3/1.0, LR2 1.4/1.1, LR3 1.8 or 2.3 / 1.2, MR 4.5/3.2, HR 7 base). There is NO lot-coverage limit anywhere in Chapter 23.45. 23.45.510.A: decks associated with a single dwelling unit are not gross floor area.
+- 23.45.518.G.4, G.5, G.7: unenclosed decks up to 18 in; porches/steps; deck and balcony projections up to 4 ft if at least 5 ft from any lot line, no more than 20 ft wide.
+- 23.45.518.H.7-H.8: fences in required setbacks up to 6 ft (4 ft in the front setback extended to side lot lines and in street-side setbacks extended to the front and rear lot lines; 8 ft / 6 ft absolute with slope averaging; arbors +2 ft; 4 ft on a bulkhead or wall; 9.5 ft combined on a new raising-grade wall); walls raising grade 6 ft; cut walls minimum necessary or 6 ft with fences 3 ft back. Identical figures to the NR provisions.
+- 23.45.536: garage access from an improved alley; garage doors facing a street at least 18 ft from the street lot line (LR and MR); surface parking not within 20 ft of a street lot line.
+- 23.45.522 (amenity area 20% of lot in LR), 23.45.524 (Green Factor 0.6 for more than one new unit; street trees), 23.45.529 (design standards: 3 ft path, entry with 3x3 weather protection, 20% windows within 40 ft of a street) - recorded for the ADU slice.
+
+## Neighborhood Commercial and Commercial - SMC 23.47A
+- 23.47A.014: no ground-level setback for a small structure except (B.1) a triangular corner setback where a lot abuts a residentially zoned lot's front/side corner, (B.2-B.3) upper-level setbacks above 13 ft along lot lines that abut or are across an alley from a residential zone, (B.5) no entrance, window or other opening within 5 ft of an abutting residential lot; G.1 decks with open railings may extend into a required setback but not within 5 ft of a residential lot unless accessory to residential use and no more than 18 in above grade; G.5 fences 6 ft (8 ft absolute), bulkheads/walls 6 ft, 9.5 ft combined, cut walls 3 ft; Chapter 23.53 setbacks may be added.
+- 23.47A.012.A: height limit is the height mapped on the Official Land Use Map (the number in the designation; 30 ft is the lowest).
+- 23.47A.013: floor area ratio 2.5 to 8.25 by mapped height; no lot-coverage limit.
+- 23.47A.032: in NC zones parking may not be between a structure and a street lot line; alley access when improved; one curb cut otherwise.
+- 23.47A.004 Table A: residential use is permitted outright in NC1-NC3 and C1 and is a CONDITIONAL USE in C2 (footnote 15). C2 is therefore not covered (an existing house there is a conditional/nonconforming question outside this screening).
+
+## Product decisions recorded
+- Residential-neighbor detection for commercial zones reads the zoning layer within 20 ft of the lot (an alley is about 16 ft wide); a failed read is UNKNOWN, never "no neighbor". A neighbor residential polygon is detected whatever its designation text (reviewer finding fixed 2026-10-09).
+- Two ACTIVE rows claiming the same standard in the same zone are an authoring defect: the claim is not answered and is reported as a verification item (reviewer finding fixed 2026-10-09).
+- Rules are advanced to APPROVED only; activation of a new rule set stays a separate founder-authorized step. Until a rule set is ACTIVE, purchase for zones it would cover stays blocked (per-property eligibility reads ACTIVE rules only).

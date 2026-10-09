@@ -133,6 +133,20 @@ describe("resolveApplicableRules", () => {
     const r = resolveApplicableRules({ zoning: singleZoneContext("LR1"), candidateRules: [LR_SETBACK, dup] });
     expect(r.conflictingRuleTypes).toEqual(["MF_ACC_SETBACKS"]);
     expect(r.rules).toEqual([]);
+    // never silently RESOLVED: the conflicted claim is reported as unresolved
+    expect(r.status).toBe("AMBIGUOUS");
+    expect(r.ambiguousClaims[0]).toMatchObject({ ruleType: "MF_ACC_SETBACKS", conflict: true });
+    const f = ambiguousClaimFindings(r, { projectNoun: "shed", claimLabel: labelOf })[0]!;
+    expect(f.classification).toBe("REQUIRES_VERIFICATION");
+    expect(f.explanationBasis).toContain("could not apply its own rules");
+  });
+  it("a neighbor residential polygon is found even when it carries the same designation text as a polygon on the lot", () => {
+    const ctx = buildZoningContext({ lot: fact([cov("NC2-40 (M)", 1)]), neighbors: fact([cov("NC2-40 (M)", 0.7), cov("NR", 0.3)]) });
+    expect(ctx.adjacentResidential).toMatchObject({ status: "YES", zones: ["NR"] });
+    const split = buildZoningContext({ lot: fact([cov("NC2-40 (M)", 0.6), cov("NR", 0.4)]), neighbors: fact([cov("NC2-40 (M)", 0.5), cov("NR", 0.5)]) });
+    expect(split.adjacentResidential?.status).toBe("YES");
+    expect(buildZoningContext({ lot: fact([cov("NC2-40 (M)", 1)]), neighbors: fact([cov("NC2-40 (M)", 0.9), cov("C1-55 (M)", 0.1)]) }).adjacentResidential).toMatchObject({ status: "NO" });
+    expect(buildZoningContext({ lot: fact([cov("NC2-40 (M)", 1)]), neighborsError: "x" }).adjacentResidential?.status).toBe("UNKNOWN");
   });
   it("an MHA-qualified row cannot be decided for a designation with an unrecognized suffix: no rule, never the wrong one", () => {
     const r = resolveApplicableRules({ zoning: singleZoneContext("LR2 (0.75)"), candidateRules: ALL });

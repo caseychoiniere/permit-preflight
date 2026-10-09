@@ -137,6 +137,15 @@ export function ambiguousClaimFindings(resolution: ZoningResolution, opts: Pick<
     if (seen.has(label)) continue;
     seen.add(label);
     const zones = c.byZone.length > 0 ? c.byZone.map((z) => `${z.zone}: ${z.rule ?? "no active rule"}`).join("; ") : c.reason;
+    if (c.conflict) {
+      out.push({
+        classification: FindingClassification.REQUIRES_VERIFICATION,
+        subject: label,
+        supportingEvidence: [`ruleType=${c.ruleType}`],
+        explanationBasis: `Permit Preflight could not apply its own rules to this standard (${c.reason}), so it makes no statement about it. This is left for SDCI to confirm.`,
+      });
+      continue;
+    }
     out.push({
       classification: FindingClassification.REQUIRES_VERIFICATION,
       subject: label,

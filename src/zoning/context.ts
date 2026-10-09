@@ -119,10 +119,9 @@ export function buildZoningContext(input: BuildZoningContextInput): ZoningContex
     ctx.footprintGap = input.footprintError;
   }
   if (input.neighbors) {
-    const lotRaw = new Set(lotZones.map((z) => z.designation.raw));
-    const residential = materialShares(input.neighbors, NEGLIGIBLE_NEIGHBOR_FRACTION)
-      .filter((z) => RESIDENTIAL_FAMILIES.has(z.designation.family) && !lotRaw.has(z.designation.raw))
-      .map((z) => z.designation.raw);
+    // Every residential zone within the buffer counts. The lot itself is commercial in the only case this is read; a residential designation on the lot
+    // itself (a lot zoned both) is a residential zone the commercial-zone setbacks key on as well, so nothing is filtered out by name.
+    const residential = [...materialShares(input.neighbors, NEGLIGIBLE_NEIGHBOR_FRACTION), ...lotZones].filter((z) => RESIDENTIAL_FAMILIES.has(z.designation.family)).map((z) => z.designation.raw);
     ctx.adjacentResidential = residential.length > 0 ? { status: "YES", zones: [...new Set(residential)] } : { status: "NO", zones: [] };
   } else if (input.neighborsError) {
     ctx.adjacentResidential = { status: "UNKNOWN", zones: [], reason: input.neighborsError };

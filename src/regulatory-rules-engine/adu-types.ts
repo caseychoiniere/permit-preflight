@@ -158,6 +158,10 @@ export interface AduSetbacksSpec {
   /** Customer-facing citations (default: the Neighborhood Residential text "SMC 23.44.090 Table A"). */
   citation?: string;
   rearAlleyCitation?: string;
+  /** Midrise and Highrise: the side setback (and the structure-height tables) differ for portions above this height (42 ft; Highrise structures over 85 ft follow another table). An
+   * ADU taller than this is not given definite setback results - the setbacks are REQUIRES_VERIFICATION and say why. */
+  tableMaxHeightFt?: number;
+  tallerStructureText?: string;
 }
 export interface AduSeparationSpec {
   ruleType: typeof AduRuleType.SEPARATION;
@@ -165,6 +169,9 @@ export interface AduSeparationSpec {
   mappingToleranceFt: number;
   /** Customer-facing citation (default "SMC 23.44.100.A"). */
   citation?: string;
+  /** Zones whose code has NO separation requirement between structures (Highrise: SMC 23.45.519 applies to LR and MR only). When present the claim is answered with this statement
+   * (a KNOWN, informational result) instead of a measured comparison, so the report neither measures nor lists a gap. */
+  noRequirementText?: string;
 }
 export interface AduHeightSpec {
   ruleType: typeof AduRuleType.HEIGHT;
@@ -190,7 +197,10 @@ export interface AduFarSpec {
 }
 export interface AduAmenitySpec {
   ruleType: typeof AduRuleType.AMENITY_AREA;
-  requiredFractionOfLot: number;
+  /** Lowrise and Neighborhood Residential: a fraction of the lot area. Absent where the amount is a fraction of floor area instead. */
+  requiredFractionOfLot?: number;
+  /** Midrise, Highrise and commercial zones: a fraction of the gross floor area of the residential structure (SMC 23.45.522.A.2: 5%). */
+  requiredFractionOfFloorArea?: number;
   minSqFt: number;
   minDimensionFt: number;
   /** Customer-facing citations (default "SMC 23.44.110" and "SMC 23.44.110.H.1"); `canopyExemption` false drops the Neighborhood Residential tree-canopy exemption sentence. */

@@ -113,11 +113,11 @@ const SPEC_GUARDS: Record<string, (s: Record<string, unknown>) => boolean> = {
     positiveFinite(s["frontFt"]) &&
     positiveFinite(s["frontThreeOrMoreUnitsFt"]) &&
     positiveFinite(s["mappingToleranceFt"]),
-  [AduRuleType.SEPARATION]: (s) => positiveFinite(s["minFt"]) && positiveFinite(s["mappingToleranceFt"]),
+  [AduRuleType.SEPARATION]: (s) => (typeof s["noRequirementText"] === "string" && (s["noRequirementText"] as string).length > 0) || (positiveFinite(s["minFt"]) && positiveFinite(s["mappingToleranceFt"])),
   [AduRuleType.HEIGHT]: (s) => positiveFinite(s["maxFt"]) && positiveFinite(s["treeRetentionMaxFt"]) && nonNegativeFinite(s["pitchedRoofRidgeAllowanceFt"]),
   [AduRuleType.LOT_COVERAGE]: (s) => positiveFinite(s["maxPercent"]),
   [AduRuleType.FLOOR_AREA_RATIO]: (s) => bandsOk(s["bands"], "far") && positiveFinite(s["denserFar"]) && positiveFinite(s["smallLotAreaSqFt"]) && positiveFinite(s["smallLotMinChargeableSqFt"]),
-  [AduRuleType.AMENITY_AREA]: (s) => positiveFinite(s["requiredFractionOfLot"]) && positiveFinite(s["minSqFt"]) && positiveFinite(s["minDimensionFt"]),
+  [AduRuleType.AMENITY_AREA]: (s) => (positiveFinite(s["requiredFractionOfLot"]) || positiveFinite(s["requiredFractionOfFloorArea"])) && positiveFinite(s["minSqFt"]) && positiveFinite(s["minDimensionFt"]),
   [AduRuleType.TREES]: (s) => bandsOk(s["bands"], "sqFtPerPoint") && positiveFinite(s["denserSqFtPerPoint"]) && positiveFinite(s["lotSqFtPerNewTree"]),
   [AduRuleType.CONVERSION]: (s) =>
     typeof s["existingBeforeDate"] === "string" &&
@@ -505,12 +505,21 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
   const r = rules.find<AduSetbacksSpec>(AduRuleType.SETBACKS);
   if (!r) return [{ uncovered: "ADU setbacks" }];
   const out: Evaluated[] = [];
+  // Midrise and Highrise: the side setback grows for portions above 42 ft (and a Highrise structure over 85 ft follows another table), so a taller ADU gets no definite result.
+  if (r.spec.tableMaxHeightFt !== undefined && project.heightFt !== undefined && project.heightFt > r.spec.tableMaxHeightFt) {
+    return [{
+      finding: verify(SUBJECT.REAR, r.rule, [`heightFt=${project.heightFt}`, `tableMaxHeightFt=${r.spec.tableMaxHeightFt}`], r.spec.tallerStructureText ?? `The ADU is ${num(project.heightFt)} ft tall, above the ${num(r.spec.tableMaxHeightFt)} ft the setback table is written for, so its setbacks are not given a definite result.`),
+      verifyItem: "Confirm the setbacks for the taller portions of the structure with SDCI.",
+    }];
+  }
   const gap = placementGap(project);
   const gate = spatialQualityGate(project, r.rule);
   const units = unitsAfterAdu(project);
   const area = site.parcelAreaSqFt;
   const smallFtsaLot = area !== undefined && area < r.spec.smallLotAreaSqFt && site.inFrequentTransitServiceArea === true;
   const unknownSmallLotTransit = area !== undefined && area < r.spec.smallLotAreaSqFt && site.inFrequentTransitServiceArea === undefined;
+  // The reduced small-lot side setback exists only in Neighborhood Residential (smallLotAreaSqFt is 1 where a zone has none, so it can never apply).
+  const smallLotRuleApplies = r.spec.smallLotAreaSqFt > 1;
 
   // Rear
   {
@@ -571,8 +580,8 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
         });
       } else {
         out.push({
-          finding: verify(SUBJECT.SIDE, r.rule, [`distanceToSideLotLineFt=${d}`], `The ADU would be ${num(d)} ft from the nearest side lot line. That meets the ${num(r.spec.sideMinFt)} ft minimum, but the standard side setback is ${num(r.spec.sideAverageFt)} ft on average along the wall (SMC 23.44.090 Table A), so whether the average is met depends on the shape of the wall, and ${unknownSmallLotTransit ? "whether this lot qualifies for the reduced setback on small lots in a frequent transit service area could not be determined" : "this lot does not qualify for the reduced small-lot setback"}.`),
-          verifyItem: "Confirm the side setback with the proposed wall layout (5 ft average, 3 ft minimum).",
+          finding: verify(SUBJECT.SIDE, r.rule, [`distanceToSideLotLineFt=${d}`], `The ADU would be ${num(d)} ft from the nearest side lot line. That meets the ${num(r.spec.sideMinFt)} ft minimum, but the standard side setback is ${num(r.spec.sideAverageFt)} ft on average along the wall (${r.spec.citation ?? "SMC 23.44.090 Table A"}), so whether the average is met depends on the shape of the wall${smallLotRuleApplies ? `, and ${unknownSmallLotTransit ? "whether this lot qualifies for the reduced setback on small lots in a frequent transit service area could not be determined" : "this lot does not qualify for the reduced small-lot setback"}` : ""}.`),
+          verifyItem: `Confirm the side setback with the proposed wall layout (${num(r.spec.sideAverageFt)} ft average, ${num(r.spec.sideMinFt)} ft minimum).`,
         });
       }
     }
@@ -627,6 +636,9 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
 function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules, conversionRule?: { spec: AduConversionSpec }): Evaluated[] {
   const r = rules.find<AduSeparationSpec>(AduRuleType.SEPARATION);
   if (!r) return [{ uncovered: "separation between structures" }];
+  if (r.spec.noRequirementText !== undefined) {
+    return [{ finding: { classification: FindingClassification.KNOWN, subject: SUBJECT.SEPARATION, complianceOutcome: ComplianceOutcome.PASS, appliedRule: { id: r.rule.id, subject: r.rule.subject, citation: r.rule.citation }, supportingEvidence: ["noSeparationRequirementInZone=true"], explanationBasis: r.spec.noRequirementText } }];
+  }
   const out: Evaluated[] = [];
   const d = project.distanceToDwellingFt;
   if (d === undefined) {
@@ -832,8 +844,16 @@ function evaluateFar(project: AduProjectDetails, site: AduSiteFacts, rules: Acti
 function evaluateAmenity(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated {
   const r = rules.find<AduAmenitySpec>(AduRuleType.AMENITY_AREA);
   if (!r) return { uncovered: "amenity area" };
-  const required = site.parcelAreaSqFt !== undefined ? Math.max(site.parcelAreaSqFt * r.spec.requiredFractionOfLot, r.spec.minSqFt) : undefined;
-  const requirement = `Amenity area of ${Math.round(r.spec.requiredFractionOfLot * 100)}% of the lot area${required !== undefined ? ` (about ${sf(required)} sq ft)` : ""}, at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, unenclosed and free of parking and driveways (${r.spec.citation ?? "SMC 23.44.110"}).`;
+  const adu = estimateAduFloorAreaSqFt(project);
+  const byFloorArea = r.spec.requiredFractionOfFloorArea !== undefined;
+  const required = byFloorArea
+    ? Math.max(adu * r.spec.requiredFractionOfFloorArea!, r.spec.minSqFt)
+    : site.parcelAreaSqFt !== undefined && r.spec.requiredFractionOfLot !== undefined
+      ? Math.max(site.parcelAreaSqFt * r.spec.requiredFractionOfLot, r.spec.minSqFt)
+      : undefined;
+  const requirement = byFloorArea
+    ? `Amenity area of ${Math.round(r.spec.requiredFractionOfFloorArea! * 100)}% of the total gross floor area of the residential structure (for this ADU alone about ${sf(adu * r.spec.requiredFractionOfFloorArea!)} sq ft, but each private amenity area must be at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, so at least ${sf(r.spec.minSqFt)} sq ft), unenclosed and free of parking and driveways (${r.spec.citation ?? "SMC 23.44.110"}). Which structure's floor area counts, and whether existing amenity area already satisfies it, is not known to Permit Preflight.`
+    : `Amenity area of ${Math.round((r.spec.requiredFractionOfLot ?? 0) * 100)}% of the lot area${required !== undefined ? ` (about ${sf(required)} sq ft)` : ""}, at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, unenclosed and free of parking and driveways (${r.spec.citation ?? "SMC 23.44.110"}).`;
   const exemptUnit = project.existingAduCount === 0 && project.existingPrincipalDwellingUnits === 1;
   if (project.existingHouseBuiltBefore1982 === true && exemptUnit) {
     return {

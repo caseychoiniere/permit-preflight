@@ -12,8 +12,8 @@ import type { DraftedRuleInput } from "../../src/regulatory-rule-governance/life
 import { AduRuleType } from "../../src/regulatory-rules-engine/adu-types.js";
 import { mfRowId } from "./multifamily-candidates.js";
 
-const BASIS = "Ordinance 127376 (2025): SMC 23.42.022 and SMC Chapter 23.45 as published on Municode Library (CURRENT) and read live 2026-10-09.";
-const DECLARED_CAVEAT = {
+export const BASIS = "Ordinance 127376 (2025): SMC 23.42.022 and SMC Chapter 23.45 as published on Municode Library (CURRENT) and read live 2026-10-09.";
+export const DECLARED_CAVEAT = {
   category: "declared input and mapped geometry, not a survey",
   description:
     "ADU size, height, stories, bedrooms and the existing unit counts are declared by the customer. Distances are measured from the footprint the customer placed on the map against the King County parcel polygon and Seattle Building Outlines (2023). Every finding says so; nothing is presented as surveyed.",
@@ -35,15 +35,15 @@ export interface MfAduCase {
   input: { project?: Record<string, unknown>; site?: Record<string, unknown>; zoning?: string };
   expected: { finding: string; outcome: string; appliedBy?: string };
 }
-const tc = (kind: MfAduCase["kind"], description: string, project: Record<string, unknown> | undefined, finding: string, outcome: string, opts: { site?: Record<string, unknown>; zoning?: string; appliedBy?: string } = {}): MfAduCase => ({
+export const tc = (kind: MfAduCase["kind"], description: string, project: Record<string, unknown> | undefined, finding: string, outcome: string, opts: { site?: Record<string, unknown>; zoning?: string; appliedBy?: string } = {}): MfAduCase => ({
   kind,
   description,
   input: { ...(project ? { project } : {}), ...(opts.site ? { site: opts.site } : {}), ...(opts.zoning ? { zoning: opts.zoning } : {}) },
   expected: { finding, outcome, ...(opts.appliedBy ? { appliedBy: opts.appliedBy } : {}) },
 });
 
-const CONVERSION_BASE = { aduType: "CONVERSION_EXISTING", widthFt: undefined, depthFt: undefined, heightFt: undefined, stories: 1, bedrooms: 1, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true } };
-const ATTACHED_BASE = { aduType: "ATTACHED_TO_HOUSE", widthFt: undefined, depthFt: undefined, heightFt: undefined, stories: 1, bedrooms: 1, attached: { grossFloorAreaSqFt: 700, includesAddition: false, portionExistedBeforeJuly2023: true } };
+export const CONVERSION_BASE = { aduType: "CONVERSION_EXISTING", widthFt: undefined, depthFt: undefined, heightFt: undefined, stories: 1, bedrooms: 1, conversion: { structureAreaSqFt: 400, existedBeforeJuly2023: true, keepsFootprintAndHeight: true } };
+export const ATTACHED_BASE = { aduType: "ATTACHED_TO_HOUSE", widthFt: undefined, depthFt: undefined, heightFt: undefined, stories: 1, bedrooms: 1, attached: { grossFloorAreaSqFt: 700, includesAddition: false, portionExistedBeforeJuly2023: true } };
 
 const FAR_VARIANTS = [
   { token: "LR1:MHA", example: "LR1 (M)", slug: "lr1-mha", far: 1.3, zoneText: "A Lowrise 1 (LR1) zone with a mandatory housing affordability (MHA) suffix", conditionText: "The figure is 1.5 for stacked dwelling units (SMC 23.45.510 Table A)." },

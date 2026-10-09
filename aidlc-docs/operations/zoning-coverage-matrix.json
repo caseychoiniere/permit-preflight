@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-10-09T21:41:25.121Z",
- "activeRuleCount": 117,
+ "generatedAt": "2026-10-09T23:13:53.696Z",
+ "activeRuleCount": 139,
  "approvedRuleCount": 0,
  "live": [
   {
@@ -2723,7 +2723,7 @@
     {
      "claim": "separation from the house",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
@@ -2762,7 +2762,7 @@
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -2829,57 +2829,57 @@
    "zoneCode": "HR",
    "family": "HR",
    "example": "HR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4633,57 +4633,57 @@
    "zoneCode": "MR",
    "family": "MR",
    "example": "MR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -9749,7 +9749,7 @@
     {
      "claim": "separation from the house",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
@@ -9788,7 +9788,7 @@
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -9855,57 +9855,57 @@
    "zoneCode": "HR",
    "family": "HR",
    "example": "HR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -11659,57 +11659,57 @@
    "zoneCode": "MR",
    "family": "MR",
    "example": "MR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },

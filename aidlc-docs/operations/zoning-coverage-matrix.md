@@ -1,6 +1,6 @@
 # Zoning coverage matrix (project type x zone)
 
-Generated 2026-10-09T21:41:25.121Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
+Generated 2026-10-09T23:13:53.696Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
 
 Statuses: SUPPORTED = every core claim is covered (the minimum useful report; individual findings can still be REQUIRES_VERIFICATION); PARTIAL = some core claims; N/A = the governing code makes the project inapplicable in that zone (never used for 'not built yet'); not yet = a product limitation.
 
@@ -23,7 +23,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PMM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
-| HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | IB | Industrial | not yet | not yet | not yet | not yet | N/A |
 | IC | Industrial | not yet | not yet | not yet | not yet | not yet |
 | II | Industrial | not yet | not yet | not yet | not yet | not yet |
@@ -33,7 +33,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | LR2 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | LR3 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | MPC-YT | Master Planned Community | not yet | not yet | not yet | not yet | not yet |
-| MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
@@ -67,7 +67,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PMM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
-| HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | IB | Industrial | not yet | not yet | not yet | not yet | N/A |
 | IC | Industrial | not yet | not yet | not yet | not yet | not yet |
 | II | Industrial | not yet | not yet | not yet | not yet | not yet |
@@ -77,7 +77,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | LR2 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | LR3 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | MPC-YT | Master Planned Community | not yet | not yet | not yet | not yet | not yet |
-| MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
@@ -113,7 +113,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | - | - | yes |
 | PMM | - | - | - | - | yes |
 | PSM | - | - | - | - | yes |
-| HR | yes | yes | - | yes | yes |
+| HR | yes | yes | yes | yes | yes |
 | IB | - | - | - | - | yes |
 | IC | - | - | - | - | yes |
 | II | - | - | - | - | yes |
@@ -157,7 +157,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | - | - |
 | PMM | - | - | - | - |
 | PSM | - | - | - | - |
-| HR | yes | yes | yes | - |
+| HR | yes | yes | yes | yes |
 | IB | - | - | - | - |
 | IC | - | - | - | - |
 | II | - | - | - | - |
@@ -289,7 +289,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | - | - | - | - | - | - | - | - |
 | PMM | - | - | - | - | - | - | - | - | - | - |
 | PSM | - | - | - | - | - | - | - | - | - | - |
-| HR | - | - | - | - | - | - | - | - | - | - |
+| HR | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | IB | - | - | - | - | - | - | - | - | - | - |
 | IC | - | - | - | - | - | - | - | - | - | - |
 | II | - | - | - | - | - | - | - | - | - | - |
@@ -299,7 +299,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | LR2 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | LR3 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | MPC-YT | - | - | - | - | - | - | - | - | - | - |
-| MR | - | - | - | - | - | - | - | - | - | - |
+| MR | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | NC1 | - | - | - | - | - | - | - | - | - | - |
 | NC2 | - | - | - | - | - | - | - | - | - | - |
 | NC3 | - | - | - | - | - | - | - | - | - | - |

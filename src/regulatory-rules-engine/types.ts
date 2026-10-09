@@ -206,6 +206,13 @@ export interface GarageProjectDetails {
   /** Commercial zones (SMC 23.47A.014): whether a residential zone abuts the lot or is across an alley from it, from Seattle's zoning layer. Setbacks in these zones exist only where one does. */
   abutsResidentialZone?: "YES" | "NO" | "UNKNOWN";
   adjacentResidentialZones?: string[];
+  /** Garage separation (SMC 23.44.100.A, 23.45.519.A, 23.45.518.H.1.d): the shortest distance from the garage footprint to the principal structure the user
+   * confirmed, measured from Seattle's building outlines in PostGIS. Undefined when no principal structure could be established. */
+  distanceToDwellingFt?: number;
+  /** The real reason distanceToDwellingFt is unavailable (no building confirmed, a stale selection, outline data unavailable, a mis-placed footprint). */
+  dwellingSeparationEvidenceGapReason?: string;
+  /** User-declared: a driveway or parking aisle lies between the garage and the principal structure (raises the required separation). undefined = not answered. */
+  drivewayOrAisleBetween?: boolean;
 }
 
 export type ProjectDetails = ShedProjectDetails | GarageProjectDetails;

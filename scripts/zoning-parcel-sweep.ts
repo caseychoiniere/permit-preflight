@@ -18,6 +18,7 @@ import type { RegulatoryRule } from "../src/regulatory-rule-governance/types.js"
 import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../tests/fixtures/multifamily-candidates.js";
 import { ADU_MF_FIXED_ROW_IDS, aduMultifamilyCandidates } from "../tests/fixtures/multifamily-adu-candidates.js";
 import { COMMERCIAL_FIXED_ROW_IDS, allCommercialCandidates } from "../tests/fixtures/commercial-candidates.js";
+import { GARAGE_SEPARATION_FIXED_ROW_IDS, garageSeparationCandidates } from "../tests/fixtures/garage-separation-candidates.js";
 
 process.loadEnvFile(".env.local");
 
@@ -26,6 +27,8 @@ const asActiveRules = (cands: typeof allMultifamilyCandidates, ids: Record<strin
 const EXTRA_SETS: Record<string, RegulatoryRule[]> = {
   "lowrise-adu": asActiveRules(aduMultifamilyCandidates, ADU_MF_FIXED_ROW_IDS),
   commercial: asActiveRules(allCommercialCandidates, COMMERCIAL_FIXED_ROW_IDS),
+  "garage-separation": asActiveRules(garageSeparationCandidates, GARAGE_SEPARATION_FIXED_ROW_IDS),
+  "mf-hr-new": asActiveRules(allMultifamilyCandidates.filter((c) => /-hr-2026$/.test(c.id) && /separation|parking-access/.test(c.id)), MULTIFAMILY_FIXED_ROW_IDS),
   lowrise: allMultifamilyCandidates.map((c) => ({ ...draft(c), id: MULTIFAMILY_FIXED_ROW_IDS[c.id]!, lifecycleState: "ACTIVE", acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] }) as RegulatoryRule),
 };
 
@@ -74,7 +77,7 @@ async function main() {
 
         const runs: [string, Record<string, unknown>][] = [
           ["shed", { widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, proposedPlacement: placement, lotLineRoleAssignment: roles, ...(house ? { primaryDwellingSelection: { status: "SELECTED", outlineId: house.outlineId, method: "USER_CONFIRMED" } } : {}) }],
-          ["garage", { widthFt: 12, depthFt: 20, heightFt: 10, alleyAdjacent: false, proposedPlacement: placement, lotLineRoleAssignment: roles, existingStructuresFootprintSqFt: 1200 }],
+          ["garage", { widthFt: 12, depthFt: 20, heightFt: 10, alleyAdjacent: false, proposedPlacement: placement, lotLineRoleAssignment: roles, existingStructuresFootprintSqFt: 1200, ...(house ? { primaryDwellingSelection: { status: "SELECTED", outlineId: house.outlineId, method: "USER_CONFIRMED" } } : {}), ...(process.env["SWEEP_DRIVEWAY"] ? { drivewayOrAisleBetween: process.env["SWEEP_DRIVEWAY"] === "yes" } : {}) }],
           ["fence", { heightFt: 6, locations: ["OTHER_SIDE_OR_REAR_SETBACK", "FRONT_SETBACK"], siteSlopes: false, wallRelation: "NONE", hasMasonryOrConcreteAbove6Ft: false }],
           ...(process.env["SWEEP_ADU"] ? ([["adu", { aduType: "DETACHED_NEW", widthFt: 16, depthFt: 20, stories: 1, bedrooms: 1, heightFt: 15, alleyAdjacent: false, existingPrincipalDwellingUnits: 1, existingAduCount: 0, proposedPlacement: placement, lotLineRoleAssignment: roles, ...(house ? { primaryDwellingSelection: { status: "SELECTED", outlineId: house.outlineId, method: "USER_CONFIRMED" } } : {}) }]] as [string, Record<string, unknown>][]) : []),
           ["deck", { heightAboveGradeIn: 30, widthFt: 10, depthFt: 12, attachment: "DETACHED", buildingRelation: "OPEN_GROUND_BELOW", setbackLocations: ["SIDE_SETBACK"] }],

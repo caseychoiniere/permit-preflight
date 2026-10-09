@@ -80,9 +80,11 @@ describe("multifamily candidates - structure", () => {
     expect(heightFor("LR2 (M)")).toEqual([MULTIFAMILY_FIXED_ROW_IDS["shed-mf-height-lr-2026"]]);
     expect(heightFor("MR (M1)")).toEqual([MULTIFAMILY_FIXED_ROW_IDS["shed-mf-height-mr-hr-2026"]]);
     expect(heightFor("HR")).toEqual([MULTIFAMILY_FIXED_ROW_IDS["shed-mf-height-mr-hr-2026"]]);
-    // Highrise has no 23.45.519 separation: the separation claim is simply not governed there.
-    const sep = (z: string) => resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(shedMultifamilyCandidates) }).rules.some((x) => (x.ruleSpecification as { ruleType: string }).ruleType === "MF_ACC_SEPARATION");
-    expect([sep("LR1"), sep("MR"), sep("HR")]).toEqual([true, true, false]);
+    // Highrise has no 23.45.519 separation, only the 3 ft in a required setback: its own row, with no 5 ft figure.
+    const sepRows = (z: string) => resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(shedMultifamilyCandidates) }).rules.filter((x) => (x.ruleSpecification as { ruleType: string }).ruleType === "MF_ACC_SEPARATION");
+    expect([sepRows("LR1").length, sepRows("MR").length, sepRows("HR").length]).toEqual([1, 1, 1]);
+    expect((sepRows("HR")[0]!.ruleSpecification as { otherwiseMinFt?: number }).otherwiseMinFt).toBeUndefined();
+    expect((sepRows("LR1")[0]!.ruleSpecification as { otherwiseMinFt?: number }).otherwiseMinFt).toBe(5);
   });
   it("scope tokens are parsed", () => {
     expect(parseZoneScope("MULTIFAMILY").tokens).toHaveLength(1);

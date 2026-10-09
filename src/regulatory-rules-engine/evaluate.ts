@@ -13,6 +13,8 @@ import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
 import { EvidenceQuality, LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { InferencePolicy, RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { deriveEcaRegulatoryImplication } from "./eca-implication.js";
+import { GARAGE_SEPARATION_RULE_TYPE, evaluateGarageSeparation } from "./evaluate-garage-separation.js";
+import type { GarageSeparationSpec } from "./evaluate-garage-separation.js";
 import { NOT_A_SURVEY, againstMinimum, classifySpatialFinding, missingEvidenceFinding, roundToTenthFt } from "./evaluate-common.js";
 import type { MappingTolerance } from "./evaluate-common.js";
 import { resolveApplicableRules, summarizeZoningResolution } from "../zoning/resolve.js";
@@ -283,7 +285,21 @@ export interface EvaluateProjectInput {
  * constraint types a given project type is expected to have ACTIVE rule coverage for
  * (business-rules.md BR-U4-5). A future third ProjectType without an entry here is a compile-time
  * error via the `never` branch below. */
-function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"], family: ZoneFamily = ZoneFamily.NR): { constraintType: string; ruleTypes: string[] }[] {
+/** What decides which constraints a screening is expected to cover: the project type, the zone family the structure stands in and - where a constraint
+ * depends on it - the project's own configuration. A constraint is listed ONLY when the governing code for that zone family actually contains it for this
+ * kind of project; whether an ACTIVE rule implements it is decided afterwards (computeUncoveredConstraintTypes). A constraint another zone family has but this
+ * one does not (for example a garage-to-house separation in a Neighborhood Commercial zone, SMC Chapter 23.47A) is never listed, so it can never be reported
+ * as "not yet screenable". */
+interface ConstraintExpectationContext {
+  projectType: ProjectDetails["projectType"];
+  family: ZoneFamily;
+  /** The evaluated project, for expectations that depend on its configuration. Optional: callers that only know the type and zone family omit it. */
+  project?: ProjectDetails;
+}
+
+const GARAGE_SEPARATION_CONSTRAINT = "separation from the principal structure";
+
+function expectedConstraintTypesFor({ projectType, family }: ConstraintExpectationContext): { constraintType: string; ruleTypes: string[] }[] {
   if (family === ZoneFamily.LR || family === ZoneFamily.MR || family === ZoneFamily.HR) {
     // Chapter 23.45: accessory-structure placement (SMC 23.45.518.H.1), height (23.45.514.C), floor area ratio (23.45.510; no lot-coverage limit).
     const common = [
@@ -298,8 +314,8 @@ function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"], 
         return [
           ...common,
           { constraintType: "garage access and driveway", ruleTypes: [MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS] },
-          // Same disclosure as the NR garage: the garage flow does not measure the house, so the separation is never silently skipped.
-          { constraintType: "separation from the house", ruleTypes: ["GARAGE_DWELLING_SEPARATION_NOT_GOVERNED"] },
+          // SMC 23.45.519.A (LR, MR: 5 ft between structures containing floor area) and 23.45.518.H.1.d (3 ft from a principal structure for an accessory structure in a required setback, all multifamily zones).
+          { constraintType: GARAGE_SEPARATION_CONSTRAINT, ruleTypes: [GARAGE_SEPARATION_RULE_TYPE] },
         ];
       default: {
         const exhaustiveCheck: never = projectType;
@@ -314,13 +330,9 @@ function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"], 
       { constraintType: "height", ruleTypes: [CommercialAccessoryRuleType.HEIGHT] },
       { constraintType: "floor area ratio", ruleTypes: [CommercialAccessoryRuleType.FLOOR_AREA_RATIO_NOTE] },
     ];
-    return projectType === "garage"
-      ? [
-          ...commercial,
-          { constraintType: "garage access and driveway", ruleTypes: [CommercialAccessoryRuleType.GARAGE_PARKING_ACCESS] },
-          { constraintType: "separation from the house", ruleTypes: ["GARAGE_DWELLING_SEPARATION_NOT_GOVERNED"] },
-        ]
-      : commercial;
+    // No separation between a garage and a principal structure exists in Chapter 23.47A (its separation provisions concern structures over 250 ft wide and
+    // optional facade breaks), so none is expected here: the claim is NOT_APPLICABLE in these zones, not a coverage gap.
+    return projectType === "garage" ? [...commercial, { constraintType: "garage access and driveway", ruleTypes: [CommercialAccessoryRuleType.GARAGE_PARKING_ACCESS] }] : commercial;
   }
   if (family !== ZoneFamily.NR) {
     // A zone family whose accessory-structure rules have not been written yet: the claims a screening would make are listed as not yet screenable.
@@ -345,10 +357,8 @@ function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"], 
         { constraintType: "setback", ruleTypes: ["REAR_SETBACK", "SIDE_FRONT_SETBACK_STANDARD"] },
         { constraintType: "height", ruleTypes: ["HEIGHT_LIMIT", ...ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES] },
         { constraintType: "lot coverage", ruleTypes: ["LOT_COVERAGE"] },
-        // A detached garage is also subject to the 5 ft separation between structures (SMC 23.44.100.A), which no garage rule covers and the
-        // garage flow does not measure (no house is selected). Listed with a rule type no garage row carries, so every garage report says
-        // plainly that it is not screened instead of reading as screened clean.
-        { constraintType: "separation from the house", ruleTypes: ["GARAGE_DWELLING_SEPARATION_NOT_GOVERNED"] },
+        // A detached garage is a structure containing floor area: SMC 23.44.100.A (5 ft, larger across a driveway or parking aisle) and 23.44.090.I.2.c (3 ft eave to eave in the rear setback).
+        { constraintType: GARAGE_SEPARATION_CONSTRAINT, ruleTypes: [GARAGE_SEPARATION_RULE_TYPE] },
       ];
     default: {
       const exhaustiveCheck: never = projectType;
@@ -386,6 +396,7 @@ const CLAIM_LABELS: Record<string, string> = {
   [MultifamilyAccessoryRuleType.HEIGHT]: "Accessory structure height limit",
   DWELLING_SEPARATION: "Separation from the house",
   [MultifamilyAccessoryRuleType.SEPARATION]: "Separation from the house",
+  [GARAGE_SEPARATION_RULE_TYPE]: "Separation from the principal structure",
   LOT_COVERAGE: "Lot coverage",
   [ShedLotCoverageRuleType.BASE_MAXIMUM]: "Lot coverage",
   [ShedLotCoverageRuleType.ECA_LOT_AREA_EXCLUSION]: "Lot coverage",
@@ -406,13 +417,13 @@ export const claimLabelFor = (ruleType: string, fallbackSubject: string): string
 const PROJECT_NOUN: Record<ProjectDetails["projectType"], string> = { shed: "shed", garage: "detached garage" };
 
 /** Constraint types with no active rule for the zone(s) the structure stands in. A claim reported as zone-ambiguous is a verification item, not "not yet screenable". */
-function computeUncoveredConstraintTypes(projectType: ProjectDetails["projectType"], activeRules: RegulatoryRule[], resolution?: ZoningResolution): string[] {
+function computeUncoveredConstraintTypes(projectType: ProjectDetails["projectType"], activeRules: RegulatoryRule[], resolution?: ZoningResolution, project?: ProjectDetails): string[] {
   const activeRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
   const ambiguousRuleTypes = new Set(resolution?.ambiguousClaims.map((c) => c.ruleType) ?? []);
   const families: ZoneFamily[] = !resolution ? [ZoneFamily.NR] : resolution.locationFamilies.length > 0 ? resolution.locationFamilies : [...new Set(resolution.lotZones.map((z) => z.family))];
   const expected = new Map<string, string[]>();
   for (const family of families) {
-    for (const { constraintType, ruleTypes } of expectedConstraintTypesFor(projectType, family)) {
+    for (const { constraintType, ruleTypes } of expectedConstraintTypesFor({ projectType, family, ...(project ? { project } : {}) })) {
       expected.set(constraintType, [...(expected.get(constraintType) ?? []), ...ruleTypes]);
     }
   }
@@ -469,7 +480,7 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   const projectNoun = PROJECT_NOUN[input.project.projectType];
   if (resolution) {
     const zoneRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
-    const expectedHere = (resolution.locationFamilies.length > 0 ? resolution.locationFamilies : [ZoneFamily.NR]).flatMap((f) => expectedConstraintTypesFor(input.project.projectType, f));
+    const expectedHere = (resolution.locationFamilies.length > 0 ? resolution.locationFamilies : [ZoneFamily.NR]).flatMap((f) => expectedConstraintTypesFor({ projectType: input.project.projectType, family: f, project: input.project }));
     const noRulesForZone = resolution.status === "RESOLVED" && expectedHere.every(({ ruleTypes }) => !ruleTypes.some((rt) => zoneRuleTypes.has(rt)));
     findings.push(...zoningFindings(resolution, { projectNoun, claimLabel: claimLabelFor, noRulesForZone }));
     findings.push(...ambiguousClaimFindings(resolution, { projectNoun, claimLabel: claimLabelFor }));
@@ -481,7 +492,7 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
     uncoveredConstraintTypes:
       resolution?.status === "UNRESOLVED"
         ? ["zone-specific limits - setback, height, lot coverage or floor area (Seattle zoning could not be applied to this property)"]
-        : computeUncoveredConstraintTypes(input.project.projectType, activeRules, resolution),
+        : computeUncoveredConstraintTypes(input.project.projectType, activeRules, resolution, input.project),
     ...(resolution ? { zoningApplied: summarizeZoningResolution(resolution) } : {}),
   };
 
@@ -556,6 +567,9 @@ function evaluateRule(rule: RegulatoryRule, project: ProjectDetails, activePolic
     case MultifamilyAccessoryRuleType.SEPARATION:
       if (project.projectType !== "shed") return [missingEvidenceFinding(rule.subject, appliedRule, `${spec.ruleType} does not apply to project type "${project.projectType}".`)];
       return [evaluateMfSeparation(rule, spec as unknown as MfAccessorySeparationSpec, project)];
+    case GARAGE_SEPARATION_RULE_TYPE:
+      if (project.projectType !== "garage") return [missingEvidenceFinding(rule.subject, appliedRule, `${spec.ruleType} does not apply to project type "${project.projectType}".`)];
+      return [evaluateGarageSeparation(rule, spec as unknown as GarageSeparationSpec, project)];
     case MultifamilyAccessoryRuleType.FLOOR_AREA_RATIO:
       return [evaluateMfFloorAreaRatio(rule, spec as unknown as MfFloorAreaRatioSpec, project)];
     case MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS:

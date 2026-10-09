@@ -111,10 +111,14 @@ describe.skipIf(!hasDb)("Shed and garage real-rules smoke", () => {
     expect(r.findings.some((f) => /\(front\)/.test(f.subject))).toBe(true);
     expect(r.findings.some((f) => /height/i.test(f.subject))).toBe(true);
     expect(r.findings.some((f) => /lot coverage/i.test(f.subject))).toBe(true);
-    // The 5 ft separation between structures (SMC 23.44.100.A) is not governed for a garage, and the report must say so.
-    expect(r.uncovered).toEqual(["separation from the house"]);
-    expect(r.web).toContain("Not Yet Automatically Screenable");
-    expect(r.pdf).toContain("Not Yet Automatically Screenable");
+    // The separation between structures (SMC 23.44.100.A) is governed for a garage by its own ACTIVE row (activated 2026-10-09), so it is no longer a coverage gap.
+    // This garage has no building confirmed as the main house, so the claim is a verification item that says why - never a "not yet screenable" notice.
+    expect(r.uncovered).toEqual([]);
+    expect(r.web).not.toContain("Not Yet Automatically Screenable");
+    expect(r.pdf).not.toContain("Not Yet Automatically Screenable");
+    const separation = r.findings.find((f) => f.subject === "Detached garage separation from the principal structure");
+    expect(separation?.classification).toBe("REQUIRES_VERIFICATION");
+    expect(separation?.complianceOutcome).toBeUndefined();
     // A shortfall cannot be placed from the map here; the exception-dependent REQUIRES_VERIFICATION is proven by the evaluator tests (G2 cases), and no side/front garage finding is ever a FAIL.
     expect(r.findings.filter((f) => /\((side|front)\)/.test(f.subject)).every((f) => f.complianceOutcome !== "FAIL")).toBe(true);
   }, 180_000);

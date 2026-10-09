@@ -196,6 +196,12 @@ export interface GarageProjectConfiguration {
   distanceInputMode?: DistanceInputMode;
   existingStructuresFootprintSqFt?: number;
   stackedDwellingUnits?: boolean;
+  /** Which mapped building is the principal structure (the main house), confirmed by the user on the map. The garage's distance to it is then measured
+   * from Seattle's building outlines (never asked of the user). Absent = not answered; the separation claim is then a verification item. */
+  primaryDwellingSelection?: PrimaryDwellingSelection;
+  /** Does a driveway or parking aisle lie between the garage and the principal structure (SMC 23.44.100.A and 23.45.519.A raise the required separation
+   * to 2 ft more than its width, up to 24 ft)? undefined = not answered or not sure; never defaulted. */
+  drivewayOrAisleBetween?: boolean;
 }
 
 
@@ -641,6 +647,8 @@ export const GarageProjectConfigurationSchema = z.object({
   distanceInputMode: z.enum([DistanceInputMode.MAP_PLACEMENT, DistanceInputMode.MANUAL_FALLBACK]).optional(),
   existingStructuresFootprintSqFt: z.number().finite().nonnegative().max(1_000_000).optional(),
   stackedDwellingUnits: z.boolean().optional(),
+  primaryDwellingSelection: PrimaryDwellingSelectionSchema.optional(),
+  drivewayOrAisleBetween: z.boolean().optional(),
 });
 
 export type GarageProjectConfigurationInput = z.infer<typeof GarageProjectConfigurationSchema>;

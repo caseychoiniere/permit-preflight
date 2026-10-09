@@ -135,6 +135,9 @@ export default function ConfigurePage() {
   const [zoningAdvisory, setZoningAdvisory] = useState<{ zoneLabels: string[]; byProjectType: Record<string, { eligible: boolean; message?: string }> } | null>(null);
   const [screeningRequestId, setScreeningRequestId] = useState<string | null>(null);
   const [projectType, setProjectType] = useState<SelectedProjectType>(null);
+  // Chapter 23.47A has no separation between a garage and a principal structure, so a lot zoned only Neighborhood Commercial or Commercial is not asked about the main house or a driveway for a garage.
+  const commercialOnlyLot = zoningAdvisory !== null && zoningAdvisory.zoneLabels.length > 0 && zoningAdvisory.zoneLabels.every((z) => /^(NC[123]|C[12])/.test(z));
+  const garageAsksAboutHouse = projectType === ProjectType.GARAGE && !commercialOnlyLot;
   const [dimensions, setDimensions] = useState({ widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false });
   // Garage-only intake facts (domain-entities.md's GarageProjectConfiguration). Never defaulted -
   // `undefined` means "not answered," an explicit `0`/`false` means a deliberate assertion
@@ -143,6 +146,8 @@ export default function ConfigurePage() {
   const [existingStructuresValue, setExistingStructuresValue] = useState(0);
   const existingStructuresFootprintSqFt = existingStructuresChoice === "ENTER" ? existingStructuresValue : existingStructuresChoice === "ZERO" ? 0 : undefined;
   const [stackedDwellingUnits, setStackedDwellingUnits] = useState<TriState>(undefined);
+  // Garage separation (SMC 23.44.100.A, 23.45.519.A): does a driveway or parking aisle lie between the garage and the main house? undefined = not answered or not sure.
+  const [drivewayOrAisleBetween, setDrivewayOrAisleBetween] = useState<TriState>(undefined);
   // Unit 6B Capability B - shed permit-requirement intake (domain-entities.md §2, frontend-
   // components.md §1). Always-asked: foundationType/attachment/intendedUse. Progressive:
   // roofOverhang/structuralSpanInfo/utilityIntent - undefined means "not answered," never coerced,
@@ -184,14 +189,14 @@ export default function ConfigurePage() {
    * front/rear picking process reached a definite outcome (ASSIGNED or the equally-legitimate
    * INSUFFICIENT - see checkPlacementCompleteness's own doc comment for why INSUFFICIENT must
    * still count as "decided," not "blocked"). Shed-only for the dwelling requirement, matching
-   * DWELLING_SEPARATION's own shed-only scope - existingStructures is always [] for garage. */
+   * DWELLING_SEPARATION's own scope - the main house is asked about for a shed, a garage and an ADU. */
   const placementCompleteness = checkPlacementCompleteness({
     lotLineDecided: lotLineSelection !== null,
     hasPlacement: isConversion ? convertedOutlineId !== null : placement !== null,
     footprintOutsideParcel: !isConversion && placement !== null && boundaryPolygonWgs84 !== null && !isFootprintInsideParcel(placement.anchor, dimensions.widthFt, dimensions.depthFt, placement.orientationDeg, boundaryPolygonWgs84),
     placementMissingMessage: isConversion ? "Choose the building you would convert" : undefined,
     convertedIsMainHouse: isConversion && convertedOutlineId !== null && dwellingSelection?.status === "SELECTED" && dwellingSelection.outlineId === convertedOutlineId,
-    hasBuildingsToAskAbout: (projectType === ProjectType.SHED || projectType === ProjectType.ADU) && existingStructures.length > 0,
+    hasBuildingsToAskAbout: (projectType === ProjectType.SHED || garageAsksAboutHouse || projectType === ProjectType.ADU) && existingStructures.length > 0,
     structureNoun: projectType === ProjectType.ADU ? "ADU" : projectType === ProjectType.GARAGE ? "garage" : "shed",
     dwellingAnswered: dwellingSelection !== null,
     // Maintenance correction (2026-09-15, founder direction) - both derive directly from the same
@@ -420,7 +425,7 @@ export default function ConfigurePage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...(projectType === ProjectType.ADU && aduDetails ? aduDetails : dimensions),
-        ...(projectType === ProjectType.GARAGE ? { existingStructuresFootprintSqFt, stackedDwellingUnits } : {}),
+        ...(projectType === ProjectType.GARAGE ? { existingStructuresFootprintSqFt, stackedDwellingUnits, ...(garageAsksAboutHouse && drivewayOrAisleBetween !== undefined ? { drivewayOrAisleBetween } : {}) } : {}),
         proposedPlacement: placement,
         lotLineRoleAssignment: { ...toPersistedLotLineRoleAssignment(lotLineSelection), method: "USER_INDICATED" },
         distanceInputMode: DistanceInputMode.MAP_PLACEMENT,
@@ -428,7 +433,7 @@ export default function ConfigurePage() {
         // scope). Omitted entirely when the user was never shown a dwelling-confirmation prompt at
         // all (existingStructures was empty) - never fabricated as UNKNOWN in that case; the
         // pipeline's own fresh fetch already resolves "nothing to select" the same way either way.
-        ...((projectType === ProjectType.SHED || projectType === ProjectType.ADU) && dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
+        ...((projectType === ProjectType.SHED || garageAsksAboutHouse || projectType === ProjectType.ADU) && dwellingSelection ? { primaryDwellingSelection: { ...dwellingSelection, method: "USER_CONFIRMED" } } : {}),
         // Unit 6B Capability B - shed permit-requirement intake. roofOverhang/structuralSpanInfo
         // are only sent when their progressive question was actually shown and answered - `undefined`
         // stays `undefined` (never coerced), matching ShedProjectConfigurationSchema exactly.
@@ -1005,6 +1010,47 @@ export default function ConfigurePage() {
                   </label>
                 </div>
               </fieldset>
+
+              {garageAsksAboutHouse && (
+              <fieldset className="mt-4 rounded-lg border border-slate-200 p-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">Driveway between the garage and the house</legend>
+                <p className="text-sm text-slate-500">
+                  Will a driveway or parking aisle run between the new garage and your main house? Seattle requires more separation between buildings when one does. You will confirm which building is your main house on the map, so there is no distance to measure here.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="drivewayOrAisleBetween"
+                      checked={drivewayOrAisleBetween === true}
+                      onChange={() => setDrivewayOrAisleBetween(true)}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Yes
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="drivewayOrAisleBetween"
+                      checked={drivewayOrAisleBetween === false}
+                      onChange={() => setDrivewayOrAisleBetween(false)}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    No
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="drivewayOrAisleBetween"
+                      checked={drivewayOrAisleBetween === undefined}
+                      onChange={() => setDrivewayOrAisleBetween(undefined)}
+                      className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    I don&apos;t know
+                  </label>
+                </div>
+              </fieldset>
+              )}
             </>
           )}
 
@@ -1035,7 +1081,7 @@ export default function ConfigurePage() {
               onLotLineRolesChange={setLotLineSelection}
               initialPlacement={placement ?? undefined}
               initialLotLineSelection={lotLineSelection ?? undefined}
-              existingStructures={projectType === ProjectType.SHED || projectType === ProjectType.ADU ? existingStructures : []}
+              existingStructures={projectType === ProjectType.SHED || garageAsksAboutHouse || projectType === ProjectType.ADU ? existingStructures : []}
               onDwellingSelectionChange={setDwellingSelection}
               initialDwellingSelection={dwellingSelection ?? undefined}
             />
@@ -1262,12 +1308,20 @@ export default function ConfigurePage() {
                       {existingStructuresFootprintSqFt === undefined ? "not answered" : `${existingStructuresFootprintSqFt} sq ft (self-reported)`}
                     </dd>
                   </div>
-                  <div className="flex justify-between gap-4 pb-2">
+                  <div className={`flex justify-between gap-4 ${garageAsksAboutHouse ? "border-b border-slate-100 " : ""}pb-2`}>
                     <dt className="text-slate-500">Stacked dwelling units</dt>
                     <dd className="font-medium text-slate-900">
                       {stackedDwellingUnits === undefined ? "not answered" : stackedDwellingUnits ? "yes" : "no"}
                     </dd>
                   </div>
+                  {garageAsksAboutHouse && (
+                    <div className="flex justify-between gap-4 pb-2">
+                      <dt className="text-slate-500">Driveway between garage and house</dt>
+                      <dd className="font-medium text-slate-900">
+                        {drivewayOrAisleBetween === undefined ? "not answered" : drivewayOrAisleBetween ? "yes" : "no"}
+                      </dd>
+                    </div>
+                  )}
                 </>
               )}
             </dl>
@@ -1280,7 +1334,7 @@ export default function ConfigurePage() {
                   convertedOutlineId={isConversion ? convertedOutlineId ?? undefined : undefined}
                   widthFt={isConversion ? undefined : dimensions.widthFt}
                   depthFt={isConversion ? undefined : dimensions.depthFt}
-                  existingStructures={projectType === ProjectType.SHED || projectType === ProjectType.ADU ? existingStructures : []}
+                  existingStructures={projectType === ProjectType.SHED || garageAsksAboutHouse || projectType === ProjectType.ADU ? existingStructures : []}
                   selectedDwellingOutlineId={dwellingSelection?.status === "SELECTED" ? dwellingSelection.outlineId : undefined}
                   frontEdgeRef={lotLineSelection?.frontEdgeRef}
                   rearEdgeRef={lotLineSelection?.rearEdgeRef}

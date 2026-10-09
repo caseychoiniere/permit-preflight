@@ -81,8 +81,8 @@ export interface MfAccessorySeparationSpec extends MappingTolerance {
   ruleType: typeof MultifamilyAccessoryRuleType.SEPARATION;
   /** SMC 23.45.518.H.1.d: minimum separation from a principal structure for an accessory structure in a required setback. */
   inSetbackMinFt: number;
-  /** SMC 23.45.519.A: minimum separation between structures containing floor area elsewhere. */
-  otherwiseMinFt: number;
+  /** SMC 23.45.519.A: minimum separation between structures containing floor area elsewhere. Absent in Highrise zones, where 23.45.519 does not apply: only the in-setback figure exists. */
+  otherwiseMinFt?: number;
 }
 
 export interface MfFloorAreaRatioSpec {
@@ -98,7 +98,8 @@ export interface MfFloorAreaRatioSpec {
 
 export interface MfGarageParkingAccessSpec {
   ruleType: typeof MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS;
-  garageDoorMinFromStreetLotLineFt: number;
+  /** SMC 23.45.536.E: garage doors facing the street in LR and MR zones. Absent in Highrise zones, where that provision does not apply. */
+  garageDoorMinFromStreetLotLineFt?: number;
   surfaceParkingMinFromStreetLotLineFt: number;
   citation: string;
 }
@@ -498,6 +499,36 @@ export function evaluateMfSeparation(rule: RegulatoryRule, spec: MfAccessorySepa
   }
   const d = project.distanceToDwellingFt;
   const evidence = [`distanceToDwellingFt=${d}`];
+  if (spec.otherwiseMinFt === undefined) {
+    // Highrise: 23.45.519 does not apply, so the only separation is the in-setback 3 ft (SMC 23.45.518.H.1.d), and only for a structure standing in a required setback.
+    if (d >= spec.inSetbackMinFt + tol) {
+      return {
+        classification: FindingClassification.KNOWN,
+        subject,
+        complianceOutcome: ComplianceOutcome.PASS,
+        appliedRule: ruleApplied,
+        supportingEvidence: evidence,
+        explanationBasis: `The shed is ${fmt(d)} ft from the house, which meets the ${fmt(spec.inSetbackMinFt)} ft separation of an accessory structure from a principal structure in a required setback (SMC 23.45.518.H.1.d); a Highrise zone has no larger separation between a shed and a house. ${NOT_A_SURVEY}`,
+      };
+    }
+    if (d < spec.inSetbackMinFt - tol && project.isInRequiredSetback === true) {
+      return {
+        classification: FindingClassification.KNOWN,
+        subject,
+        complianceOutcome: ComplianceOutcome.FAIL,
+        appliedRule: ruleApplied,
+        supportingEvidence: evidence,
+        explanationBasis: `The shed is ${fmt(d)} ft from the house, closer than the ${fmt(spec.inSetbackMinFt)} ft separation required of an accessory structure in a required setback from a principal structure, measured including eaves and gutters (SMC 23.45.518.H.1.d). ${NOT_A_SURVEY}`,
+      };
+    }
+    return {
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject,
+      appliedRule: ruleApplied,
+      supportingEvidence: evidence,
+      explanationBasis: `The shed is ${fmt(d)} ft from the house. In a Highrise zone the only separation is ${fmt(spec.inSetbackMinFt)} ft from a principal structure for an accessory structure standing in a required setback, including eaves and gutters (SMC 23.45.518.H.1.d). ${d < spec.inSetbackMinFt - tol ? (project.isInRequiredSetback === false ? "The shed is not in a required setback, so that requirement does not apply by itself; this is left for SDCI to confirm." : "Whether the shed stands in a required setback could not be established, so this is left for SDCI to confirm.") : `The distance is within ${fmt(tol)} ft of that figure, so it is not treated as a definite result.`} ${NOT_A_SURVEY}`,
+    };
+  }
   if (d >= spec.otherwiseMinFt + tol) {
     return {
       classification: FindingClassification.KNOWN,
@@ -552,6 +583,6 @@ export function evaluateMfGarageParkingAccess(rule: RegulatoryRule, spec: MfGara
     subject: "Garage access, driveway and garage-door standards",
     appliedRule: applied(rule),
     supportingEvidence: [`alleyAdjacent=${project.alleyAdjacent}`],
-    explanationBasis: `${spec.citation} governs parking location and access. Access to parking must come from the alley when the lot abuts an alley that is improved to City standards or that the Director determines is feasible and desirable${project.alleyAdjacent ? " (you indicated the lot abuts an alley)" : ""}; a garage door facing a street must be at least ${fmt(spec.garageDoorMinFromStreetLotLineFt)} ft from the street lot line and no closer to it than the street-facing facade of the principal structure; surface parking may not be within ${fmt(spec.surfaceParkingMinFromStreetLotLineFt)} ft of a street lot line (7 ft when access is from the alley). The alley's condition, the garage-door orientation and the driveway are not known to Permit Preflight, so these are left for SDCI to confirm.`,
+    explanationBasis: `${spec.citation} governs parking location and access. Access to parking must come from the alley when the lot abuts an alley that is improved to City standards or that the Director determines is feasible and desirable${project.alleyAdjacent ? " (you indicated the lot abuts an alley)" : ""}; ${spec.garageDoorMinFromStreetLotLineFt !== undefined ? `a garage door facing a street must be at least ${fmt(spec.garageDoorMinFromStreetLotLineFt)} ft from the street lot line and no closer to it than the street-facing facade of the principal structure; ` : ""}parking in a structure may not be closer to a street lot line than the street-facing facade of the structure it is in; surface parking may not be within ${fmt(spec.surfaceParkingMinFromStreetLotLineFt)} ft of a street lot line (7 ft when access is from the alley). The alley's condition, the garage-door orientation and the driveway are not known to Permit Preflight, so these are left for SDCI to confirm.`,
   };
 }

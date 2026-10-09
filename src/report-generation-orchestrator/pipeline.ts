@@ -27,6 +27,7 @@ import {
   findPrimaryDwelling,
   buildExistingStructureCoverageFact,
   type ExistingStructure,
+  type PrimaryDwellingSelectionInput,
   type RawBuildingFootprint,
   type ExistingStructureCoverageFact,
 } from "../property-intelligence/existing-structures.js";
@@ -421,6 +422,10 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       const declaredOnly = (snapshot.projectDetails as { aduType?: string }).aduType === "ATTACHED_TO_HOUSE";
       retrievers.push(...(declaredOnly ? [createSeattleEcaRetriever()] : [createSeattleBuildingOutlinesRetriever(), createSeattleEcaRetriever(), createSeattleFrequentTransitRetriever()]));
     }
+    // A detached garage's separation from the principal structure is measured from Seattle's building outlines, like a shed's (it needs no ECA screen).
+    if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.GARAGE) {
+      retrievers.push(createSeattleBuildingOutlinesRetriever());
+    }
     if (snapshot.workflowType === WorkflowType.EXISTING_PROPERTY && snapshot.projectType === ProjectType.SHED) {
       retrievers.push(createSeattleBuildingOutlinesRetriever());
       // Unit 6B - ECA screening (capability A) is shed-scoped for this unit's approved scope
@@ -765,10 +770,51 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     let project: ProjectDetails;
     let lotCoverageFacts: LotCoverageFacts | undefined;
     let shedLotCoverageFacts: Omit<ShedLotCoverageFacts, "allowanceFacts"> | undefined;
+
+    // The principal structure and the distance to it (shed and garage alike). Re-validates the user's stored selection against THIS fetch's own outlineIds - a
+    // selection that no longer matches anything resolves to "not established", never a guess - and measures with PostGIS from the placed footprint. Sets the
+    // outer evidence variables; the real reason a distance is unavailable is always derived from the actual preconditions.
+    const establishDwelling = async (selection: PrimaryDwellingSelectionInput | undefined) => {
+      let primaryDwellingFound = false;
+      let primaryDwellingFootprint: Polygon | undefined;
+      let primaryDwellingSelectionStatus: "SELECTED" | undefined;
+      let structures: ExistingStructure[] | undefined;
+      const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
+      if (buildingFootprintsAvailable) {
+        structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, selection);
+        existingStructuresForEvidence = structures;
+        existingStructuresWgs84Display = await Promise.all(
+          structures.map(async (st) => ({
+            outlineId: st.outlineId,
+            footprintWgs84: await transformPolygonToWgs84(db, st.footprint),
+            areaSqFt: st.areaSqFt,
+            classification: st.classification,
+          }))
+        );
+        const primaryDwelling = findPrimaryDwelling(structures);
+        primaryDwellingFound = Boolean(primaryDwelling);
+        primaryDwellingFootprint = primaryDwelling?.footprint;
+        primaryDwellingSelectionStatus = selection?.status === "SELECTED" ? "SELECTED" : undefined;
+        if (primaryDwelling && !footprintOutsideParcelReason) {
+          distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
+        }
+      }
+      const dwellingGapCase = selectDwellingSeparationEvidenceGapCase({ buildingFootprintsAvailable, footprintProjected: Boolean(footprintProjected), primaryDwellingFound, primaryDwellingSelectionStatus });
+      dwellingEvidenceGapReason = deriveDwellingSeparationEvidenceGapReason({ case: dwellingGapCase });
+      if (footprintOutsideParcelReason && distanceToDwellingFt === undefined) dwellingEvidenceGapReason = `The distance could not be evaluated: ${footprintOutsideParcelReason}`;
+      // A selected building that is no longer among this fresh fetch's footprints is explained in the report (the same text as the separation finding's own reason).
+      if (dwellingGapCase === "SELECTION_NOT_MATCHED") dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
+      return { structures, primaryDwellingFootprint, primaryDwellingFound, primaryDwellingSelectionStatus };
+    };
+
     if (snapshot.projectType === ProjectType.GARAGE) {
       const garageDetails = accessoryDetails as GarageProjectConfiguration;
+      const garageDwelling = await establishDwelling(garageDetails.primaryDwellingSelection);
       // Same bounded-band derivation the shed uses: needed for the location-sensitive accessory height limit (12 ft in a required setback, 32 ft outside).
-      const garageRearAxis = await rearAxisPositions();
+      const garageRearAxis = await rearAxisPositions(garageDwelling.primaryDwellingFootprint);
+      // A garage wholly behind the house cannot stand between the house and a side lot line (SMC 23.45.518.H.1.a); anything else leaves that undetermined.
+      const garageBesideDwelling: "NOT_BESIDE" | "UNKNOWN" =
+        garageRearAxis?.dwellingNearestFt !== undefined && garageRearAxis.structureFarthestFt < garageRearAxis.dwellingNearestFt ? "NOT_BESIDE" : "UNKNOWN";
       const garageRequiredSetback = deriveRequiredSetback({
         distanceToFrontLotLineFt,
         distanceToRearLotLineFt,
@@ -783,8 +829,11 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         requiredSetbackEvidenceGapReasons: garageRequiredSetback.requiredSetbackEvidenceGapReasons,
         ...(rawParcelAreaSqFt !== undefined ? { parcelAreaSqFt: rawParcelAreaSqFt } : {}),
         ...(garageRearAxis ? { farthestFromRearLotLineFt: garageRearAxis.structureFarthestFt } : {}),
-        besideDwelling: "UNKNOWN" as const,
+        besideDwelling: garageBesideDwelling,
         ...abutsFields,
+        distanceToDwellingFt,
+        dwellingSeparationEvidenceGapReason: dwellingEvidenceGapReason,
+        ...(garageDetails.drivewayOrAisleBetween !== undefined ? { drivewayOrAisleBetween: garageDetails.drivewayOrAisleBetween } : {}),
         widthFt: garageDetails.widthFt,
         depthFt: garageDetails.depthFt,
         heightFt: garageDetails.heightFt,
@@ -815,63 +864,20 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // already use. classifyExistingStructures re-validates the user's stored selection against
       // THIS fetch's own outlineIds - a selection that no longer matches anything returned resolves
       // every footprint to UNKNOWN, never a guess.
-      let primaryDwellingFound = false;
-      let primaryDwellingFootprint: Polygon | undefined;
-      let primaryDwellingSelectionStatus: "SELECTED" | undefined;
-      const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
-      if (buildingFootprintsAvailable) {
-        const shedDetails = accessoryDetails as ShedProjectConfiguration;
-        const structures = classifyExistingStructures(buildingFootprintsFact!.value!, buildingFootprintsFact!.provenance, shedDetails.primaryDwellingSelection);
-        existingStructuresForEvidence = structures;
-        existingStructuresWgs84Display = await Promise.all(
-          structures.map(async (s) => ({
-            outlineId: s.outlineId,
-            footprintWgs84: await transformPolygonToWgs84(db, s.footprint),
-            areaSqFt: s.areaSqFt,
-            classification: s.classification,
-          }))
-        );
-        const primaryDwelling = findPrimaryDwelling(structures);
-        primaryDwellingFound = Boolean(primaryDwelling);
-        primaryDwellingFootprint = primaryDwelling?.footprint;
-        primaryDwellingSelectionStatus = shedDetails.primaryDwellingSelection?.status === "SELECTED" ? "SELECTED" : undefined;
-        if (primaryDwelling && !footprintOutsideParcelReason) {
-          distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
-        }
-        // Unit 6B Capability C - reuses these SAME already-classified footprints (never a second
-        // fetch, domain-entities.md §1b's explicit instruction). Independent of primary-dwelling
-        // classification - every mapped footprint on the parcel counts toward coverage, not just
-        // the dwelling.
+      const shedDetails = accessoryDetails as ShedProjectConfiguration;
+      const shedDwelling = await establishDwelling(shedDetails.primaryDwellingSelection);
+      const { primaryDwellingFootprint } = shedDwelling;
+      if (shedDwelling.structures) {
+        // Unit 6B Capability C - reuses these SAME already-classified footprints (never a second fetch, domain-entities.md §1b's explicit instruction).
+        // Independent of primary-dwelling classification - every mapped footprint on the parcel counts toward coverage, not just the dwelling.
         const coverage = await withStageTiming("SPATIAL_ANALYSIS", job.id, () =>
           computeExistingStructureCoverageSqFt(
             db,
             geometryFact!.value!,
-            structures.map((s) => s.footprint)
+            shedDwelling.structures!.map((st) => st.footprint)
           )
         );
         existingStructureCoverageFact = buildExistingStructureCoverageFact(coverage);
-      }
-      // Maintenance correction (2026-09-15, RC-7) - the case is now DERIVED from the actual, real
-      // pipeline preconditions gathered above (never hand-picked), via a pure function that is
-      // directly unit-testable against every realistic combination of those preconditions - not
-      // just "given a case, what string" (the prior, incomplete extraction), but "given real
-      // state, which case genuinely applies."
-      const dwellingGapCase = selectDwellingSeparationEvidenceGapCase({
-        buildingFootprintsAvailable,
-        footprintProjected: Boolean(footprintProjected),
-        primaryDwellingFound,
-        primaryDwellingSelectionStatus,
-      });
-      dwellingEvidenceGapReason = deriveDwellingSeparationEvidenceGapReason({ case: dwellingGapCase });
-      if (footprintOutsideParcelReason && distanceToDwellingFt === undefined) dwellingEvidenceGapReason = `The distance could not be evaluated: ${footprintOutsideParcelReason}`;
-      if (dwellingGapCase === "SELECTION_NOT_MATCHED") {
-        // The user selected a specific building during configuration, but it's not among the
-        // footprints this fresh, generation-time re-fetch returned (removed/redrawn upstream, or
-        // a genuinely stale selection) - never guessed at or silently re-mapped to a different
-        // footprint (classifyExistingStructures' own hard invariant). Reuses the exact same text
-        // as the DWELLING_SEPARATION finding's own reason - one source of truth, never a second,
-        // independently-worded message for the same fact.
-        dwellingSelectionNotMatchedExplanation = dwellingEvidenceGapReason;
       }
 
       // Unit 6B Capability C - only assembled once real coverage evidence exists (never a

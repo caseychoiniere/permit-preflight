@@ -300,7 +300,53 @@ function accessoryRows(projectType: "shed" | "garage"): DraftedRuleInput[] {
       ],
       isTestOnlyFixture: false,
     });
+    rows.push({
+      id: "shed-mf-separation-hr-2026",
+      subject: "Shed separation from the house in Highrise zones - 3 ft from a principal structure for a shed in a required setback (SMC 23.45.518.H.1.d); no 5 ft rule",
+      applicableProjectType: "shed",
+      applicableZone: "HR",
+      ruleSpecification: { ruleType: "MF_ACC_SEPARATION", inSetbackMinFt: 3, mappingToleranceFt: 2 },
+      citation: { smcSections: ["SMC 23.45.518.H.1.d", "SMC 23.45.519.A"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
+      caveats: [
+        MAPPED,
+        ZONING_CAVEAT,
+        {
+          category: "Highrise has no 5 ft between-structures rule",
+          description: "SMC 23.45.519.A applies in LR and MR zones only. In a Highrise zone the only separation is the 3 ft from a principal structure for an accessory structure standing in a required setback (including eaves and gutters). A short distance is a definite FAIL only when the shed is known to stand in a required setback; otherwise REQUIRES_VERIFICATION.",
+          affectedConditionOrInterpretation: "SMC 23.45.518.H.1.d; SMC 23.45.519.A scope",
+          sourceReferences: ["SMC 23.45.518.H.1.d", "SMC 23.45.519.A"],
+          resolutionStatus: "Resolved by design.",
+        },
+      ],
+      testCases: [
+        tc("POSITIVE", "12 ft from the house", { distanceToDwellingFt: 12 }, "Shed separation from the house", "KNOWN/PASS", "HR (M)"),
+        tc("NEGATIVE", "0.5 ft from the house in a required setback", { distanceToDwellingFt: 0.5, isInRequiredSetback: true }, "Shed separation from the house", "KNOWN/FAIL", "HR (M)"),
+        tc("EXCEPTION", "0.5 ft outside every required setback", { distanceToDwellingFt: 0.5, isInRequiredSetback: false }, "Shed separation from the house", "REQUIRES_VERIFICATION", "HR (M)"),
+        tc("BOUNDARY", "4 ft: inside the tolerance of 3 ft", { distanceToDwellingFt: 4 }, "Shed separation from the house", "REQUIRES_VERIFICATION", "HR (M)"),
+      ],
+      isTestOnlyFixture: false,
+    });
   } else {
+    rows.push({
+      id: "garage-mf-parking-access-hr-2026",
+      subject: "Detached garage access, driveway and parking location standards in Highrise zones (SMC 23.45.536)",
+      applicableProjectType: "garage",
+      applicableZone: "HR",
+      ruleSpecification: { ruleType: "MF_GARAGE_PARKING_ACCESS", surfaceParkingMinFromStreetLotLineFt: 20, citation: "SMC 23.45.536" },
+      citation: { smcSections: ["SMC 23.45.536.B", "SMC 23.45.536.C", "SMC 23.45.536.D"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
+      caveats: [
+        ZONING_CAVEAT,
+        {
+          category: "not determinable from the available data",
+          description: "SMC 23.45.536 applies in Highrise zones too: alley access is required when the lot abuts an alley improved to the City standard or one the Director finds feasible, surface parking may not be within 20 ft of a street lot line, and parking in a structure may not be closer to the street than the structure's street-facing facade. The 18 ft garage-door setback of 23.45.536.E applies in LR and MR zones only. The alley's condition and the driveway are not known, so the finding is always REQUIRES_VERIFICATION and states the standards.",
+          affectedConditionOrInterpretation: "SMC 23.45.536",
+          sourceReferences: ["SMC 23.45.536"],
+          resolutionStatus: "Resolved by design - the rule exists so the claim is governed and never silently skipped.",
+        },
+      ],
+      testCases: [tc("EXCEPTION", "Alley and driveway facts are not known", { alleyAdjacent: true }, "Garage access", "REQUIRES_VERIFICATION", "HR (M)")],
+      isTestOnlyFixture: false,
+    });
     rows.push({
       id: "garage-mf-parking-access-2026",
       subject: "Detached garage access, driveway and garage-door standards in Lowrise and Midrise zones (SMC 23.45.536)",

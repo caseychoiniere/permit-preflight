@@ -3,7 +3,7 @@
  * mechanisms (bootstrapUnit6bGovernance, then sourceVerifyRule -> markRuleTested -> approveRule) and STOPS at APPROVED: it never calls activateRule and
  * never touches any other row. Safe to re-run: bootstrap never overwrites; a row already APPROVED (or ACTIVE) is skipped; any other state aborts.
  *
- * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise | commercial)
+ * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise | commercial | lowrise-adu | garage-separation)
  */
 
 import { inArray } from "drizzle-orm";
@@ -16,6 +16,7 @@ import type { DraftedRuleInput } from "../src/regulatory-rule-governance/lifecyc
 import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../tests/fixtures/multifamily-candidates.js";
 import { ADU_MF_FIXED_ROW_IDS, aduMultifamilyCandidates } from "../tests/fixtures/multifamily-adu-candidates.js";
 import { COMMERCIAL_FIXED_ROW_IDS, allCommercialCandidates } from "../tests/fixtures/commercial-candidates.js";
+import { GARAGE_SEPARATION_FIXED_ROW_IDS, garageSeparationCandidates } from "../tests/fixtures/garage-separation-candidates.js";
 
 process.loadEnvFile(".env.local");
 
@@ -45,6 +46,14 @@ const SETS: Record<string, RuleSet> = {
     basis: "Ordinance 127375/127376 (2025), SMC Chapter 23.47A, Municode Library CURRENT, read live 2026-10-09",
     tests: "tests/regulatory-rule-governance/commercial-candidates.test.ts (every declared case executed against the real evaluators and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
     placementRows: () => false,
+  },
+  "garage-separation": {
+    name: "Detached garage separation from the principal structure (NR, LR/MR, HR)",
+    candidates: garageSeparationCandidates,
+    rowIds: GARAGE_SEPARATION_FIXED_ROW_IDS,
+    basis: "Ordinance 127376 (2025), SMC Chapters 23.44 (23.44.090.I.2.c, 23.44.100) and 23.45 (23.45.518.H.1.d, 23.45.519), Municode Library CURRENT (version Sep 25 2026), read live 2026-10-09",
+    tests: "tests/regulatory-rule-governance/garage-separation-candidates.test.ts (every declared case executed against the real evaluator and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
+    placementRows: () => true,
   },
   lowrise: {
     name: "Multifamily (LR1-LR3, MR, HR) shed, detached garage, fence and deck rules",

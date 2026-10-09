@@ -125,7 +125,8 @@ export function zoningFindings(resolution: ZoningResolution, opts: ZoningFinding
 
   // Commercial 2: the standards for these structures are the chapter's (SMC 23.47A), but residential use is only a conditional use there (23.47A.004 Table A), so a house
   // and its accessory structures may be a conditional use, a legal nonconforming use (whose expansion is limited, SMC 23.42.100-.112) or neither: not checked.
-  if (resolution.status === "RESOLVED" && (resolution.governing ?? resolution.locationZones[0])?.zoneCode === "C2") {
+  // Whenever ANY zone involved is C2 - a single-zone lot, a split lot, an ambiguous or unresolved one - the customer is told.
+  if ([...resolution.lotZones, ...resolution.locationZones].some((z) => z.zoneCode === "C2")) {
     out.push({
       classification: FindingClassification.REQUIRES_VERIFICATION,
       subject: C2_USE_SUBJECT,

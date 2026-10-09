@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { draft, triage } from "../../src/regulatory-rule-governance/lifecycle.js";
-import { singleZoneContext } from "../../src/zoning/context.js";
+import { singleZoneContext, splitZoneContext, unavailableZoneContext } from "../../src/zoning/context.js";
+import { zoningFindings } from "../../src/zoning/findings.js";
 import { isRegisteredRuleType } from "../../src/zoning/claim-kinds.js";
 import { resolveApplicableRules } from "../../src/zoning/resolve.js";
 import { validateZoneScope } from "../../src/zoning/scope.js";
@@ -81,5 +82,20 @@ describe("a C2 report states what is different about C2", () => {
   it("C2 reports cite Chapter 23.47A and no residential chapter", () => {
     const shed = evaluateCandidateCase("shed", asActive(shedCommercialC2Candidates, COMMERCIAL_C2_FIXED_ROW_IDS), { abutsResidentialZone: "YES", adjacentResidentialZones: ["LR1 (M)"], heightFt: 35 }, "C2-40 (M)");
     for (const f of shed.findings) expect(f.explanationBasis, f.subject).not.toMatch(/23\.44\.|23\.45\./);
+  });
+  it("the residential-use finding appears whenever ANY zone involved is C2: a single-zone C2 lot, a split NR+C2 lot (ambiguous claims), a split C1+C2 lot, and never when no zone is C2", () => {
+    const opts = { projectNoun: "shed", claimLabel: (_t: string, subject: string) => subject };
+    const cases: [string, ReturnType<typeof singleZoneContext>, boolean][] = [
+      ["C2 only", singleZoneContext("C2-40 (M)"), true],
+      ["NR + C2", splitZoneContext([["NR", 0.5], ["C2-40 (M)", 0.5]]), true],
+      ["C1 + C2", splitZoneContext([["C1-55 (M)", 0.5], ["C2-55 (M)", 0.5]]), true],
+      ["NC2 + C1", splitZoneContext([["NC2-40", 0.5], ["C1-55 (M)", 0.5]]), false],
+      ["NR", singleZoneContext("NR"), false],
+    ];
+    for (const [label, ctx, expected] of cases) {
+      const r = resolveApplicableRules({ zoning: ctx, candidateRules: asActive(shedCommercialC2Candidates, COMMERCIAL_C2_FIXED_ROW_IDS) });
+      expect(zoningFindings(r, opts).some((f) => f.subject === C2_USE_SUBJECT), label).toBe(expected);
+    }
+    void unavailableZoneContext;
   });
 });

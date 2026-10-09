@@ -108,16 +108,33 @@ describe("not applicable is a code conclusion, not a missing feature", () => {
 });
 
 describe("Industrial and Commercial 2 - what is inapplicable, what is conditional, what is simply not built", () => {
-  it("an ADU in MML, II and IC (residential uses prohibited, SMC 23.50A.040 Table A) is NOT_APPLICABLE with its citation, and so is a shed there only 'not yet supported'", () => {
+  it("an ADU in MML, II and IC is NOT_YET_SUPPORTED with a specific message (residential uses are largely prohibited there, SMC 23.50A.040 Table A) - it is not declared legally inapplicable", () => {
     for (const z of ["MML U/85", "II U/125", "II 85-240", "IC-65 (M)"]) {
       const adu = evaluatePurchaseEligibility({ projectType: "adu", zoning: singleZoneContext(z), activeRules: [] });
-      expect(adu, z).toMatchObject({ eligible: false, code: "NOT_APPLICABLE_TO_ZONE" });
-      if (!adu.eligible) expect(adu.message).toContain("SMC 23.50A.040 Table A");
+      expect(adu, z).toMatchObject({ eligible: false, code: "ZONE_NOT_YET_SUPPORTED" });
+      if (!adu.eligible) {
+        expect(adu.message, z).toContain("SMC 23.50A.040 Table A");
+        expect(adu.message, z).toContain("generally cannot be established");
+        expect(adu.message, z).toContain("Nothing was charged");
+      }
       expect(evaluatePurchaseEligibility({ projectType: "shed", zoning: singleZoneContext(z), activeRules: [] }), z).toMatchObject({ code: "ZONE_NOT_YET_SUPPORTED" });
     }
   });
-  it("Urban Industrial (residential is a CONDITIONAL use there) is not declared inapplicable: an ADU is merely not yet supported", () => {
-    expect(evaluatePurchaseEligibility({ projectType: "adu", zoning: singleZoneContext("UI U/45"), activeRules: [] })).toMatchObject({ code: "ZONE_NOT_YET_SUPPORTED" });
+  it("the Industrial Buffer ADU declaration (SMC 23.50.012 Table A) stays NOT_APPLICABLE", () => {
+    expect(evaluatePurchaseEligibility({ projectType: "adu", zoning: singleZoneContext("IB U/45"), activeRules: [] })).toMatchObject({ code: "NOT_APPLICABLE_TO_ZONE" });
+  });
+  it("NOT_APPLICABLE needs EVERY zone involved to be inapplicable: an IB lot split with another zone is evaluated per zone (never declared inapplicable on one zone's say-so)", () => {
+    const split = evaluatePurchaseEligibility({ projectType: "adu", zoning: splitZoneContext([["IB U/45", 0.5], ["UI U/45", 0.5]]), activeRules: [] });
+    expect(split).toMatchObject({ eligible: false, code: "ZONE_NOT_YET_SUPPORTED" });
+    const both = evaluatePurchaseEligibility({ projectType: "adu", zoning: splitZoneContext([["IB U/45", 0.5], ["IB U/30", 0.5]]), activeRules: [] });
+    expect(both).toMatchObject({ code: "NOT_APPLICABLE_TO_ZONE" });
+    const lenient = evaluatePurchaseEligibility({ projectType: "adu", zoning: splitZoneContext([["IB U/45", 0.5], ["NR", 0.5]]), activeRules: [], requireAllZones: false });
+    expect(lenient.eligible === false && lenient.code === "NOT_APPLICABLE_TO_ZONE").toBe(false);
+  });
+  it("Urban Industrial (residential is a CONDITIONAL use) is explained as such", () => {
+    const e = evaluatePurchaseEligibility({ projectType: "adu", zoning: singleZoneContext("UI U/45"), activeRules: [] });
+    expect(e).toMatchObject({ eligible: false, code: "ZONE_NOT_YET_SUPPORTED" });
+    if (!e.eligible) expect(e.message).toContain("conditional uses");
   });
   it("an ADU in C2 is not yet supported and says why (residential is a conditional use there); it is not declared inapplicable", () => {
     const e = evaluatePurchaseEligibility({ projectType: "adu", zoning: singleZoneContext("C2-55 (M)"), activeRules: [] });
@@ -129,4 +146,3 @@ describe("Industrial and Commercial 2 - what is inapplicable, what is conditiona
     }
   });
 });
-

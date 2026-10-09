@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-09T23:35:08.057Z",
+ "generatedAt": "2026-10-09T23:43:48.064Z",
  "activeRuleCount": 164,
  "approvedRuleCount": 0,
  "live": [
@@ -3193,7 +3193,7 @@
    "zoneCode": "IC",
    "family": "INDUSTRIAL",
    "example": "IC-65 (M)",
-   "status": "NOT_APPLICABLE",
+   "status": "NOT_YET_SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -3245,11 +3245,7 @@
      "core": false,
      "covered": false
     }
-   ],
-   "notApplicable": {
-    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
-    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
-   }
+   ]
   },
   {
    "projectType": "shed",
@@ -3377,7 +3373,7 @@
    "zoneCode": "II",
    "family": "INDUSTRIAL",
    "example": "II U/85",
-   "status": "NOT_APPLICABLE",
+   "status": "NOT_YET_SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -3429,11 +3425,7 @@
      "core": false,
      "covered": false
     }
-   ],
-   "notApplicable": {
-    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
-    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
-   }
+   ]
   },
   {
    "projectType": "shed",
@@ -3561,7 +3553,7 @@
    "zoneCode": "MML",
    "family": "INDUSTRIAL",
    "example": "MML U/45",
-   "status": "NOT_APPLICABLE",
+   "status": "NOT_YET_SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -3613,11 +3605,7 @@
      "core": false,
      "covered": false
     }
-   ],
-   "notApplicable": {
-    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
-    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
-   }
+   ]
   },
   {
    "projectType": "shed",
@@ -10231,7 +10219,7 @@
    "zoneCode": "IC",
    "family": "INDUSTRIAL",
    "example": "IC-65 (M)",
-   "status": "NOT_APPLICABLE",
+   "status": "NOT_YET_SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -10283,11 +10271,7 @@
      "core": false,
      "covered": false
     }
-   ],
-   "notApplicable": {
-    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
-    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
-   }
+   ]
   },
   {
    "projectType": "shed",
@@ -10415,7 +10399,7 @@
    "zoneCode": "II",
    "family": "INDUSTRIAL",
    "example": "II U/85",
-   "status": "NOT_APPLICABLE",
+   "status": "NOT_YET_SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -10467,11 +10451,7 @@
      "core": false,
      "covered": false
     }
-   ],
-   "notApplicable": {
-    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
-    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
-   }
+   ]
   },
   {
    "projectType": "shed",
@@ -10599,7 +10579,7 @@
    "zoneCode": "MML",
    "family": "INDUSTRIAL",
    "example": "MML U/45",
-   "status": "NOT_APPLICABLE",
+   "status": "NOT_YET_SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -10651,11 +10631,7 @@
      "core": false,
      "covered": false
     }
-   ],
-   "notApplicable": {
-    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
-    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
-   }
+   ]
   },
   {
    "projectType": "shed",

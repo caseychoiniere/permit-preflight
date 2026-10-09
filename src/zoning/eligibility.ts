@@ -63,19 +63,19 @@ export function evaluatePurchaseEligibility(input: { projectType: CoreProjectTyp
     };
   }
 
-  // The governing code makes this project inapplicable in the zone (never "not built yet"): say so, and charge nothing.
-  for (const zone of zones) {
-    const na = NOT_APPLICABLE.find((n) => n.projectType === projectType && n.zoneCode === zone.zoneCode);
-    if (na) {
-      return {
-        eligible: false,
-        code: "NOT_APPLICABLE_TO_ZONE",
-        message: `Seattle zoning data maps this property as ${zone.raw}. ${na.reason} (${na.citation}), so Permit Preflight does not screen ${plural} there. Nothing was charged.`,
-        zoneLabels: zones.map((z) => z.raw),
-        missingClaims: [],
-        retryable: false,
-      };
-    }
+  // The governing code makes this project inapplicable (never "not built yet"): say so, and charge nothing. Only when EVERY zone involved is inapplicable: if another zone
+  // involved could permit the project, the claims are evaluated per zone below and the inapplicable zone simply has none.
+  const declarations = zones.map((zone) => ({ zone, na: NOT_APPLICABLE.find((n) => n.projectType === projectType && n.zoneCode === zone.zoneCode) }));
+  if (declarations.length > 0 && declarations.every((d) => d.na !== undefined)) {
+    const { na } = declarations[0]!;
+    return {
+      eligible: false,
+      code: "NOT_APPLICABLE_TO_ZONE",
+      message: `Seattle zoning data maps this property as ${zones.map((z) => z.raw).join(" and ")}. ${na!.reason} (${na!.citation}), so Permit Preflight does not screen ${plural} there. Nothing was charged.`,
+      zoneLabels: zones.map((z) => z.raw),
+      missingClaims: [],
+      retryable: false,
+    };
   }
 
   const core = CORE_CLAIMS[projectType];
@@ -90,6 +90,26 @@ export function evaluatePurchaseEligibility(input: { projectType: CoreProjectTyp
   if (blocking.length > 0) {
     const first = blocking[0]!;
     const named = blocking.map((m) => `${m.zone.raw}, a ${zoneName(m.zone)} zone`).join(" and ");
+    if (input.projectType === "adu" && blocking.every((m) => ["MML", "II", "IC"].includes(m.zone.zoneCode))) {
+      return {
+        eligible: false,
+        code: "ZONE_NOT_YET_SUPPORTED",
+        message: `Seattle zoning data maps this property as ${named}. Residential uses are prohibited in this zone except for artist's studio/dwellings and caretaker's quarters (SMC 23.50A.040 Table A), so an accessory dwelling unit generally cannot be established here, and Permit Preflight does not screen one. Nothing was charged.`,
+        zoneLabels: zones.map((z) => z.raw),
+        missingClaims: [...new Set(blocking.flatMap((m) => m.missing))],
+        retryable: false,
+      };
+    }
+    if (input.projectType === "adu" && blocking.every((m) => m.zone.zoneCode === "UI")) {
+      return {
+        eligible: false,
+        code: "ZONE_NOT_YET_SUPPORTED",
+        message: `Seattle zoning data maps this property as ${named}. In an Urban Industrial zone residential uses are conditional uses (SMC 23.50A.040 Table A), so whether an accessory dwelling unit can be established depends on that approval, which Permit Preflight does not screen. Nothing was charged.`,
+        zoneLabels: zones.map((z) => z.raw),
+        missingClaims: [...new Set(blocking.flatMap((m) => m.missing))],
+        retryable: false,
+      };
+    }
     if (input.projectType === "adu" && blocking.every((m) => m.zone.zoneCode === "C2")) {
       return {
         eligible: false,

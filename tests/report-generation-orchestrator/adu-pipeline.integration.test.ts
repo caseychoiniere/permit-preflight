@@ -189,18 +189,20 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
   );
 
   it(
-    "a parcel verified NOT to be NR (LR1) gets no ADU zoning conclusion: CANNOT_TELL, zone named, nothing passes or fails",
+    "an LR1 (M) parcel gets the Lowrise ADU standards (activated 2026-10-09): the zone is named, setback findings cite SMC 23.45, and no Neighborhood Residential rule is applied",
     async () => {
       const lr1Roles = { ...ROLES, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] };
       const lr1Placement = { anchor: { lat: 47.52175460888725, lng: -122.354484222839 }, orientationDeg: 0 };
       const { job, artifact } = await generate(adu({ proposedPlacement: lr1Placement, lotLineRoleAssignment: lr1Roles, primaryDwellingSelection: undefined }), "3298700485");
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as F[];
-      expect(findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
-      expect(findings.find((f) => f.subject === "Zoning applied to this screening")!.explanationBasis).toContain("LR1");
-      const feasibility = feasibilityOf(artifact);
-      expect(feasibility.headline).toBe("CANNOT_TELL");
-      expect(feasibility.summary).toContain("LR1");
+      const zone = findings.find((f) => f.subject === "Zoning applied to this screening")!;
+      expect(zone.explanationBasis).toContain("LR1");
+      expect(zone.explanationBasis).toContain("Lowrise");
+      expect(findings.some((f) => f.complianceOutcome !== undefined)).toBe(true);
+      expect(findings.some((f) => /23\.44/.test(f.explanationBasis))).toBe(false);
+      expect(findings.some((f) => /23\.45/.test(f.explanationBasis))).toBe(true);
+      expect(feasibilityOf(artifact).headline).not.toBe("CANNOT_TELL");
     },
     120_000
   );

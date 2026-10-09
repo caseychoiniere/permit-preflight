@@ -1,6 +1,6 @@
 # Zoning coverage matrix (project type x zone)
 
-Generated 2026-10-09T18:12:56.306Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
+Generated 2026-10-09T21:41:25.121Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
 
 Statuses: SUPPORTED = every core claim is covered (the minimum useful report; individual findings can still be REQUIRES_VERIFICATION); PARTIAL = some core claims; N/A = the governing code makes the project inapplicable in that zone (never used for 'not built yet'); not yet = a product limitation.
 
@@ -8,7 +8,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | Family | shed | garage | fence | deck | adu |
 | --- | --- | --- | --- | --- | --- | --- |
-| C1 | Commercial | not yet | not yet | not yet | not yet | not yet |
+| C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | C2 | Commercial | not yet | not yet | not yet | not yet | not yet |
 | DH1 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DH2 | Downtown | not yet | not yet | not yet | not yet | not yet |
@@ -23,20 +23,20 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PMM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
-| HR | Highrise | not yet | not yet | not yet | not yet | not yet |
+| HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | IB | Industrial | not yet | not yet | not yet | not yet | N/A |
 | IC | Industrial | not yet | not yet | not yet | not yet | not yet |
 | II | Industrial | not yet | not yet | not yet | not yet | not yet |
 | MML | Industrial | not yet | not yet | not yet | not yet | not yet |
 | UI | Industrial | not yet | not yet | not yet | not yet | not yet |
-| LR1 | Lowrise | not yet | not yet | not yet | not yet | not yet |
-| LR2 | Lowrise | not yet | not yet | not yet | not yet | not yet |
-| LR3 | Lowrise | not yet | not yet | not yet | not yet | not yet |
+| LR1 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| LR2 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| LR3 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | MPC-YT | Master Planned Community | not yet | not yet | not yet | not yet | not yet |
-| MR | Midrise | not yet | not yet | not yet | not yet | not yet |
-| NC1 | Neighborhood Commercial | not yet | not yet | not yet | not yet | not yet |
-| NC2 | Neighborhood Commercial | not yet | not yet | not yet | not yet | not yet |
-| NC3 | Neighborhood Commercial | not yet | not yet | not yet | not yet | not yet |
+| MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | NR | Neighborhood Residential | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | SM-D | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
 | SM-NG | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |

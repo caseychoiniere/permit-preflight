@@ -1,24 +1,24 @@
 {
- "generatedAt": "2026-10-09T18:12:56.306Z",
- "activeRuleCount": 51,
- "approvedRuleCount": 66,
+ "generatedAt": "2026-10-09T21:41:25.121Z",
+ "activeRuleCount": 117,
+ "approvedRuleCount": 0,
  "live": [
   {
    "projectType": "shed",
    "zoneCode": "C1",
    "family": "C",
    "example": "C1-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -28,7 +28,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -42,27 +42,27 @@
    "zoneCode": "C1",
    "family": "C",
    "example": "C1-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -71,27 +71,27 @@
    "zoneCode": "C1",
    "family": "C",
    "example": "C1-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -105,17 +105,17 @@
    "zoneCode": "C1",
    "family": "C",
    "example": "C1-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -2708,17 +2708,17 @@
    "zoneCode": "HR",
    "family": "HR",
    "example": "HR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -2728,7 +2728,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -2742,22 +2742,22 @@
    "zoneCode": "HR",
    "family": "HR",
    "example": "HR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
@@ -2771,27 +2771,27 @@
    "zoneCode": "HR",
    "family": "HR",
    "example": "HR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -2805,17 +2805,17 @@
    "zoneCode": "HR",
    "family": "HR",
    "example": "HR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -3792,27 +3792,27 @@
    "zoneCode": "LR1",
    "family": "LR",
    "example": "LR1 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -3826,27 +3826,27 @@
    "zoneCode": "LR1",
    "family": "LR",
    "example": "LR1 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -3855,27 +3855,27 @@
    "zoneCode": "LR1",
    "family": "LR",
    "example": "LR1 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -3889,17 +3889,17 @@
    "zoneCode": "LR1",
    "family": "LR",
    "example": "LR1 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -3913,57 +3913,57 @@
    "zoneCode": "LR1",
    "family": "LR",
    "example": "LR1 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -3972,27 +3972,27 @@
    "zoneCode": "LR2",
    "family": "LR",
    "example": "LR2 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4006,27 +4006,27 @@
    "zoneCode": "LR2",
    "family": "LR",
    "example": "LR2 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4035,27 +4035,27 @@
    "zoneCode": "LR2",
    "family": "LR",
    "example": "LR2 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4069,17 +4069,17 @@
    "zoneCode": "LR2",
    "family": "LR",
    "example": "LR2 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4093,57 +4093,57 @@
    "zoneCode": "LR2",
    "family": "LR",
    "example": "LR2 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4152,27 +4152,27 @@
    "zoneCode": "LR3",
    "family": "LR",
    "example": "LR3 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4186,27 +4186,27 @@
    "zoneCode": "LR3",
    "family": "LR",
    "example": "LR3 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4215,27 +4215,27 @@
    "zoneCode": "LR3",
    "family": "LR",
    "example": "LR3 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4249,17 +4249,17 @@
    "zoneCode": "LR3",
    "family": "LR",
    "example": "LR3 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4273,57 +4273,57 @@
    "zoneCode": "LR3",
    "family": "LR",
    "example": "LR3 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4512,27 +4512,27 @@
    "zoneCode": "MR",
    "family": "MR",
    "example": "MR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4546,27 +4546,27 @@
    "zoneCode": "MR",
    "family": "MR",
    "example": "MR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4575,27 +4575,27 @@
    "zoneCode": "MR",
    "family": "MR",
    "example": "MR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4609,17 +4609,17 @@
    "zoneCode": "MR",
    "family": "MR",
    "example": "MR (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4692,17 +4692,17 @@
    "zoneCode": "NC1",
    "family": "NC",
    "example": "NC1-30 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -4712,7 +4712,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4726,27 +4726,27 @@
    "zoneCode": "NC1",
    "family": "NC",
    "example": "NC1-30 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4755,27 +4755,27 @@
    "zoneCode": "NC1",
    "family": "NC",
    "example": "NC1-30 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4789,17 +4789,17 @@
    "zoneCode": "NC1",
    "family": "NC",
    "example": "NC1-30 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4872,17 +4872,17 @@
    "zoneCode": "NC2",
    "family": "NC",
    "example": "NC2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -4892,7 +4892,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4906,27 +4906,27 @@
    "zoneCode": "NC2",
    "family": "NC",
    "example": "NC2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4935,27 +4935,27 @@
    "zoneCode": "NC2",
    "family": "NC",
    "example": "NC2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -4969,17 +4969,17 @@
    "zoneCode": "NC2",
    "family": "NC",
    "example": "NC2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -5052,17 +5052,17 @@
    "zoneCode": "NC3",
    "family": "NC",
    "example": "NC3-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -5072,7 +5072,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -5086,27 +5086,27 @@
    "zoneCode": "NC3",
    "family": "NC",
    "example": "NC3-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -5115,27 +5115,27 @@
    "zoneCode": "NC3",
    "family": "NC",
    "example": "NC3-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -5149,17 +5149,17 @@
    "zoneCode": "NC3",
    "family": "NC",
    "example": "NC3-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",

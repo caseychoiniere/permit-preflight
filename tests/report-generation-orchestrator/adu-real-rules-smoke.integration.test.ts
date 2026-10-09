@@ -36,7 +36,7 @@ describe.skipIf(!hasDb)("ADU real-rules smoke", () => {
   beforeAll(async () => {
     db = getDb();
     health = await snapshotDataSourceHealth(db, HEALTH);
-    const active = await db.select({ id: regulatoryRules.id }).from(regulatoryRules).where(and(eq(regulatoryRules.applicableProjectType, "adu"), eq(regulatoryRules.lifecycleState, "ACTIVE")));
+    const active = await db.select({ id: regulatoryRules.id }).from(regulatoryRules).where(and(eq(regulatoryRules.applicableProjectType, "adu"), eq(regulatoryRules.applicableZone, "NR"), eq(regulatoryRules.lifecycleState, "ACTIVE")));
     expect(active.map((r) => r.id).sort()).toEqual(Object.values(ADU_FIXED_ROW_IDS).sort());
   });
   afterAll(async () => {

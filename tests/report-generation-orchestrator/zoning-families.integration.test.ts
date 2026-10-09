@@ -3,13 +3,14 @@
  *   NR 1498301270 | LR1 (M) 1931300060, 3298700485 | LR2 (M) 7960100315 | LR3 (M) 9412900005 | MR (M1) 2784600070 | HR (M) 8590900490
  *   NC2-40 (M) 7625701280 (no residential neighbor) | NC2P-55 (M) 1794501135 (residential neighbor) | C1-55 (M) 1972206390
  *   0148000965 (split NR + LR2) | 2982800005 (Major Institution Overlay)
- * The multifamily and commercial rule sets are APPROVED, not ACTIVE, so they are evaluated through the pipeline's test-only seam (nothing is written to the
- * rules table). The real ACTIVE NR rows are used as they are.
+ * The multifamily, commercial and Lowrise ADU rule sets were activated 2026-10-09 and are used as the real ACTIVE rows. Any candidate row that is not ACTIVE in
+ * the connected database (a fresh environment) is evaluated through the pipeline's test-only seam instead (nothing is written to the rules table); a row that
+ * IS active is never injected too, because two active rows for one claim are an authoring conflict.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "../../src/db/client.js";
-import { evidenceReportArtifacts, reportGenerationJobs, screeningRequests } from "../../src/db/schema.js";
+import { evidenceReportArtifacts, regulatoryRules, reportGenerationJobs, screeningRequests } from "../../src/db/schema.js";
 import { claimQueuedJob, createReportGenerationJob } from "../../src/report-generation-job/repository.js";
 import { GenerationAuthorizationType } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
@@ -26,6 +27,7 @@ const hasDb = Boolean(process.env["DATABASE_URL"]);
 const act = (cands: typeof allMultifamilyCandidates, ids: Record<string, string>): RegulatoryRule[] => cands.map((c) => ({ ...draft(c), id: ids[c.id]!, lifecycleState: "ACTIVE", acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] }) as RegulatoryRule);
 const EXTRA: RegulatoryRule[] = [...act(allMultifamilyCandidates, MULTIFAMILY_FIXED_ROW_IDS), ...act(allCommercialCandidates, COMMERCIAL_FIXED_ROW_IDS), ...act(aduMultifamilyCandidates, ADU_MF_FIXED_ROW_IDS)];
 const EXTRA_IDS = new Set(EXTRA.map((r) => r.id));
+let extraNotActive: RegulatoryRule[] = EXTRA;
 const AFFECTED = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca", "seattle-zoning", "seattle-landmarks", "seattle-frequent-transit"];
 
 const PARCELS: { pin: string; label: string; family: string; code?: string }[] = [
@@ -47,6 +49,9 @@ describe.skipIf(!hasDb)("citywide zoning - real parcels across zone families", (
   beforeAll(async () => {
     db = getDb();
     health = await snapshotDataSourceHealth(db, AFFECTED);
+    const active = await db.select({ id: regulatoryRules.id }).from(regulatoryRules).where(and(inArray(regulatoryRules.id, [...EXTRA_IDS]), eq(regulatoryRules.lifecycleState, "ACTIVE")));
+    const activeIds = new Set(active.map((r) => r.id));
+    extraNotActive = EXTRA.filter((r) => !activeIds.has(r.id));
   });
   afterAll(async () => {
     try {
@@ -67,7 +72,7 @@ describe.skipIf(!hasDb)("citywide zoning - real parcels across zone families", (
     const job = await createReportGenerationJob(db, row!.id, { type: GenerationAuthorizationType.INTERNAL_PROTOTYPE, screeningRequestId: row!.id, authorizedBy: "zoning-families.integration.test.ts", authorizedAt: new Date().toISOString() });
     const claimed = await claimQueuedJob(db, job.id);
     if (!claimed) throw new Error("claim failed");
-    await runReportGenerationPipeline(db, claimed, { testOnlyExtraActiveRules: EXTRA });
+    await runReportGenerationPipeline(db, claimed, { testOnlyExtraActiveRules: extraNotActive });
     const [finished] = await db.select().from(reportGenerationJobs).where(eq(reportGenerationJobs.id, job.id));
     const [artifact] = finished?.evidenceReportArtifactId ? await db.select().from(evidenceReportArtifacts).where(eq(evidenceReportArtifacts.id, finished.evidenceReportArtifactId)) : [];
     return { job: finished, artifact };

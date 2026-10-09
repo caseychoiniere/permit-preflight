@@ -73,11 +73,12 @@ describe.skipIf(!hasDb)("Deck report generation pipeline - live end-to-end integ
   }
 
 
+  /** The Neighborhood Residential set only: the verified-NR parcel used here applies exactly these rows (Lowrise/Midrise/Highrise/commercial rows were activated 2026-10-09 and are scoped to their own zones). */
   async function activeRealRuleIds(): Promise<string[]> {
     const rows = await db
       .select({ id: regulatoryRules.id })
       .from(regulatoryRules)
-      .where(and(eq(regulatoryRules.applicableProjectType, "deck"), eq(regulatoryRules.lifecycleState, "ACTIVE"), eq(regulatoryRules.isTestOnlyFixture, false)));
+      .where(and(eq(regulatoryRules.applicableProjectType, "deck"), eq(regulatoryRules.applicableZone, "NR"), eq(regulatoryRules.lifecycleState, "ACTIVE"), eq(regulatoryRules.isTestOnlyFixture, false)));
     return rows.map((r) => r.id);
   }
 

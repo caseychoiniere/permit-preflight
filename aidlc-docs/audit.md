@@ -1931,3 +1931,18 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: The ONLY open founder item is ACTIVATION of the three APPROVED sets (`scripts/zoning-rules-activate.ts` is prepared, requires `ACTIVATION_AUTHORIZATION`, and has not been run). Until then non-NR zones stay correctly blocked at checkout with a plain-language reason. Not covered (documented NOT_YET_SUPPORTED): C2, Seattle Mixed, Downtown, Industrial (except the IB ADU not-applicable conclusion), Master Planned Community, Major Institution Overlay lots, MR/HR/commercial ADUs. Live Stripe/paid-path certification across zoning families remains paused per the directive.
 
 ---
+
+## Citywide Zoning Coverage: Activation of the Three APPROVED Rule Sets
+**Timestamp**: 2026-10-09T21:30:00Z
+**User Input**: "ACTIVATE THE APPROVED CITYWIDE-ZONING RULE SETS. Authorization: Activate all three currently APPROVED zoning-rule sets described in the citywide-zoning work: 1. Shed / garage / fence / deck: LR1-3, MR, HR, including applicable RC handling; 2. Shed / garage / fence / deck: NC1-3 and C1; 3. ADU: LR1-3. Use the prepared scripts/zoning-rules-activate.ts ... Do not activate any rule outside these three approved sets. Do not activate unsupported zoning families." (followed by pre-activation, activation, post-activation, purchase-eligibility, LR1(M) regression and paid-path-certification instructions)
+**AI Response**:
+- **Pre-activation (persisted state):** all 66 target rows (33 + 13 + 20) were APPROVED, none ACTIVE, none scoped to C2, Seattle Mixed, Downtown, Industrial, MPC or a Major Institution Overlay. Whole table: 51 ACTIVE (NR), 66 APPROVED, 2 TRIAGED (pre-existing, not targets).
+- **Activation:** `scripts/zoning-rules-activate.ts lowrise commercial lowrise-adu` with operator `caseychoiniere@gmail.com` and the authorization text recorded in each RULE_ACTIVATED audit entry. Normal lifecycle (`activateRule`), no direct database edits.
+- **Post-activation (independent re-query):** 117 ACTIVE (the 51 NR unchanged + 66), the same 2 TRIAGED, 66 RULE_ACTIVATED audit entries, no other row changed.
+- **Eligibility on real parcels:** NR, LR1(M), LR2(M), LR3(M) all five project types open; MR(M1), HR(M), NC2-40(M), NC2P-55(M), C1-55(M) shed/garage/fence/deck open and ADU blocked; split NR+LR2 open at lot level (footprint-aware at checkout); C2 (3 parcels), Seattle Mixed (3 parcels) and a Major Institution Overlay parcel blocked for every project type.
+- **LR1(M) regression:** garage on LR1 (M) parcels now gets Lowrise findings (SMC 23.45.510 FAR, 23.45.518 setbacks, 23.45.514 height, 23.45.536 access) and an allowed checkout; the customer's own paid orders (garage 7486ff8b..., ADU 5e888007...) completed with webhook -> job COMPLETE -> artifact with Lowrise `ruleVersionsUsed`, persisted `zoning-resolution` evidence, a PDF rendered through the real route, and the email accepted by Resend.
+- **Tests changed (activation made them stale, no product code changed):** the zoning-families test injects only candidate rows that are not already ACTIVE; fence/deck/ADU "real rules" tests scope their NR counts to `applicableZone = NR`; the "LR1 gets no ADU conclusion" test became "LR1 gets the Lowrise ADU standards".
+**Reviewer**: none (no code or rule change; activation was explicitly founder-authorized).
+**Context**: Activation of these three sets is now done and founder-authorized. Remaining not-yet-supported: C2, Seattle Mixed, Downtown, Industrial (IB ADU is NOT_APPLICABLE), MPC, MIO, and MR/HR/commercial ADUs. Paid-path certification resumed.
+
+---

@@ -29,6 +29,15 @@ import {
   evaluateMfGarageParkingAccess,
   evaluateMfSeparation,
 } from "./evaluate-multifamily-accessory.js";
+import {
+  COMMERCIAL_AGGREGATE_ONLY_RULE_TYPES,
+  CommercialAccessoryRuleType,
+  evaluateCommFarNote,
+  evaluateCommGarageParkingAccess,
+  evaluateCommHeight,
+  evaluateCommSetbacks,
+} from "./evaluate-commercial-accessory.js";
+import type { CommFarNoteSpec, CommGarageParkingAccessSpec, CommHeightSpec, CommSetbacksSpec } from "./evaluate-commercial-accessory.js";
 import type {
   MfAccessoryHeightSpec,
   MfAccessorySeparationSpec,
@@ -298,6 +307,21 @@ function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"], 
       }
     }
   }
+  if (family === ZoneFamily.NC || family === ZoneFamily.C) {
+    // Chapter 23.47A: setbacks only where a residential zone abuts (23.47A.014), the mapped height limit (23.47A.012), floor area ratio (23.47A.013; no lot-coverage limit).
+    const commercial = [
+      { constraintType: "setback", ruleTypes: [CommercialAccessoryRuleType.SETBACKS] },
+      { constraintType: "height", ruleTypes: [CommercialAccessoryRuleType.HEIGHT] },
+      { constraintType: "floor area ratio", ruleTypes: [CommercialAccessoryRuleType.FLOOR_AREA_RATIO_NOTE] },
+    ];
+    return projectType === "garage"
+      ? [
+          ...commercial,
+          { constraintType: "garage access and driveway", ruleTypes: [CommercialAccessoryRuleType.GARAGE_PARKING_ACCESS] },
+          { constraintType: "separation from the house", ruleTypes: ["GARAGE_DWELLING_SEPARATION_NOT_GOVERNED"] },
+        ]
+      : commercial;
+  }
   if (family !== ZoneFamily.NR) {
     // A zone family whose accessory-structure rules have not been written yet: the claims a screening would make are listed as not yet screenable.
     const unsupported = [
@@ -372,6 +396,10 @@ const CLAIM_LABELS: Record<string, string> = {
   [ShedLotCoverageRuleType.ESTIMATE_CAVEAT]: "Lot coverage",
   [MultifamilyAccessoryRuleType.FLOOR_AREA_RATIO]: "Floor area ratio",
   [MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS]: "Garage access and driveway",
+  [CommercialAccessoryRuleType.SETBACKS]: "Setbacks",
+  [CommercialAccessoryRuleType.HEIGHT]: "Accessory structure height limit",
+  [CommercialAccessoryRuleType.FLOOR_AREA_RATIO_NOTE]: "Floor area ratio",
+  [CommercialAccessoryRuleType.GARAGE_PARKING_ACCESS]: "Garage access and driveway",
 };
 export const claimLabelFor = (ruleType: string, fallbackSubject: string): string => CLAIM_LABELS[ruleType] ?? fallbackSubject;
 
@@ -415,7 +443,7 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
 
   for (const rule of activeRules) {
     const ruleType = (rule.ruleSpecification as { ruleType?: string }).ruleType;
-    if (ruleType !== undefined && (UNIT_6B_AGGREGATE_ONLY_RULE_TYPES.has(ruleType) || MF_AGGREGATE_ONLY_RULE_TYPES.has(ruleType))) {
+    if (ruleType !== undefined && (UNIT_6B_AGGREGATE_ONLY_RULE_TYPES.has(ruleType) || MF_AGGREGATE_ONLY_RULE_TYPES.has(ruleType) || COMMERCIAL_AGGREGATE_ONLY_RULE_TYPES.has(ruleType))) {
       // Consumed exclusively by the shed aggregate-computing functions below via
       // allRuleTypesActive against the full activeRules list, never by the generic per-rule
       // switch - see UNIT_6B_AGGREGATE_ONLY_RULE_TYPES's docstring.
@@ -477,6 +505,8 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   }
 
   // Multifamily zones (SMC 23.45): the accessory height limit is its own rule row, evaluated with that row's own thresholds.
+  const commHeight = activeRules.find((r) => (r.ruleSpecification as { ruleType?: string }).ruleType === CommercialAccessoryRuleType.HEIGHT);
+  if (commHeight) outcome.accessoryHeightLimitFinding = evaluateCommHeight(commHeight, commHeight.ruleSpecification as unknown as CommHeightSpec, input.project);
   const mfHeight = activeRules.find((r) => (r.ruleSpecification as { ruleType?: string }).ruleType === MultifamilyAccessoryRuleType.HEIGHT);
   if (mfHeight) outcome.accessoryHeightLimitFinding = evaluateMfAccessoryHeight(mfHeight, mfHeight.ruleSpecification as unknown as MfAccessoryHeightSpec, input.project);
 
@@ -514,6 +544,13 @@ function evaluateRule(rule: RegulatoryRule, project: ProjectDetails, activePolic
         return [missingEvidenceFinding(rule.subject, appliedRule, "LotCoverageFacts were not supplied for this evaluation.")];
       }
       return [evaluateLotCoverage(rule, appliedRule, spec as unknown as LotCoverageRuleSpec, project, lotCoverageFacts)];
+    case CommercialAccessoryRuleType.SETBACKS:
+      return [evaluateCommSetbacks(rule, spec as unknown as CommSetbacksSpec, project)];
+    case CommercialAccessoryRuleType.FLOOR_AREA_RATIO_NOTE:
+      return [evaluateCommFarNote(rule, spec as unknown as CommFarNoteSpec, project)];
+    case CommercialAccessoryRuleType.GARAGE_PARKING_ACCESS:
+      if (project.projectType !== "garage") return [missingEvidenceFinding(rule.subject, appliedRule, `${spec.ruleType} does not apply to project type "${project.projectType}".`)];
+      return [evaluateCommGarageParkingAccess(rule, spec as unknown as CommGarageParkingAccessSpec, project)];
     case MultifamilyAccessoryRuleType.SETBACKS:
       return evaluateMfAccessorySetbacks(rule, spec as unknown as MfAccessorySetbacksSpec, project, activePolicies);
     case MultifamilyAccessoryRuleType.SEPARATION:

@@ -4,11 +4,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { draft, triage } from "../../src/regulatory-rule-governance/lifecycle.js";
-import type { RegulatoryRule } from "../../src/regulatory-rule-governance/types.js";
-import { evaluateDeck } from "../../src/regulatory-rules-engine/evaluate-deck.js";
-import { evaluateFence } from "../../src/regulatory-rules-engine/evaluate-fence.js";
-import { evaluateProject } from "../../src/regulatory-rules-engine/evaluate.js";
-import type { ProjectDetails } from "../../src/regulatory-rules-engine/types.js";
 import { singleZoneContext } from "../../src/zoning/context.js";
 import { claimKindOf, isRegisteredRuleType } from "../../src/zoning/claim-kinds.js";
 import { resolveApplicableRules } from "../../src/zoning/resolve.js";
@@ -21,35 +16,18 @@ import {
   garageMultifamilyCandidates,
   shedMultifamilyCandidates,
 } from "../fixtures/multifamily-candidates.js";
+import { asActive as asActiveShared, evaluateCandidateCase, findCaseFinding, oc } from "./candidate-harness.js";
 
 type Candidate = (typeof allMultifamilyCandidates)[number];
-const asActive = (cands: Candidate[]): RegulatoryRule[] =>
-  cands.map((c) => ({ ...draft(c), id: MULTIFAMILY_FIXED_ROW_IDS[c.id]!, lifecycleState: "ACTIVE", acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] }));
-
-const SHED_BASE = { projectType: "shed", widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false, distanceToRearLotLineFt: 30, distanceToSideLotLineFt: 15, distanceToFrontLotLineFt: 50, distanceToDwellingFt: 20, parcelAreaSqFt: 5000, isInRequiredSetback: false };
-const GARAGE_BASE = { projectType: "garage", widthFt: 12, depthFt: 20, heightFt: 10, alleyAdjacent: false, distanceToRearLotLineFt: 30, distanceToSideLotLineFt: 15, distanceToFrontLotLineFt: 50, parcelAreaSqFt: 5000, isInRequiredSetback: false };
-const FENCE_BASE = { projectType: "fence", heightFt: 6, locations: ["OTHER_SIDE_OR_REAR_SETBACK"], siteSlopes: false, wallRelation: "NONE" };
-const DECK_BASE = { projectType: "deck", heightAboveGradeIn: 24, widthFt: 10, depthFt: 10, attachment: "DETACHED", buildingRelation: "OPEN_GROUND_BELOW", setbackLocations: ["SIDE_SETBACK"] };
+const asActive = (cands: Candidate[]) => asActiveShared(cands, MULTIFAMILY_FIXED_ROW_IDS);
 
 const ZONE = "LR1 (M)";
-const oc = (f: { classification: string; complianceOutcome?: string }) => `${f.classification}${f.complianceOutcome ? "/" + f.complianceOutcome : ""}`;
 
 function evaluate(c: Candidate, project: Record<string, unknown>, zoning: string) {
   const rules = asActive(
     c.applicableProjectType === "shed" ? shedMultifamilyCandidates : c.applicableProjectType === "garage" ? garageMultifamilyCandidates : c.applicableProjectType === "fence" ? fenceMultifamilyCandidates : deckMultifamilyCandidates
   );
-  const zoningContext = singleZoneContext(zoning);
-  if (c.applicableProjectType === "fence") return evaluateFence({ project: { ...FENCE_BASE, ...project } as never, candidateActiveRules: rules, ecaFindings: [], zoningContext });
-  if (c.applicableProjectType === "deck") return evaluateDeck({ project: { ...DECK_BASE, ...project } as never, candidateActiveRules: rules, zoningContext });
-  const base = c.applicableProjectType === "garage" ? GARAGE_BASE : SHED_BASE;
-  return evaluateProject({
-    propertyContext: { parcelId: "t", assembledAt: "2026-01-01T00:00:00.000Z", facts: [] },
-    project: { ...base, ...project } as unknown as ProjectDetails,
-    candidateActiveRules: rules,
-    ecaFindings: [],
-    candidateActiveInferencePolicies: [],
-    zoningContext,
-  });
+  return evaluateCandidateCase(c.applicableProjectType!, rules, project, zoning);
 }
 
 describe("multifamily candidates - structure", () => {
@@ -71,7 +49,7 @@ describe("multifamily candidates - structure", () => {
     }
   });
   it("no two rows of one project type claim the same rule type in the same zone (the resolver would reject them as conflicting)", () => {
-    const zones = ["LR1", "LR1 (M)", "LR1 (M1)", "LR2", "LR2 (M)", "LR2 (M1)", "LR3", "LR3 (M)", "LR3 (M2)", "LR1 RC (M)", "LR3 RC"];
+    const zones = ["LR1", "LR1 (M)", "LR1 (M1)", "LR2", "LR2 (M)", "LR2 (M1)", "LR3", "LR3 (M)", "LR3 (M2)", "LR1 RC (M)", "LR3 RC", "MR", "MR (M1)", "MR RC (M)", "HR (M)"];
     for (const [type, cands] of [["shed", shedMultifamilyCandidates], ["garage", garageMultifamilyCandidates], ["fence", fenceMultifamilyCandidates], ["deck", deckMultifamilyCandidates]] as const) {
       for (const z of zones) {
         const r = resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(cands) });
@@ -80,10 +58,10 @@ describe("multifamily candidates - structure", () => {
       }
     }
   });
-  it("every Lowrise designation (with and without an MHA suffix) is covered by exactly one floor-area-ratio row; an unrecognized suffix by none", () => {
+  it("every multifamily designation (with and without an MHA suffix) is covered by exactly one floor-area-ratio row; an unrecognized suffix by none", () => {
     for (const type of ["shed", "garage"] as const) {
       const cands = type === "shed" ? shedMultifamilyCandidates : garageMultifamilyCandidates;
-      for (const z of ["LR1", "LR1 (M)", "LR2", "LR2 (M1)", "LR3", "LR3 (M2)", "LR3 RC (M1)"]) {
+      for (const z of ["LR1", "LR1 (M)", "LR2", "LR2 (M1)", "LR3", "LR3 (M2)", "LR3 RC (M1)", "MR", "MR (M2)", "MR RC (M)", "HR", "HR (M)"]) {
         const r = resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(cands) });
         expect(r.rules.filter((x) => (x.ruleSpecification as { ruleType: string }).ruleType === "MF_FAR"), `${type} ${z}`).toHaveLength(1);
       }
@@ -91,12 +69,20 @@ describe("multifamily candidates - structure", () => {
       expect(odd.rules.filter((x) => (x.ruleSpecification as { ruleType: string }).ruleType === "MF_FAR")).toHaveLength(0);
     }
   });
-  it("the Lowrise rows never resolve in a Neighborhood Residential, commercial or other zone", () => {
-    for (const z of ["NR", "NC2-40", "C1-65", "SM-UP 85", "DMC 85/75-170", "IC-65", "MR (M)", "HR (M)"]) {
+  it("the multifamily rows never resolve in a Neighborhood Residential, commercial or other zone", () => {
+    for (const z of ["NR", "NC2-40", "C1-65", "SM-UP 85", "DMC 85/75-170", "IC-65"]) {
       const r = resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(allMultifamilyCandidates.filter((c) => c.applicableProjectType === "shed")) });
-      expect(r.rules.filter((x) => claimKindOf((x.ruleSpecification as { ruleType: string }).ruleType) !== "ZONE_INDEPENDENT").map((x) => x.subject), z).not.toContain(expect.stringContaining("Lowrise"));
-      if (!z.startsWith("MR") && !z.startsWith("HR")) expect(r.rules, z).toEqual([]);
+      expect(r.rules.filter((x) => claimKindOf((x.ruleSpecification as { ruleType: string }).ruleType) !== "ZONE_INDEPENDENT"), z).toEqual([]);
     }
+  });
+  it("Lowrise rows serve LR and Midrise/Highrise rows serve MR and HR for the zone-specific height rule; the setback rule serves all three", () => {
+    const heightFor = (z: string) => resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(shedMultifamilyCandidates) }).rules.filter((x) => (x.ruleSpecification as { ruleType: string }).ruleType === "MF_ACC_HEIGHT").map((x) => x.id);
+    expect(heightFor("LR2 (M)")).toEqual([MULTIFAMILY_FIXED_ROW_IDS["shed-mf-height-lr-2026"]]);
+    expect(heightFor("MR (M1)")).toEqual([MULTIFAMILY_FIXED_ROW_IDS["shed-mf-height-mr-hr-2026"]]);
+    expect(heightFor("HR")).toEqual([MULTIFAMILY_FIXED_ROW_IDS["shed-mf-height-mr-hr-2026"]]);
+    // Highrise has no 23.45.519 separation: the separation claim is simply not governed there.
+    const sep = (z: string) => resolveApplicableRules({ zoning: singleZoneContext(z), candidateRules: asActive(shedMultifamilyCandidates) }).rules.some((x) => (x.ruleSpecification as { ruleType: string }).ruleType === "MF_ACC_SEPARATION");
+    expect([sep("LR1"), sep("MR"), sep("HR")]).toEqual([true, true, false]);
   });
   it("scope tokens are parsed", () => {
     expect(parseZoneScope("MULTIFAMILY").tokens).toHaveLength(1);
@@ -108,11 +94,7 @@ describe("every declared test case is executed against the real evaluator using 
     for (const t of c.testCases as unknown as { kind: string; description: string; input: { project: Record<string, unknown>; zoning?: string }; expected: { finding: string; outcome: string } }[]) {
       it(`${c.id} [${t.kind}] ${t.description}`, () => {
         const o = evaluate(c, t.input.project, t.input.zoning ?? ZONE);
-        const rowId = MULTIFAMILY_FIXED_ROW_IDS[c.id]!;
-        const found =
-          t.expected.finding === "Accessory structure height limit"
-            ? (o as { accessoryHeightLimitFinding?: { classification: string; complianceOutcome?: string } }).accessoryHeightLimitFinding
-            : o.findings.find((f) => f.subject.includes(t.expected.finding) && f.appliedRule?.id === rowId);
+        const found = findCaseFinding(o, t.expected.finding, MULTIFAMILY_FIXED_ROW_IDS[c.id]!);
         expect(found, `finding "${t.expected.finding}"`).toBeDefined();
         expect(oc(found!)).toBe(t.expected.outcome);
       });

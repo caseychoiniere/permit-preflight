@@ -49,7 +49,8 @@ export interface FenceHeightFrontStreetSideRuleSpec {
 }
 export interface FenceRetainingWallRuleSpec {
   ruleType: typeof FenceRuleType.RETAINING_WALL;
-  fenceOnWallMaxFt: number;
+  /** The cap on a fence standing on a retaining wall or bulkhead; absent where the zone has none (only the combined height applies). */
+  fenceOnWallMaxFt?: number;
   combinedMaxFt: number;
   raisingGradeWallMaxFt: number;
   cutWallFenceSetbackFt: number;

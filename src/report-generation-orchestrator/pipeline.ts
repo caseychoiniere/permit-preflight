@@ -17,7 +17,7 @@ import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence
 import { createSeattleEcaRetriever } from "../property-intelligence/seattle-eca.js";
 import { createSeattleFrequentTransitRetriever, createSeattleLandmarkRetriever, createSeattleZoningRetriever, queryZoningForPolygon } from "../property-intelligence/seattle-zoning.js";
 import type { FrequentTransitFactValue, LandmarkFactValue, ZoningFactValue } from "../property-intelligence/seattle-zoning.js";
-import { buildZoningContext } from "../zoning/context.js";
+import { ADJACENCY_BUFFER_FT, buildZoningContext } from "../zoning/context.js";
 import type { ZoningContext } from "../zoning/context.js";
 import { resolveApplicableRules } from "../zoning/resolve.js";
 import { deriveIsInRequiredSetbackMf } from "../regulatory-rules-engine/evaluate-multifamily-accessory.js";
@@ -36,6 +36,7 @@ import { recordIngestionResult } from "../data-source-registry/index.js";
 import type { EvidenceQuality } from "../property-intelligence/types.js";
 import type { CriticalAreaFinding, GeographicPoint, Polygon } from "../spatial-analysis/types.js";
 import {
+  bufferPolygon,
   computeRearAxisPositions,
   computeBuildableEnvelope,
   computeDistanceToDwelling,
@@ -83,6 +84,17 @@ export interface PipelineDependencies {
    * already-serializable ExplanationResult. Injectable in tests with a fake implementation, same
    * as the AiCompletionClient it replaced. */
   generateExplanation?: (findings: Finding[]) => Promise<ExplanationResult>;
+  /**
+   * TEST ONLY: additional rules evaluated as ACTIVE alongside the database's, so a rule set that is APPROVED but not yet active can be exercised through the real
+   * pipeline against real parcels without being written to the database or activated. Never set by the workflow runner; the rules it adds are recorded in the
+   * artifact like any applied rule, so a report produced this way is identifiable.
+   */
+  testOnlyExtraActiveRules?: RegulatoryRule[];
+}
+
+/** The database's ACTIVE rows for the project type, as rules, plus any test-only extras for the same project type. */
+function withExtraRules(rows: (typeof regulatoryRules.$inferSelect)[], projectType: string, deps: PipelineDependencies): RegulatoryRule[] {
+  return [...rowsToRegulatoryRules(rows), ...(deps.testOnlyExtraActiveRules ?? []).filter((r) => r.applicableProjectType === projectType)];
 }
 
 /** The three Unit 6B evidence-entry constructors runReportGenerationPipeline uses, extracted so the
@@ -700,12 +712,31 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         logger.warn("SOURCE_FAILURE", { reportGenerationJobId: job.id, error: error instanceof Error ? error.message : String(error) });
       }
     }
+    // Commercial zones (SMC 23.47A.014): setbacks exist only where a residential zone abuts the lot or is across an alley from it, so the zoning within a
+    // short distance of the lot is read. A failed read is UNKNOWN, never "no neighbor".
+    let neighborsFact: ZoningFactValue | undefined;
+    let neighborsError: string | undefined;
+    const lotIsCommercial = zoningContext.lotZones.some((z) => z.designation.family === "NC" || z.designation.family === "C");
+    if (lotIsCommercial && geometryFact?.availabilityState === AvailabilityState.AVAILABLE && geometryFact.value) {
+      try {
+        const buffered = await bufferPolygon(db, geometryFact.value, ADJACENCY_BUFFER_FT);
+        neighborsFact = await withStageTiming("PROPERTY_INTELLIGENCE", job.id, () => queryZoningForPolygon(buffered, 8000, "PARCEL"));
+      } catch (error) {
+        neighborsError = "Seattle's zoning data near the property could not be read";
+        logger.warn("SOURCE_FAILURE", { reportGenerationJobId: job.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    } else if (lotIsCommercial) {
+      neighborsError = "the property boundary was not available to check the zoning next to it";
+    }
     const accessoryZoningContext = buildZoningContext({
       ...lotZoningInput,
       ...(footprintZoningFact ? { footprint: footprintZoningFact } : {}),
       ...(footprintZoningError ? { footprintError: footprintZoningError } : {}),
+      ...(neighborsFact ? { neighbors: neighborsFact } : {}),
+      ...(neighborsError ? { neighborsError } : {}),
     });
-    const accessoryResolution = resolveApplicableRules({ zoning: accessoryZoningContext, candidateRules: rowsToRegulatoryRules(activeRuleRows) });
+    const activeRules = withExtraRules(activeRuleRows, snapshot.projectType, deps);
+    const accessoryResolution = resolveApplicableRules({ zoning: accessoryZoningContext, candidateRules: activeRules });
     const ruleTypeOfRow = (r: RegulatoryRule): string | undefined => (r.ruleSpecification as { ruleType?: string }).ruleType;
     const mfHeightRule = accessoryResolution.rules.find((r) => ruleTypeOfRow(r) === "MF_ACC_HEIGHT");
     const mfSetbacksActive = accessoryResolution.rules.some((r) => ruleTypeOfRow(r) === "MF_ACC_SETBACKS");
@@ -715,6 +746,10 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       if (!mfSetbacksActive || !footprintProjected || footprintOutsideParcelReason || !geometryFact?.value || roles?.status !== LotLineRoleStatus.ASSIGNED || !roles.rearEdgeRef) return undefined;
       return computeRearAxisPositions(db, geometryFact.value, roles.rearEdgeRef, footprintProjected, dwelling);
     };
+    const abutsFields =
+      accessoryZoningContext.adjacentResidential
+        ? { abutsResidentialZone: accessoryZoningContext.adjacentResidential.status, adjacentResidentialZones: accessoryZoningContext.adjacentResidential.zones }
+        : {};
     const deriveRequiredSetback = (ctx: Parameters<typeof deriveIsInRequiredSetback>[0]) =>
       mfHeightRule
         ? deriveIsInRequiredSetbackMf(
@@ -749,6 +784,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         ...(rawParcelAreaSqFt !== undefined ? { parcelAreaSqFt: rawParcelAreaSqFt } : {}),
         ...(garageRearAxis ? { farthestFromRearLotLineFt: garageRearAxis.structureFarthestFt } : {}),
         besideDwelling: "UNKNOWN" as const,
+        ...abutsFields,
         widthFt: garageDetails.widthFt,
         depthFt: garageDetails.depthFt,
         heightFt: garageDetails.heightFt,
@@ -905,6 +941,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         ...(rawParcelAreaSqFt !== undefined ? { parcelAreaSqFt: rawParcelAreaSqFt } : {}),
         ...(shedRearAxis ? { farthestFromRearLotLineFt: shedRearAxis.structureFarthestFt } : {}),
         besideDwelling,
+        ...abutsFields,
       };
     }
 
@@ -912,7 +949,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       evaluateProject({
         propertyContext,
         project,
-        candidateActiveRules: rowsToRegulatoryRules(activeRuleRows),
+        candidateActiveRules: activeRules,
         ecaFindings: environmentalConstraintsFact?.value ?? [],
         candidateActiveInferencePolicies: rowsToInferencePolicies(activePolicyRows),
         lotCoverageFacts,
@@ -1024,6 +1061,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // immutable snapshot so the report and an audit can show exactly what was applied.
       ...(outcome.zoningApplied ? [{ factType: "zoning-resolution", value: outcome.zoningApplied, provenance: {} }] : []),
       ...(footprintZoningFact ? [{ factType: "zoning-project-footprint", value: footprintZoningFact, provenance: {} }] : []),
+      ...(neighborsFact ? [{ factType: "zoning-adjacent", value: neighborsFact, provenance: {} }] : []),
       // Unit 6B Capability B - the PermitRequirementFinding aggregate (buildingPermit/reviewPath),
       // present only once evaluateProject's own ACTIVE-gate (allRuleTypesActive against every
       // constituent ShedPermitRuleType row) is satisfied - dormant in production today (all 19
@@ -1047,7 +1085,8 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         findings: findingsToPersist,
         evidence,
         explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
-        ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+        // The rules that actually governed this report (zone-resolved), not every ACTIVE row for the project type.
+        ruleVersionsUsed: outcome.zoningApplied ? outcome.zoningApplied.appliedRules.map((r) => r.id) : activeRuleRows.map((r) => r.id),
         dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
       })
     );
@@ -1086,7 +1125,7 @@ async function runFencePipeline(
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.FENCE)));
 
   const outcome = await withStageTiming("RULES_ENGINE", job.id, async () =>
-    evaluateFence({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), ecaFindings, zoningContext })
+    evaluateFence({ project, candidateActiveRules: withExtraRules(activeRuleRows, ProjectType.FENCE, deps), ecaFindings, zoningContext })
   );
 
   const explanationResult = deps.generateExplanation
@@ -1105,7 +1144,7 @@ async function runFencePipeline(
       findings: outcome.findings,
       evidence,
       explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
-      ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+      ruleVersionsUsed: outcome.zoningApplied ? outcome.zoningApplied.appliedRules.map((r) => r.id) : activeRuleRows.map((r) => r.id),
       dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
     })
   );
@@ -1136,7 +1175,7 @@ async function runDeckPipeline(
     .from(regulatoryRules)
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.DECK)));
 
-  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), zoningContext }));
+  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: withExtraRules(activeRuleRows, ProjectType.DECK, deps), zoningContext }));
 
   const explanationResult = deps.generateExplanation
     ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
@@ -1154,7 +1193,7 @@ async function runDeckPipeline(
       findings: outcome.findings,
       evidence,
       explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
-      ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+      ruleVersionsUsed: outcome.zoningApplied ? outcome.zoningApplied.appliedRules.map((r) => r.id) : activeRuleRows.map((r) => r.id),
       dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
     })
   );
@@ -1356,7 +1395,7 @@ async function runAduPipeline(
         inFrequentTransitServiceArea: frequentTransitFact?.availabilityState === AvailabilityState.AVAILABLE ? frequentTransitFact.value?.inFrequentTransitServiceArea : undefined,
         ecaFindings,
       },
-      candidateActiveRules: rowsToRegulatoryRules(activeRuleRows),
+      candidateActiveRules: withExtraRules(activeRuleRows, ProjectType.ADU, deps),
       zoningContext,
     })
   );
@@ -1384,7 +1423,7 @@ async function runAduPipeline(
       findings: outcome.findings,
       evidence,
       explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
-      ruleVersionsUsed: activeRuleRows.map((r) => r.id),
+      ruleVersionsUsed: outcome.zoningApplied ? outcome.zoningApplied.appliedRules.map((r) => r.id) : activeRuleRows.map((r) => r.id),
       dataRetrievalTimestamps: Object.fromEntries(propertyContext.facts.map((f) => [f.factType, f.provenance.retrievalTimestamp])),
     })
   );

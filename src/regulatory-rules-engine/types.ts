@@ -158,6 +158,9 @@ export interface ShedProjectDetails {
   farthestFromRearLotLineFt?: number;
   /** Multifamily accessory-structure placement (SMC 23.45.518.H.1.a): whether the structure stands between the house and a side lot line. UNKNOWN when the house or the lot-line roles are not established. */
   besideDwelling?: "BESIDE" | "NOT_BESIDE" | "UNKNOWN";
+  /** Commercial zones (SMC 23.47A.014): whether a residential zone abuts the lot or is across an alley from it, from Seattle's zoning layer. Setbacks in these zones exist only where one does. */
+  abutsResidentialZone?: "YES" | "NO" | "UNKNOWN";
+  adjacentResidentialZones?: string[];
 }
 
 /** Unit 4 (domain-entities.md) - shares every setback/height field with ShedProjectDetails
@@ -200,6 +203,9 @@ export interface GarageProjectDetails {
   farthestFromRearLotLineFt?: number;
   /** Multifamily accessory-structure placement (SMC 23.45.518.H.1.a): whether the structure stands between the house and a side lot line. UNKNOWN when the house or the lot-line roles are not established. */
   besideDwelling?: "BESIDE" | "NOT_BESIDE" | "UNKNOWN";
+  /** Commercial zones (SMC 23.47A.014): whether a residential zone abuts the lot or is across an alley from it, from Seattle's zoning layer. Setbacks in these zones exist only where one does. */
+  abutsResidentialZone?: "YES" | "NO" | "UNKNOWN";
+  adjacentResidentialZones?: string[];
 }
 
 export type ProjectDetails = ShedProjectDetails | GarageProjectDetails;

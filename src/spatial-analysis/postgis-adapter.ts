@@ -22,6 +22,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { polygonArea } from "./geometry.js";
 import type { SQL } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import type { GeographicPoint, Geometry, MultiPolygon, Point, Polygon } from "./types.js";
@@ -249,6 +250,27 @@ async function distanceToEdge(db: Db, footprintWkt: string, edgeWkt: string, sri
   return Number(row.distance_ft);
 }
 
+/**
+ * The parcel's outline grown outward by `ft` (PostGIS ST_Buffer, never local math), as a single polygon in the boundary's projected CRS. Used to ask which
+ * zones lie within a short distance of the lot (a lot "abutting or across an alley from" a residential zone). Holes are dropped: only the outer outline matters.
+ */
+export async function bufferPolygon(db: Db, boundaryPolygon: Polygon, ft: number): Promise<Polygon> {
+  assertAuthoritativeSrid(boundaryPolygon);
+  const srid = boundaryPolygon.srid!;
+  const result = await db.execute(sql`
+    SELECT ST_AsGeoJSON(ST_Buffer(ST_MakeValid(ST_SetSRID(ST_GeomFromText(${polygonToWkt(boundaryPolygon)}), ${srid}::int)), ${ft}::float8, 'quad_segs=4')) AS g
+  `);
+  const row = result.rows[0] as { g: string | null } | undefined;
+  if (!row?.g) throw new Error("PostGIS buffer returned no geometry.");
+  const geometry = geoJsonToGeometry(JSON.parse(row.g) as { type: string; coordinates?: unknown }, srid);
+  if ("points" in geometry) return { points: geometry.points, units: "FEET", srid };
+  if ("polygons" in geometry && geometry.polygons.length > 0) {
+    const largest = [...geometry.polygons].sort((a, b) => polygonArea(b) - polygonArea(a))[0]!;
+    return { points: largest.points, units: "FEET", srid };
+  }
+  throw new Error("PostGIS buffer returned an empty geometry.");
+}
+
 async function maxDistanceToEdge(db: Db, footprintWkt: string, edgeWkt: string, srid: number): Promise<number> {
   const result = await db.execute(sql`
     SELECT ST_MaxDistance(
@@ -332,6 +354,21 @@ export async function computeSetbackDistances(
   const footprint = buildFootprintInProjectedCrs(anchorProjected, shedDimensions.widthFt, shedDimensions.depthFt, proposedPlacement.orientationDeg);
 
   return computeSetbackDistancesForFootprint(db, boundaryPolygon, footprint, lotLineRoleAssignment);
+}
+
+/**
+ * The proposed footprint as the customer placed it (anchor, dimensions, orientation), in the boundary's projected CRS - the same construction
+ * computeSetbackDistances uses, exposed so purchase eligibility can ask which zone the structure would stand in before any report exists.
+ */
+export async function computeProposedFootprint(
+  db: Db,
+  boundaryPolygon: Polygon,
+  proposedPlacement: ProposedPlacement,
+  dimensions: { widthFt: number; depthFt: number }
+): Promise<Polygon> {
+  assertAuthoritativeSrid(boundaryPolygon);
+  const anchorProjected = await transformAnchorToProjectedCrs(db, proposedPlacement.anchor, boundaryPolygon.srid!);
+  return buildFootprintInProjectedCrs(anchorProjected, dimensions.widthFt, dimensions.depthFt, proposedPlacement.orientationDeg);
 }
 
 /**

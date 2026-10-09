@@ -50,6 +50,15 @@ export async function listRules(db: Db, filters?: { applicableProjectType?: stri
   return rows.map(rowToRegulatoryRule);
 }
 
+/** The ACTIVE rules for one existing-property project type, as the report pipeline reads them (and as purchase eligibility reads them). */
+export async function listActiveRulesForProject(db: Db, projectType: string): Promise<RegulatoryRule[]> {
+  const rows = await db
+    .select()
+    .from(regulatoryRules)
+    .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, projectType)));
+  return rows.map(rowToRegulatoryRule);
+}
+
 export type TransitionResult = { transitioned: true; rule: RegulatoryRule } | { transitioned: false };
 
 /**

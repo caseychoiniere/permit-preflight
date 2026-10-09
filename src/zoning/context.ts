@@ -34,6 +34,11 @@ export interface ZoneShare {
   overlay?: string;
 }
 
+/** A residential zone this close to a lot (or across an alley, ~16 ft wide, from it) is what the commercial-zone setback provisions (SMC 23.47A.014) key on. */
+export const ADJACENCY_BUFFER_FT = 20;
+/** A zone must cover at least this share of the buffered area to count as a neighbor (below it is a mapping artifact at a zone boundary). */
+export const NEGLIGIBLE_NEIGHBOR_FRACTION = 0.002;
+
 export const ZONING_DATA_UNAVAILABLE_REASON = "Seattle's zoning data was not available for this evaluation";
 
 export interface ZoningContext {
@@ -49,6 +54,8 @@ export interface ZoningContext {
   /** Why the footprint's zoning is not known when a footprint exists. */
   footprintGap?: string;
   overlays: OverlayFlags;
+  /** Residential zoning within a short distance of the lot, read only for commercial zones (undefined when not read). */
+  adjacentResidential?: { status: "YES" | "NO" | "UNKNOWN"; zones: string[]; reason?: string };
 }
 
 function shareOf(z: ZoneCoverage): ZoneShare {
@@ -86,7 +93,13 @@ export interface BuildZoningContextInput {
   footprint?: ZoningFactValue;
   /** Set when a footprint exists but its zoning lookup failed or returned an incomplete answer. */
   footprintError?: string;
+  /** The zoning within ADJACENCY_BUFFER_FT of the lot (commercial zones only). */
+  neighbors?: ZoningFactValue;
+  /** Set when the neighbor lookup was needed but failed or was incomplete. */
+  neighborsError?: string;
 }
+
+const RESIDENTIAL_FAMILIES = new Set<string>(["NR", "LR", "MR", "HR"]);
 
 export function buildZoningContext(input: BuildZoningContextInput): ZoningContext {
   const { lot } = input;
@@ -104,6 +117,15 @@ export function buildZoningContext(input: BuildZoningContextInput): ZoningContex
     }
   } else if (input.footprintError) {
     ctx.footprintGap = input.footprintError;
+  }
+  if (input.neighbors) {
+    const lotRaw = new Set(lotZones.map((z) => z.designation.raw));
+    const residential = materialShares(input.neighbors, NEGLIGIBLE_NEIGHBOR_FRACTION)
+      .filter((z) => RESIDENTIAL_FAMILIES.has(z.designation.family) && !lotRaw.has(z.designation.raw))
+      .map((z) => z.designation.raw);
+    ctx.adjacentResidential = residential.length > 0 ? { status: "YES", zones: [...new Set(residential)] } : { status: "NO", zones: [] };
+  } else if (input.neighborsError) {
+    ctx.adjacentResidential = { status: "UNKNOWN", zones: [], reason: input.neighborsError };
   }
   return ctx;
 }

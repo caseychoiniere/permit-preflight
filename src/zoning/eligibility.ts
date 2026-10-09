@@ -30,7 +30,12 @@ function zoneName(d: ZoningDesignation): string {
   return d.family === "LR" || d.family === "NC" || d.family === "C" ? `${info.name} (${d.zoneCode})` : info.name;
 }
 
-export function evaluatePurchaseEligibility(input: { projectType: CoreProjectType; zoning: ZoningContext; activeRules: RegulatoryRule[] }): PurchaseEligibility {
+/**
+ * `requireAllZones` (default) - every zone the project touches must have the core coverage. The early, lot-level advisory shown before a footprint exists sets it
+ * false: a lot split between a supported and an unsupported zone is then not turned away, because the structure may stand in the supported part; the
+ * authoritative check at checkout repeats the evaluation with the footprint's own zones.
+ */
+export function evaluatePurchaseEligibility(input: { projectType: CoreProjectType; zoning: ZoningContext; activeRules: RegulatoryRule[]; requireAllZones?: boolean }): PurchaseEligibility {
   const { projectType } = input;
   const plural = PROJECT_NOUN_PLURAL[projectType];
   const resolution = resolveApplicableRules({ zoning: input.zoning, candidateRules: input.activeRules });
@@ -66,15 +71,16 @@ export function evaluatePurchaseEligibility(input: { projectType: CoreProjectTyp
     const missing = core.filter((c) => !c.anyOfRuleTypes.some((t) => types.has(t))).map((c) => c.claim);
     if (missing.length > 0) missingByZone.push({ zone, missing });
   }
-  if (missingByZone.length > 0) {
-    const first = missingByZone[0]!;
-    const named = missingByZone.map((m) => `${m.zone.raw} (${zoneName(m.zone)})`).join(" and ");
+  const blocking = input.requireAllZones === false ? (missingByZone.length === zones.length ? missingByZone : []) : missingByZone;
+  if (blocking.length > 0) {
+    const first = blocking[0]!;
+    const named = blocking.map((m) => `${m.zone.raw} (${zoneName(m.zone)})`).join(" and ");
     return {
       eligible: false,
       code: "ZONE_NOT_YET_SUPPORTED",
       message: `Seattle zoning data maps this property as ${named}. Permit Preflight cannot yet screen ${plural} against the ${zoneName(first.zone)} zone standards (${first.missing.join(", ")}), so a report for this property would mostly say that. Nothing was charged.`,
       zoneLabels: zones.map((z) => z.raw),
-      missingClaims: [...new Set(missingByZone.flatMap((m) => m.missing))],
+      missingClaims: [...new Set(blocking.flatMap((m) => m.missing))],
       retryable: false,
     };
   }

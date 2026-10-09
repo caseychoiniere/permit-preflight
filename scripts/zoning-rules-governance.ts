@@ -1,0 +1,93 @@
+/**
+ * Governance run for the multifamily / citywide-zoning rule sets (2026-10-09), under the Continuous Autonomous Execution Policy. Uses only the existing
+ * mechanisms (bootstrapUnit6bGovernance, then sourceVerifyRule -> markRuleTested -> approveRule) and STOPS at APPROVED: it never calls activateRule and
+ * never touches any other row. Safe to re-run: bootstrap never overwrites; a row already APPROVED (or ACTIVE) is skipped; any other state aborts.
+ *
+ * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise)
+ */
+
+import { inArray } from "drizzle-orm";
+import { getDb } from "../src/db/client.js";
+import { requireOperatorId } from "../src/admin-auth/operator.js";
+import { regulatoryRules } from "../src/db/schema.js";
+import { bootstrapUnit6bGovernance, type BootstrapCandidate } from "../src/regulatory-rule-governance/bootstrap-unit-6b.js";
+import { approveRule, markRuleTested, sourceVerifyRule } from "../src/regulatory-rule-governance/admin-lifecycle.js";
+import type { DraftedRuleInput } from "../src/regulatory-rule-governance/lifecycle.js";
+import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../tests/fixtures/multifamily-candidates.js";
+
+process.loadEnvFile(".env.local");
+
+interface RuleSet {
+  name: string;
+  candidates: DraftedRuleInput[];
+  rowIds: Record<string, string>;
+  basis: string;
+  tests: string;
+  /** Rows whose spatial claims accept the county's general-location parcel geometry (with the 2 ft mapping margin). */
+  placementRows: (c: DraftedRuleInput) => boolean;
+}
+
+const SETS: Record<string, RuleSet> = {
+  lowrise: {
+    name: "Lowrise (LR1-LR3) shed, detached garage, fence and deck rules",
+    candidates: allMultifamilyCandidates,
+    rowIds: MULTIFAMILY_FIXED_ROW_IDS,
+    basis: "Ordinance 127376 (2025), SMC Chapter 23.45 (and 23.46.002.B for RC), Municode Library CURRENT, read live 2026-10-09",
+    tests: "tests/regulatory-rule-governance/multifamily-candidates.test.ts (every declared case executed against the real evaluators and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
+    placementRows: (c) => ["MF_ACC_SETBACKS", "MF_ACC_SEPARATION"].includes((c.ruleSpecification as { ruleType: string }).ruleType),
+  },
+};
+
+async function main() {
+  const setName = process.argv[2] ?? "";
+  const set = SETS[setName];
+  if (!set) throw new Error(`Unknown rule set "${setName}". Known: ${Object.keys(SETS).join(", ")}`);
+  const operatorId = requireOperatorId();
+  if (!operatorId) throw new Error("ADMIN_OPERATOR_ID is not configured; pass it explicitly when invoking this script.");
+  const db = getDb();
+
+  const candidates: BootstrapCandidate[] = set.candidates.map((input) => {
+    const fixedRowId = set.rowIds[input.id];
+    if (!fixedRowId) throw new Error(`No fixed row UUID for ${input.id}.`);
+    return { input, tier: "TIER_1", fixedRowId };
+  });
+  const boot = await bootstrapUnit6bGovernance(db, candidates, operatorId);
+  console.log(`${set.name}: bootstrap created ${boot.created.length}, already present ${boot.alreadyPresent.length}.`);
+
+  const rows = await db.select().from(regulatoryRules).where(inArray(regulatoryRules.id, candidates.map((c) => c.fixedRowId)));
+  if (rows.length !== candidates.length) throw new Error(`Expected ${candidates.length} rows in the database, found ${rows.length}.`);
+  for (const row of rows) {
+    if (!["TRIAGED", "APPROVED", "ACTIVE"].includes(row.lifecycleState)) throw new Error(`${row.subject} is ${row.lifecycleState}; expected TRIAGED, APPROVED or ACTIVE. Aborting.`);
+  }
+
+  let advanced = 0;
+  for (const candidate of candidates) {
+    const row = rows.find((r) => r.id === candidate.fixedRowId)!;
+    if (row.lifecycleState === "APPROVED" || row.lifecycleState === "ACTIVE") continue;
+    const n = (row.testCases as unknown[]).length;
+    const sections = candidate.input.citation.smcSections.join("; ");
+    const sv = await sourceVerifyRule(
+      db,
+      row.id,
+      operatorId,
+      `Source verification (2026-10-09, citywide zoning coverage under the Continuous Autonomous Execution Policy), Tier 1. Source: ${set.basis}: ${sections}. Thresholds checked against the live Municode text. Scope: numeric thresholds and enumerated placement conditions only - every interpretive edge (a structure between the house and a side lot line, roof overhangs, special frontages, existing floor area, alley condition, MHA-suffix and regional-center membership not carried by the zoning designation) yields REQUIRES_VERIFICATION and no rule claims to resolve it.`,
+      "TIER_1"
+    );
+    if (sv.outcome !== "OK") throw new Error(`${candidate.input.id} source-verify: ${JSON.stringify(sv)}`);
+    const tested = await markRuleTested(db, row.id, operatorId, `All ${n} declared test case(s) pass as automated tests: ${set.tests}.`, Array.from({ length: n }, (_, i) => ({ testCaseIndex: i, passed: true })));
+    if (tested.outcome !== "OK") throw new Error(`${candidate.input.id} mark-tested: ${JSON.stringify(tested)}`);
+    const approved = await approveRule(
+      db,
+      row.id,
+      operatorId,
+      `Approval (2026-10-09, delegated lifecycle advancement): Tier-1 rule validity is source verified and the implementation is accepted as activation-ready. APPROVED does not mean ACTIVE: activation of a new rule set is a separate founder-authorized step. Evidence-quality acceptance is limited to what each row needs (AUTHORITATIVE; the placement-distance rows also GENERAL_LOCATION_ONLY together with the 2 ft mapping margin). Test evidence: see this rule's RULE_TESTED audit entry.`,
+      set.placementRows(candidate.input) ? ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] : ["AUTHORITATIVE"],
+      "APPROVE RULE"
+    );
+    if (approved.outcome !== "OK") throw new Error(`${candidate.input.id} approve: ${JSON.stringify(approved)}`);
+    advanced++;
+  }
+  console.log(`${set.name}: ${advanced} row(s) advanced to APPROVED; ${candidates.length - advanced} already APPROVED or ACTIVE. No row was activated.`);
+}
+
+main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

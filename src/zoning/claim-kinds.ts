@@ -53,6 +53,7 @@ const LOT: string[] = [
   "ADU_A8_AMENITY_AREA",
   "ADU_A9_TREES",
   "MF_FAR",
+  "COMM_FAR_NOTE",
   "DECK_MF_NO_LOT_COVERAGE_LIMIT",
 ];
 
@@ -80,6 +81,10 @@ const LOCATION: string[] = [
   "MF_ACC_HEIGHT",
   "MF_ACC_SEPARATION",
   "MF_GARAGE_PARKING_ACCESS",
+  // Neighborhood Commercial and Commercial (SMC Chapter 23.47A) accessory structures
+  "COMM_ACC_SETBACKS",
+  "COMM_ACC_HEIGHT",
+  "COMM_GARAGE_PARKING_ACCESS",
 ];
 
 /** Rule types of the generic inference-policy mechanism; they carry no zone claim of their own. */

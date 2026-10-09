@@ -1,6 +1,6 @@
 /**
- * REAL governance candidates for the multifamily zones - Lowrise (LR1-LR3) - for the five supported project types (citywide zoning coverage,
- * 2026-10-09). Content is current Seattle code as read live from Municode on 2026-10-09 (Ord. 127376, 2025), SMC Chapter 23.45:
+ * REAL governance candidates for the multifamily zones - Lowrise (LR1-LR3), Midrise (MR) and Highrise (HR) - for shed, detached garage, fence and deck
+ * (citywide zoning coverage, 2026-10-09). Content is current Seattle code as read live from Municode on 2026-10-09 (Ord. 127376, 2025), SMC Chapter 23.45:
  *  - 23.45.518.H.1 (accessory structures in required rear and side setbacks: not between the house and a side lot line, 5 ft from the side lot line beyond
  *    25 ft of the rear lot line, 7 ft from a street lot line, 3 ft from principal structures), Table A for 23.45.518 (required setbacks),
  *  - 23.45.514.C (12 ft for an accessory structure in a required setback or separation; a garage ridge may add 3 ft) and Table A (32/40/50 ft),
@@ -124,10 +124,24 @@ const HEIGHT_CAVEATS = [
   },
 ];
 
+const HEIGHT_SPEC_MR_HR = {
+  ruleType: "MF_ACC_HEIGHT",
+  inSetbackMaxFt: 12,
+  garageRidgeAllowanceFt: 3,
+  outsideSetbackSafeMaxFt: 60,
+  // MR setbacks (SMC 23.45.518 Table B); a Highrise structure of 85 ft or less follows the MR setbacks (Table C), which covers an accessory structure.
+  required: { front: { minFt: 5, averageFt: 7 }, rear: { minFt: 15, averageFt: 15 }, rearAlley: { minFt: 10, averageFt: 10 }, side: { minFt: 5, averageFt: 7 } },
+  citation: "SMC 23.45.514.C",
+  structureHeightText: "The structure height limit is 60 ft (80 ft with an MHA suffix) in a Midrise zone and 440 ft in a Highrise zone (SMC 23.45.514 Table B), with roof allowances.",
+  mappingToleranceFt: 2,
+};
+
 const SEPARATION_SPEC = { ruleType: "MF_ACC_SEPARATION", inSetbackMinFt: 3, otherwiseMinFt: 5, mappingToleranceFt: 2 };
 
 interface FarVariant {
   token: string;
+  /** A real designation the token covers, used by the row's declared test case. */
+  example: string;
   slug: string;
   far: number;
   farStacked?: number;
@@ -135,19 +149,21 @@ interface FarVariant {
   conditionText?: string;
 }
 const FAR_VARIANTS: FarVariant[] = [
-  { token: "LR1:MHA", slug: "lr1-mha", far: 1.3, farStacked: 1.5, zoneText: "A Lowrise 1 (LR1) zone with a mandatory housing affordability (MHA) suffix" },
-  { token: "LR1:NO_MHA", slug: "lr1-nomha", far: 1.0, zoneText: "A Lowrise 1 (LR1) zone without an MHA suffix" },
+  { token: "LR1:MHA", example: "LR1 (M)", slug: "lr1-mha", far: 1.3, farStacked: 1.5, zoneText: "A Lowrise 1 (LR1) zone with a mandatory housing affordability (MHA) suffix" },
+  { token: "LR1:NO_MHA", example: "LR1", slug: "lr1-nomha", far: 1.0, zoneText: "A Lowrise 1 (LR1) zone without an MHA suffix" },
   {
     token: "LR2:MHA",
+    example: "LR2 (M1)",
     slug: "lr2-mha",
     far: 1.4,
     farStacked: 1.6,
     zoneText: "A Lowrise 2 (LR2) zone with an MHA suffix",
     conditionText: "For stacked dwelling units that provide outdoor amenity area meeting SMC 23.45.522 equal to at least 35 percent of the lot area, the figure is 1.8 (SMC 23.45.510 Table A footnote 1).",
   },
-  { token: "LR2:NO_MHA", slug: "lr2-nomha", far: 1.1, zoneText: "A Lowrise 2 (LR2) zone without an MHA suffix" },
+  { token: "LR2:NO_MHA", example: "LR2", slug: "lr2-nomha", far: 1.1, zoneText: "A Lowrise 2 (LR2) zone without an MHA suffix" },
   {
     token: "LR3:MHA",
+    example: "LR3 (M)",
     slug: "lr3-mha",
     far: 1.8,
     zoneText: "A Lowrise 3 (LR3) zone with an MHA suffix",
@@ -155,11 +171,22 @@ const FAR_VARIANTS: FarVariant[] = [
   },
   {
     token: "LR3:NO_MHA",
+    example: "LR3",
     slug: "lr3-nomha",
     far: 1.2,
     farStacked: 1.3,
     zoneText: "A Lowrise 3 (LR3) zone without an MHA suffix",
     conditionText: "The stacked-dwelling-unit figure shown is for a lot outside a regional center or urban center; inside one it is 1.5 (SMC 23.45.510 Table A).",
+  },
+  { token: "MR:MHA", example: "MR (M1)", slug: "mr-mha", far: 4.5, zoneText: "A Midrise (MR) zone with an MHA suffix" },
+  { token: "MR:NO_MHA", example: "MR", slug: "mr-nomha", far: 3.2, zoneText: "A Midrise (MR) zone without an MHA suffix" },
+  {
+    token: "HR",
+    example: "HR (M)",
+    slug: "hr",
+    far: 7,
+    zoneText: "A Highrise (HR) zone",
+    conditionText: "The figure shown is the base FAR; floor area above it, up to 15, is available only through the extra residential floor area provisions of SMC 23.45.516 and Chapter 23.58A (SMC 23.45.510 Table B).",
   },
 ];
 
@@ -182,7 +209,7 @@ function farRow(projectType: "shed" | "garage", v: FarVariant): DraftedRuleInput
         resolutionStatus: "Resolved by design - the rule exists so the claim is governed and the absence of a lot-coverage limit is stated.",
       },
     ],
-    testCases: [tc("EXCEPTION", "Floor area of existing buildings is not known", { parcelAreaSqFt: 4000 }, "Floor area ratio", "REQUIRES_VERIFICATION", v.token.startsWith("LR1") ? (v.token.endsWith("NO_MHA") ? "LR1" : "LR1 (M)") : v.token.startsWith("LR2") ? (v.token.endsWith("NO_MHA") ? "LR2" : "LR2 (M1)") : v.token.endsWith("NO_MHA") ? "LR3" : "LR3 (M)")],
+    testCases: [tc("EXCEPTION", "Floor area of existing buildings is not known", { parcelAreaSqFt: 4000 }, "Floor area ratio", "REQUIRES_VERIFICATION", v.example)],
     isTestOnlyFixture: false,
   };
 }
@@ -230,13 +257,29 @@ function accessoryRows(projectType: "shed" | "garage"): DraftedRuleInput[] {
       ],
       isTestOnlyFixture: false,
     },
+    {
+      id: `${projectType}-mf-height-mr-hr-2026`,
+      subject: "Accessory structure height limit in Midrise and Highrise zones - 12 ft in a required setback or separation; the zone's structure height limit elsewhere",
+      applicableProjectType: projectType,
+      applicableZone: "MR,HR",
+      ruleSpecification: HEIGHT_SPEC_MR_HR,
+      citation: { smcSections: ["SMC 23.45.514.C", "SMC 23.45.514.B", "SMC 23.45.514 Table B", "SMC 23.45.518 Table B"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
+      caveats: HEIGHT_CAVEATS,
+      testCases: [
+        tc("POSITIVE", "10 ft: within the 12 ft limit wherever it stands", { heightFt: 10 }, "Accessory structure height limit", "KNOWN/PASS", "MR (M1)"),
+        tc("POSITIVE", "20 ft outside every required setback", { heightFt: 20, isInRequiredSetback: false }, "Accessory structure height limit", "KNOWN/PASS", "HR (M)"),
+        tc("EXCEPTION", "14 ft in a required setback", { heightFt: 14, isInRequiredSetback: true }, "Accessory structure height limit", "REQUIRES_VERIFICATION", "MR"),
+        tc("EXCEPTION", "70 ft outside every required setback", { heightFt: 70, isInRequiredSetback: false }, "Accessory structure height limit", "REQUIRES_VERIFICATION", "MR"),
+      ],
+      isTestOnlyFixture: false,
+    },
   ];
   if (projectType === "shed") {
     rows.push({
-      id: "shed-mf-separation-lr-2026",
-      subject: "Shed separation from the house in Lowrise zones - 3 ft in a required setback (SMC 23.45.518.H.1.d); 5 ft between structures containing floor area elsewhere",
+      id: "shed-mf-separation-2026",
+      subject: "Shed separation from the house in Lowrise and Midrise zones - 3 ft in a required setback (SMC 23.45.518.H.1.d); 5 ft between structures containing floor area elsewhere",
       applicableProjectType: "shed",
-      applicableZone: "LR",
+      applicableZone: "LR,MR",
       ruleSpecification: SEPARATION_SPEC,
       citation: { smcSections: ["SMC 23.45.518.H.1.d", "SMC 23.45.519.A"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
       caveats: [
@@ -259,10 +302,10 @@ function accessoryRows(projectType: "shed" | "garage"): DraftedRuleInput[] {
     });
   } else {
     rows.push({
-      id: "garage-mf-parking-access-lr-2026",
-      subject: "Detached garage access, driveway and garage-door standards in Lowrise zones (SMC 23.45.536)",
+      id: "garage-mf-parking-access-2026",
+      subject: "Detached garage access, driveway and garage-door standards in Lowrise and Midrise zones (SMC 23.45.536)",
       applicableProjectType: "garage",
-      applicableZone: "LR",
+      applicableZone: "LR,MR",
       ruleSpecification: { ruleType: "MF_GARAGE_PARKING_ACCESS", garageDoorMinFromStreetLotLineFt: 18, surfaceParkingMinFromStreetLotLineFt: 20, citation: "SMC 23.45.536" },
       citation: { smcSections: ["SMC 23.45.536.B", "SMC 23.45.536.C", "SMC 23.45.536.E"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
       caveats: [
@@ -369,6 +412,30 @@ export const fenceMultifamilyCandidates: DraftedRuleInput[] = [
     testCases: [
       tc("POSITIVE", "7 ft fence outside required setbacks", { heightFt: 7, locations: ["OUTSIDE_REQUIRED_SETBACKS"] }, "Fence height (outside required setbacks)", "KNOWN/PASS"),
       tc("NEGATIVE", "33 ft structure outside required setbacks (exercises the rule logic directly)", { heightFt: 33, locations: ["OUTSIDE_REQUIRED_SETBACKS"] }, "Fence height (outside required setbacks)", "KNOWN/FAIL"),
+    ],
+    isTestOnlyFixture: false,
+  },
+  {
+    id: "fence-mf-f4-outside-required-setbacks-mr-hr-2026",
+    subject: "Fence outside every required setback in Midrise and Highrise zones - SMC 23.45.518.H.7 does not apply; lowest structure height limit 60 ft",
+    applicableProjectType: "fence",
+    applicableZone: "MR,HR",
+    ruleSpecification: { ruleType: FenceRuleType.OUTSIDE_REQUIRED_SETBACKS, generalStructureHeightLimitFt: 60 },
+    citation: { smcSections: [SMC_FENCES, "SMC 23.45.514.B"], ordinanceNumber: "127376", effectiveDateBasis: BASIS },
+    caveats: [
+      DECLARED_INPUT_CAVEAT,
+      ZONING_CAVEAT,
+      {
+        category: "scoped negative finding",
+        description: "H.7 allows fences in required setbacks up to stated heights and is silent outside them; Table B of 23.45.514 sets 60 ft (80 ft with an MHA suffix) in MR and 440 ft in HR (the lowest, 60 ft, is used and intake caps a fence at 20 ft). The finding is worded 'no fence-specific limit identified among the provisions evaluated', never as general compliance.",
+        affectedConditionOrInterpretation: "Absence of any other limit on a fence outside setbacks",
+        sourceReferences: [SMC_FENCES, "SMC 23.45.514 Table B"],
+        resolutionStatus: "Resolved by design.",
+      },
+    ],
+    testCases: [
+      tc("POSITIVE", "7 ft fence outside required setbacks", { heightFt: 7, locations: ["OUTSIDE_REQUIRED_SETBACKS"] }, "Fence height (outside required setbacks)", "KNOWN/PASS", "MR (M1)"),
+      tc("NEGATIVE", "61 ft structure outside required setbacks (exercises the rule logic directly)", { heightFt: 61, locations: ["OUTSIDE_REQUIRED_SETBACKS"] }, "Fence height (outside required setbacks)", "KNOWN/FAIL", "HR"),
     ],
     isTestOnlyFixture: false,
   },

@@ -38,6 +38,7 @@ import { getReportPrice } from "./types.js";
 // No ".js" suffix (see reconciliation.ts's comment on the same import) - required for the
 // Workflow SDK's own build-time discovery to correctly resolve this file.
 import { processRefundWorkflow } from "../workflows/refund-workflow";
+import { checkZoningPurchaseEligibility } from "../zoning/eligibility-service.js";
 
 export type { CreateCheckoutSessionResult } from "../order-payment/repository.js";
 
@@ -97,6 +98,13 @@ export async function initiateCheckout(
   // no-op ({ ready: true }) for non-VACANT_LAND requests.
   const vacantLandEligibility = checkVacantLandCheckoutEligibility(request);
   if (!vacantLandEligibility.ready) return { outcome: "NOT_READY", reason: vacantLandEligibility.reason };
+
+  // Citywide zoning coverage: the per-property purchase gate. A report is sold only when Permit Preflight has implemented enough coverage for the
+  // zone(s) this project stands in to deliver the minimum useful report (zoning/core-claims.ts); otherwise nothing is charged. A no-op for vacant land.
+  if (request.workflowType === WorkflowType.EXISTING_PROPERTY) {
+    const zoningEligibility = await checkZoningPurchaseEligibility(db, request);
+    if (!zoningEligibility.eligible) return { outcome: "NOT_READY", reason: zoningEligibility.message };
+  }
 
   // Purchase lock (BR-U2B-16): take the immutable snapshot NOW, once, if not already taken - a
   // later Order for this same screeningRequestId (e.g. after an EXPIRED attempt) reuses this same

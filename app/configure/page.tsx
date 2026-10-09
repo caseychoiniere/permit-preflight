@@ -130,6 +130,9 @@ export default function ConfigurePage() {
     };
   }, []);
 
+  // Citywide zoning coverage - the early, lot-level advisory for the TYPE step: the zone Seattle's data shows and which project types Permit Preflight can
+  // screen for it. Advisory only; the authoritative per-property purchase gate runs at checkout. Unknown (not yet fetched, or the fetch failed) never blocks.
+  const [zoningAdvisory, setZoningAdvisory] = useState<{ zoneLabels: string[]; byProjectType: Record<string, { eligible: boolean; message?: string }> } | null>(null);
   const [screeningRequestId, setScreeningRequestId] = useState<string | null>(null);
   const [projectType, setProjectType] = useState<SelectedProjectType>(null);
   const [dimensions, setDimensions] = useState({ widthFt: 8, depthFt: 10, heightFt: 8, alleyAdjacent: false });
@@ -255,7 +258,16 @@ export default function ConfigurePage() {
     setBoundaryPolygonWgs84(boundaryResult.boundaryPolygonWgs84);
     setQualityCaveat(boundaryResult.qualityCaveat);
     setExistingStructures(Array.isArray(boundaryResult.existingStructures) ? boundaryResult.existingStructures : []);
+    setZoningAdvisory(null);
     setStep("TYPE");
+    fetch(`/api/parcels/${encodeURIComponent(parcelId)}/zoning-eligibility`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((advisory) => {
+        if (advisory && advisory.byProjectType) setZoningAdvisory(advisory);
+      })
+      .catch(() => {
+        /* the advisory is optional; checkout still enforces the per-property gate */
+      });
   }
 
   async function submitAddress() {
@@ -555,39 +567,47 @@ export default function ConfigurePage() {
           <p className="text-sm text-slate-500">
             Parcel confirmed: <span className="font-medium text-slate-900">{parcelId}</span>
           </p>
+          {zoningAdvisory && zoningAdvisory.zoneLabels.length > 0 && (
+            <p className="mt-1 text-sm text-slate-500">
+              Seattle zoning data maps this property as <span className="font-medium text-slate-900">{zoningAdvisory.zoneLabels.join(" and ")}</span>.
+            </p>
+          )}
           <h1 className="mt-2 text-lg font-semibold text-slate-900">What are you planning to build?</h1>
           <div className="mt-4 flex flex-col items-start gap-2">
-            {availableProjectTypes.includes(ProjectType.SHED) && (
-              <Button variant="primary" onClick={() => selectProjectType(ProjectType.SHED)}>
-                Screen a shed / accessory structure
-              </Button>
-            )}
-            {availableProjectTypes.includes(ProjectType.GARAGE) && (
-              <Button variant="primary" onClick={() => selectProjectType(ProjectType.GARAGE)}>
-                Screen a detached garage
-              </Button>
-            )}
-            {availableProjectTypes.includes(ProjectType.FENCE) && (
-              <Button variant="primary" onClick={() => selectProjectType(ProjectType.FENCE)}>
-                Screen a fence
-              </Button>
-            )}
-            {availableProjectTypes.includes(ProjectType.DECK) && (
-              <Button variant="primary" onClick={() => selectProjectType(ProjectType.DECK)}>
-                Screen a deck
-              </Button>
-            )}
+            {(
+              [
+                [ProjectType.SHED, "shed", "Screen a shed / accessory structure"],
+                [ProjectType.GARAGE, "garage", "Screen a detached garage"],
+                [ProjectType.FENCE, "fence", "Screen a fence"],
+                [ProjectType.DECK, "deck", "Screen a deck"],
+              ] as const
+            )
+              .filter(([type]) => availableProjectTypes.includes(type))
+              .map(([type, key, label]) => {
+                const blocked = zoningAdvisory?.byProjectType[key]?.eligible === false;
+                return (
+                  <div key={type}>
+                    <Button variant="primary" disabled={blocked} onClick={() => selectProjectType(type)}>
+                      {label}
+                    </Button>
+                    {blocked && <p className="mt-1 max-w-xl text-sm text-slate-600">{zoningAdvisory?.byProjectType[key]?.message}</p>}
+                  </div>
+                );
+              })}
             {availableProjectTypes.includes(ProjectType.ADU) && (
               <>
-                <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "NEW")}>
-                  Screen a new detached ADU (backyard cottage)
-                </Button>
-                <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "CONVERSION")}>
-                  Screen converting an existing garage or shed into an ADU
-                </Button>
-                <Button variant="primary" onClick={() => selectProjectType(ProjectType.ADU, "ATTACHED")}>
-                  Screen an ADU inside or attached to my house (basement, attic, garage, addition)
-                </Button>
+                {(
+                  [
+                    ["NEW", "Screen a new detached ADU (backyard cottage)"],
+                    ["CONVERSION", "Screen converting an existing garage or shed into an ADU"],
+                    ["ATTACHED", "Screen an ADU inside or attached to my house (basement, attic, garage, addition)"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <Button key={mode} variant="primary" disabled={zoningAdvisory?.byProjectType["adu"]?.eligible === false} onClick={() => selectProjectType(ProjectType.ADU, mode)}>
+                    {label}
+                  </Button>
+                ))}
+                {zoningAdvisory?.byProjectType["adu"]?.eligible === false && <p className="max-w-xl text-sm text-slate-600">{zoningAdvisory.byProjectType["adu"]?.message}</p>}
               </>
             )}
           </div>

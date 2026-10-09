@@ -85,6 +85,9 @@ function ruleTypeOf(rule: RegulatoryRule): string | undefined {
   return (rule.ruleSpecification as { ruleType?: string }).ruleType;
 }
 
+function nonNegativeFinite(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0;
+}
 function positiveFinite(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && v > 0;
 }
@@ -92,10 +95,10 @@ function positiveFinite(v: unknown): v is number {
 /** Specification guards: a malformed specification makes the rule unavailable (fail closed) rather
  * than letting NaN/undefined silently compare as false. */
 const SPEC_GUARDS: Record<string, (spec: Record<string, unknown>) => boolean> = {
-  [FenceRuleType.HEIGHT_STANDARD]: (s) => positiveFinite(s["maxFt"]) && positiveFinite(s["openFeatureAllowanceFt"]) && positiveFinite(s["absoluteMaxFt"]),
+  [FenceRuleType.HEIGHT_STANDARD]: (s) => positiveFinite(s["maxFt"]) && nonNegativeFinite(s["openFeatureAllowanceFt"]) && positiveFinite(s["absoluteMaxFt"]),
   [FenceRuleType.HEIGHT_FRONT_STREET_SIDE]: (s) => positiveFinite(s["maxFt"]) && positiveFinite(s["absoluteMaxFt"]),
   [FenceRuleType.RETAINING_WALL]: (s) =>
-    positiveFinite(s["fenceOnWallMaxFt"]) && positiveFinite(s["combinedMaxFt"]) && positiveFinite(s["raisingGradeWallMaxFt"]) && positiveFinite(s["cutWallFenceSetbackFt"]),
+    (s["fenceOnWallMaxFt"] === undefined || positiveFinite(s["fenceOnWallMaxFt"])) && positiveFinite(s["combinedMaxFt"]) && positiveFinite(s["raisingGradeWallMaxFt"]) && positiveFinite(s["cutWallFenceSetbackFt"]),
   [FenceRuleType.OUTSIDE_REQUIRED_SETBACKS]: (s) => positiveFinite(s["generalStructureHeightLimitFt"]),
   [FenceRuleType.PERMIT_HEIGHT_EXEMPTION]: (s) => positiveFinite(s["maxFt"]),
   [FenceRuleType.PERMIT_MASONRY_CONCRETE]: (s) => positiveFinite(s["elementsAboveFt"]),
@@ -191,7 +194,7 @@ function evaluateSetbackLocation(project: FenceProjectDetails, location: FenceLo
 
   const zoneSpec = zone.spec as { maxFt: number; absoluteMaxFt: number; openFeatureAllowanceFt?: number };
   const h = heights(project);
-  const baseLimit = wallRule ? Math.min(zoneSpec.maxFt, wallRule.spec.fenceOnWallMaxFt) : zoneSpec.maxFt;
+  const baseLimit = wallRule ? Math.min(zoneSpec.maxFt, wallRule.spec.fenceOnWallMaxFt ?? zoneSpec.maxFt) : zoneSpec.maxFt;
   // A top feature only gets its own allowance in the ordinary (non-4-ft, not on a wall) case; everywhere
   // else it simply counts toward the height that is limited.
   const featureAllowance = !isFourFootZone && !wallRule ? zoneSpec.openFeatureAllowanceFt ?? 0 : 0;
@@ -223,7 +226,7 @@ function evaluateSetbackLocation(project: FenceProjectDetails, location: FenceLo
   const where = isFourFootZone
     ? `${label} (fences here are limited to ${ft(zoneSpec.maxFt)} ft)`
     : `${label} (fences up to ${ft(zoneSpec.maxFt)} ft are allowed${featureAllowance > 0 ? `, plus up to ${ft(featureAllowance)} ft for a predominantly open arbor or trellis` : ""})`;
-  const wallNote = wallRule ? ` A fence on top of a retaining wall or bulkhead is limited to ${ft(wallRule.spec.fenceOnWallMaxFt)} ft.` : "";
+  const wallNote = wallRule ? (wallRule.spec.fenceOnWallMaxFt !== undefined ? ` A fence on top of a retaining wall or bulkhead is limited to ${ft(wallRule.spec.fenceOnWallMaxFt)} ft.` : ` A fence on top of a new retaining wall or bulkhead is also limited by the combined wall and fence height of ${ft(wallRule.spec.combinedMaxFt)} ft.`) : "";
 
   if (failures.length > 0) {
     return {
@@ -347,8 +350,8 @@ function evaluateWall(project: FenceProjectDetails, rules: ActiveRules): { findi
         classification: FindingClassification.REQUIRES_VERIFICATION,
         subject,
         appliedRule: appliedRule(wall.rule),
-        supportingEvidence: [`declaredWallHeightFt=${ft(wallHeight)}`, `fenceOnWallMaxFt=${ft(spec.fenceOnWallMaxFt)}`],
-        explanationBasis: `A fence on top of a retaining wall or bulkhead is limited to ${ft(spec.fenceOnWallMaxFt)} ft (checked in the height findings above). Whether the declared ${ft(wallHeight)} ft wall is itself allowed in the required setback depends on whether it raises grade or protects a cut and on its history, which Permit Preflight cannot determine. ${DECLARED_BASIS}`,
+        supportingEvidence: [`declaredWallHeightFt=${ft(wallHeight)}`, ...(spec.fenceOnWallMaxFt !== undefined ? [`fenceOnWallMaxFt=${ft(spec.fenceOnWallMaxFt)}`] : [`combinedMaxFt=${ft(spec.combinedMaxFt)}`])],
+        explanationBasis: `A fence on top of a retaining wall or bulkhead is limited ${spec.fenceOnWallMaxFt !== undefined ? `to ${ft(spec.fenceOnWallMaxFt)} ft` : `by its zone's fence height limit and, on a new wall that raises grade, by the combined height of ${ft(spec.combinedMaxFt)} ft`} (checked in the height findings above). Whether the declared ${ft(wallHeight)} ft wall is itself allowed in the required setback depends on whether it raises grade or protects a cut and on its history, which Permit Preflight cannot determine. ${DECLARED_BASIS}`,
       },
     };
   }

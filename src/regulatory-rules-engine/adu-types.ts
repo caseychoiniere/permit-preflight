@@ -102,6 +102,11 @@ export const AduRuleType = {
   DESIGN_STANDARDS: "ADU_A10_DESIGN_STANDARDS",
   CONVERSION: "ADU_A11_CONVERSION_OF_EXISTING_ACCESSORY_STRUCTURE",
   ATTACHED: "ADU_A12_ATTACHED_TO_OR_INSIDE_HOUSE",
+  // Multifamily (Lowrise) zones, SMC Chapter 23.45: no density or lot-coverage limit; floor area ratio and a landscaping note instead.
+  MF_COUNT: "ADU_MF_COUNT",
+  MF_NO_LOT_COVERAGE_LIMIT: "ADU_MF_NO_LOT_COVERAGE_LIMIT",
+  MF_FLOOR_AREA_RATIO: "ADU_MF_FAR",
+  MF_LANDSCAPING_NOTE: "ADU_MF_LANDSCAPING_NOTE",
 } as const;
 export type AduRuleType = (typeof AduRuleType)[keyof typeof AduRuleType];
 
@@ -131,6 +136,9 @@ export interface AduSizeLimitSpec {
   maxSqFtUpToTwoBedrooms: number;
   maxSqFtThreePlusBedrooms: number;
   bikeParkingExclusionSqFt: number;
+  /** A larger cap that applies only if conditions Permit Preflight cannot establish are met (Lowrise: 1,500 sq ft, SMC 23.42.022.G.1.c). Up to it, the result is REQUIRES_VERIFICATION, never a failure. */
+  conditionalExtendedCapSqFt?: number;
+  conditionalExtendedCapText?: string;
 }
 export interface AduSetbacksSpec {
   ruleType: typeof AduRuleType.SETBACKS;
@@ -144,17 +152,30 @@ export interface AduSetbacksSpec {
   frontThreeOrMoreUnitsFt: number;
   /** Product margin for mapped distances: a distance within this many feet of a threshold is not treated as a definite result. */
   mappingToleranceFt: number;
+  /** Where the zone states a minimum below its average (Lowrise rear and front 7 ft average, 5 ft minimum): a distance clearly short of this is a failure, between it and the average is REQUIRES_VERIFICATION. */
+  rearMinFt?: number;
+  frontMinFt?: number;
+  /** Customer-facing citations (default: the Neighborhood Residential text "SMC 23.44.090 Table A"). */
+  citation?: string;
+  rearAlleyCitation?: string;
 }
 export interface AduSeparationSpec {
   ruleType: typeof AduRuleType.SEPARATION;
   minFt: number;
   mappingToleranceFt: number;
+  /** Customer-facing citation (default "SMC 23.44.100.A"). */
+  citation?: string;
 }
 export interface AduHeightSpec {
   ruleType: typeof AduRuleType.HEIGHT;
   maxFt: number;
+  /** The tallest limit that can apply short of the roof allowance (Neighborhood Residential: with tree retention; Lowrise: the regional-center figure). */
   treeRetentionMaxFt: number;
   pitchedRoofRidgeAllowanceFt: number;
+  /** Customer-facing citation (default "SMC 23.44.070.A") and the sentences that describe the higher limit and the roof allowance (default: the Neighborhood Residential text). */
+  citation?: string;
+  higherLimitText?: string;
+  pitchedRoofText?: string;
 }
 export interface AduLotCoverageSpec {
   ruleType: typeof AduRuleType.LOT_COVERAGE;
@@ -172,6 +193,10 @@ export interface AduAmenitySpec {
   requiredFractionOfLot: number;
   minSqFt: number;
   minDimensionFt: number;
+  /** Customer-facing citations (default "SMC 23.44.110" and "SMC 23.44.110.H.1"); `canopyExemption` false drops the Neighborhood Residential tree-canopy exemption sentence. */
+  citation?: string;
+  exemptionCitation?: string;
+  canopyExemption?: boolean;
 }
 export interface AduTreesSpec {
   ruleType: typeof AduRuleType.TREES;
@@ -185,6 +210,8 @@ export interface AduDesignStandardsSpec {
   streetFacingWithinFt: number;
   weatherProtectionFt: number;
   facadeOpeningsPercent: number;
+  /** Customer-facing citations (default the Neighborhood Residential section "SMC 23.44.140"). */
+  citation?: string;
 }
 
 export interface AduConversionSpec {
@@ -198,6 +225,29 @@ export interface AduConversionSpec {
   waivesSetbacksAndLotCoverage: boolean;
   /** The Director may allow waivers and modifications as a Type I decision (SMC 23.42.022.H.3.a). */
   directorMayWaiveAndModify: boolean;
+  /** The zone's height standards for the converted building, stated for the not-determined case (default: the Neighborhood Residential text). */
+  heightNote?: string;
+}
+
+export interface AduMfCountSpec {
+  ruleType: typeof AduRuleType.MF_COUNT;
+  maxAdusPerLot: number;
+  /** Statement that the zone has no density limit by lot area (the floor area ratio limits instead). */
+  noDensityLimitText: string;
+}
+export interface AduMfNoLotCoverageLimitSpec {
+  ruleType: typeof AduRuleType.MF_NO_LOT_COVERAGE_LIMIT;
+  statement: string;
+}
+export interface AduMfFarSpec {
+  ruleType: typeof AduRuleType.MF_FLOOR_AREA_RATIO;
+  far: number;
+  zoneText: string;
+  conditionText?: string;
+}
+export interface AduMfLandscapingNoteSpec {
+  ruleType: typeof AduRuleType.MF_LANDSCAPING_NOTE;
+  text: string;
 }
 
 export interface AduAttachedSpec {

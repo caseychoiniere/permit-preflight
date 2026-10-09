@@ -10,7 +10,7 @@
  */
 
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
-import { CORE_CLAIMS } from "./core-claims.js";
+import { CORE_CLAIMS, NOT_APPLICABLE } from "./core-claims.js";
 import type { CoreProjectType } from "./core-claims.js";
 import { singleZoneContext } from "./context.js";
 import { ZONE_FAMILY_INFO } from "./designation.js";
@@ -58,22 +58,13 @@ export const CLAIM_CATALOG: Record<CoreProjectType, ClaimDefinition[]> = {
     ...CORE_CLAIMS.adu.map((c) => ({ ...c, core: true })),
     { claim: "size limit", anyOfRuleTypes: ["ADU_A2_SIZE_LIMIT"], core: false },
     { claim: "separation between structures", anyOfRuleTypes: ["ADU_A4_SEPARATION"], core: false },
-    { claim: "lot coverage", anyOfRuleTypes: ["ADU_A6_LOT_COVERAGE"], core: false },
-    { claim: "floor area ratio", anyOfRuleTypes: ["ADU_A7_FLOOR_AREA_RATIO"], core: false },
+    { claim: "lot coverage", anyOfRuleTypes: ["ADU_A6_LOT_COVERAGE", "ADU_MF_NO_LOT_COVERAGE_LIMIT"], core: false },
+    { claim: "floor area ratio", anyOfRuleTypes: ["ADU_A7_FLOOR_AREA_RATIO", "ADU_MF_FAR"], core: false },
     { claim: "amenity area", anyOfRuleTypes: ["ADU_A8_AMENITY_AREA"], core: false },
-    { claim: "trees", anyOfRuleTypes: ["ADU_A9_TREES"], core: false },
+    { claim: "trees", anyOfRuleTypes: ["ADU_A9_TREES", "ADU_MF_LANDSCAPING_NOTE"], core: false },
     { claim: "design standards", anyOfRuleTypes: ["ADU_A10_DESIGN_STANDARDS"], core: false },
   ],
 };
-
-/** Combinations the governing code makes inapplicable. Each needs a citation; leave empty rather than guess. */
-export interface NotApplicableDeclaration {
-  projectType: CoreProjectType;
-  family: ZoneFamily;
-  reason: string;
-  citation: string;
-}
-export const NOT_APPLICABLE: NotApplicableDeclaration[] = [];
 
 export interface MatrixCell {
   projectType: CoreProjectType;
@@ -106,7 +97,7 @@ export function buildCoverageMatrix(input: BuildMatrixInput): MatrixCell[] {
       const types = new Set(resolved.rules.map(ruleTypeOf));
       const claims = CLAIM_CATALOG[projectType].map((c) => ({ claim: c.claim, core: c.core, covered: c.anyOfRuleTypes.some((t) => types.has(t)) }));
       const core = claims.filter((c) => c.core);
-      const na = NOT_APPLICABLE.find((n) => n.projectType === projectType && n.family === d.family);
+      const na = NOT_APPLICABLE.find((n) => n.projectType === projectType && n.zoneCode === d.zoneCode);
       const status: CoverageStatus = na ? "NOT_APPLICABLE" : core.every((c) => c.covered) ? "SUPPORTED" : core.some((c) => c.covered) ? "PARTIALLY_SUPPORTED" : "NOT_YET_SUPPORTED";
       cells.push({ projectType, zoneCode: d.zoneCode, family: d.family, example, status, claims, ...(na ? { notApplicable: { reason: na.reason, citation: na.citation } } : {}) });
     }

@@ -3,7 +3,7 @@
  * mechanisms (bootstrapUnit6bGovernance, then sourceVerifyRule -> markRuleTested -> approveRule) and STOPS at APPROVED: it never calls activateRule and
  * never touches any other row. Safe to re-run: bootstrap never overwrites; a row already APPROVED (or ACTIVE) is skipped; any other state aborts.
  *
- * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise)
+ * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise | commercial)
  */
 
 import { inArray } from "drizzle-orm";
@@ -14,6 +14,8 @@ import { bootstrapUnit6bGovernance, type BootstrapCandidate } from "../src/regul
 import { approveRule, markRuleTested, sourceVerifyRule } from "../src/regulatory-rule-governance/admin-lifecycle.js";
 import type { DraftedRuleInput } from "../src/regulatory-rule-governance/lifecycle.js";
 import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../tests/fixtures/multifamily-candidates.js";
+import { ADU_MF_FIXED_ROW_IDS, aduMultifamilyCandidates } from "../tests/fixtures/multifamily-adu-candidates.js";
+import { COMMERCIAL_FIXED_ROW_IDS, allCommercialCandidates } from "../tests/fixtures/commercial-candidates.js";
 
 process.loadEnvFile(".env.local");
 
@@ -28,8 +30,24 @@ interface RuleSet {
 }
 
 const SETS: Record<string, RuleSet> = {
+  "lowrise-adu": {
+    name: "Lowrise (LR1-LR3) ADU rules",
+    candidates: aduMultifamilyCandidates,
+    rowIds: ADU_MF_FIXED_ROW_IDS,
+    basis: "Ordinance 127376 (2025), SMC 23.42.022 and Chapter 23.45, Municode Library CURRENT, read live 2026-10-09",
+    tests: "tests/regulatory-rule-governance/multifamily-adu-candidates.test.ts (every declared case executed against the real ADU evaluator and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
+    placementRows: (c) => ["ADU_A3_SETBACKS", "ADU_A4_SEPARATION"].includes((c.ruleSpecification as { ruleType: string }).ruleType),
+  },
+  commercial: {
+    name: "Neighborhood Commercial and Commercial (C1) shed, detached garage, fence and deck rules",
+    candidates: allCommercialCandidates,
+    rowIds: COMMERCIAL_FIXED_ROW_IDS,
+    basis: "Ordinance 127375/127376 (2025), SMC Chapter 23.47A, Municode Library CURRENT, read live 2026-10-09",
+    tests: "tests/regulatory-rule-governance/commercial-candidates.test.ts (every declared case executed against the real evaluators and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
+    placementRows: () => false,
+  },
   lowrise: {
-    name: "Lowrise (LR1-LR3) shed, detached garage, fence and deck rules",
+    name: "Multifamily (LR1-LR3, MR, HR) shed, detached garage, fence and deck rules",
     candidates: allMultifamilyCandidates,
     rowIds: MULTIFAMILY_FIXED_ROW_IDS,
     basis: "Ordinance 127376 (2025), SMC Chapter 23.45 (and 23.46.002.B for RC), Municode Library CURRENT, read live 2026-10-09",

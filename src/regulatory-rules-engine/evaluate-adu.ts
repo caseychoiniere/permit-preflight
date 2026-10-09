@@ -39,6 +39,10 @@ import type {
   AduFeasibilityHeadline,
   AduHeightSpec,
   AduLotCoverageSpec,
+  AduMfCountSpec,
+  AduMfFarSpec,
+  AduMfLandscapingNoteSpec,
+  AduMfNoLotCoverageLimitSpec,
   AduProjectDetails,
   AduSeparationSpec,
   AduSetbacksSpec,
@@ -124,6 +128,10 @@ const SPEC_GUARDS: Record<string, (s: Record<string, unknown>) => boolean> = {
     typeof s["directorMayWaiveAndModify"] === "boolean",
   [AduRuleType.ATTACHED]: (s) =>
     typeof s["capExemptionBeforeDate"] === "string" && !Number.isNaN(Date.parse(s["capExemptionBeforeDate"] as string)) && nonNegativeFinite(s["attachedGarageExclusionSqFt"]),
+  [AduRuleType.MF_COUNT]: (s) => positiveFinite(s["maxAdusPerLot"]) && typeof s["noDensityLimitText"] === "string",
+  [AduRuleType.MF_NO_LOT_COVERAGE_LIMIT]: (s) => typeof s["statement"] === "string" && (s["statement"] as string).length > 0,
+  [AduRuleType.MF_FLOOR_AREA_RATIO]: (s) => positiveFinite(s["far"]) && typeof s["zoneText"] === "string",
+  [AduRuleType.MF_LANDSCAPING_NOTE]: (s) => typeof s["text"] === "string" && (s["text"] as string).length > 0,
   [AduRuleType.DESIGN_STANDARDS]: (s) =>
     positiveFinite(s["pedestrianAccessMinWidthFt"]) && positiveFinite(s["streetFacingWithinFt"]) && positiveFinite(s["weatherProtectionFt"]) && positiveFinite(s["facadeOpeningsPercent"]),
 };
@@ -321,7 +329,8 @@ interface Evaluated {
 }
 
 function evaluateCount(project: AduProjectDetails, rules: ActiveRules): Evaluated {
-  const r = rules.find<AduCountAndDensitySpec>(AduRuleType.COUNT_AND_DENSITY);
+  const mf = rules.find<AduMfCountSpec>(AduRuleType.MF_COUNT);
+  const r = rules.find<AduCountAndDensitySpec>(AduRuleType.COUNT_AND_DENSITY) ?? (mf ? { rule: mf.rule, spec: { maxAdusPerLot: mf.spec.maxAdusPerLot } as AduCountAndDensitySpec } : undefined);
   if (!r) return { uncovered: "ADU count and density" };
   const after = project.existingAduCount + 1;
   const pass = after <= r.spec.maxAdusPerLot;
@@ -336,6 +345,10 @@ function evaluateCount(project: AduProjectDetails, rules: ActiveRules): Evaluate
 }
 
 function evaluateDensity(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated {
+  const mf = rules.find<AduMfCountSpec>(AduRuleType.MF_COUNT);
+  if (mf) {
+    return { finding: known(SUBJECT.DENSITY, mf.rule, true, ["densityLimit=none"], `${mf.spec.noDensityLimitText} ${DECLARED_BASIS}`) };
+  }
   const r = rules.find<AduCountAndDensitySpec>(AduRuleType.COUNT_AND_DENSITY);
   if (!r) return { uncovered: "dwelling-unit density" };
   const units = unitsAfterAdu(project);
@@ -401,6 +414,12 @@ function evaluateAttachedSize(project: AduProjectDetails, rules: ActiveRules): E
   const limitText = `${project.bedrooms >= 3 ? "An ADU with three or more bedrooms" : "An ADU with up to two bedrooms"} may have up to ${sf(cap)} sq ft of gross floor area; underground floors, up to ${sf(a.spec.attachedGarageExclusionSqFt)} sq ft in an attached garage and up to ${r.spec.bikeParkingExclusionSqFt} sq ft of long-term bicycle parking are not counted (SMC 23.42.022.G)`;
   const declared = `The floor area is the figure you entered, ${sf(est)} sq ft.`;
   if (est <= cap) return { finding: known(SUBJECT.SIZE, r.rule, true, evidence, `${limitText}. ${declared} That is within the limit.`) };
+  if (r.spec.conditionalExtendedCapSqFt !== undefined && est <= r.spec.conditionalExtendedCapSqFt) {
+    return {
+      finding: verify(SUBJECT.SIZE, r.rule, [...evidence, `conditionalExtendedCapSqFt=${r.spec.conditionalExtendedCapSqFt}`], `${limitText}. ${declared} That is over the limit by ${sf(est - cap)} sq ft. ${r.spec.conditionalExtendedCapText ?? `A larger cap of ${sf(r.spec.conditionalExtendedCapSqFt)} sq ft applies in some circumstances`} Whether those conditions are met is not determined here, so this is not a definite result.`),
+      verifyItem: "Confirm with SDCI whether the larger size cap applies to this lot.",
+    };
+  }
   const status = att.portionExistedBeforeJuly2023 === false ? "APPLIES" : att.includesAddition ? "UNCLEAR" : att.portionExistedBeforeJuly2023 === true ? "EXEMPT" : "UNCLEAR";
   const exemption = `An attached ADU may exceed 1,000 square feet if the portion of the structure it is in existed before ${date} (SMC 23.42.022.H.4).`;
   if (status === "EXEMPT") {
@@ -435,6 +454,12 @@ function evaluateSize(project: AduProjectDetails, rules: ActiveRules): Evaluated
   const basis = sizeBasis(project);
   if (est <= cap) {
     return { finding: known(SUBJECT.SIZE, r.rule, true, evidence, `${limitText}. Your ADU's estimated gross floor area is ${sf(est)} sq ft (${basis}). ${DECLARED_BASIS}`) };
+  }
+  if (r.spec.conditionalExtendedCapSqFt !== undefined && est <= r.spec.conditionalExtendedCapSqFt) {
+    return {
+      finding: verify(SUBJECT.SIZE, r.rule, [...evidence, `conditionalExtendedCapSqFt=${r.spec.conditionalExtendedCapSqFt}`], `${limitText}. Your ADU's estimated gross floor area is ${sf(est)} sq ft, over that limit by ${sf(est - cap)} sq ft. ${r.spec.conditionalExtendedCapText ?? `A larger cap of ${sf(r.spec.conditionalExtendedCapSqFt)} sq ft applies in some circumstances`} Whether those conditions are met is not determined here, so this is not a definite result.`),
+      verifyItem: "Confirm with SDCI whether the larger size cap applies to this lot.",
+    };
   }
   if (est <= cap + r.spec.bikeParkingExclusionSqFt) {
     return {
@@ -501,15 +526,17 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
     } else if (gate) {
       out.push({ finding: verify(SUBJECT.REAR, r.rule, [`distanceToRearLotLineFt=${d}`], `${num(d)} ft to the rear lot line against a ${num(required)} ft setback. ${gate}`) });
     } else if (required === 0) {
-      out.push({ finding: known(SUBJECT.REAR, r.rule, true, [`distanceToRearLotLineFt=${d}`, `requiredFt=0`, `alleyAdjacent=true`], `The rear lot line abuts an alley, so no rear setback is required (SMC 23.44.090 Table A, footnote 3). ${DECLARED_BASIS}`) });
+      out.push({ finding: known(SUBJECT.REAR, r.rule, true, [`distanceToRearLotLineFt=${d}`, `requiredFt=0`, `alleyAdjacent=true`], `The rear lot line abuts an alley, so no rear setback is required (${r.spec.rearAlleyCitation ?? r.spec.citation ?? "SMC 23.44.090 Table A, footnote 3"}). ${DECLARED_BASIS}`) });
     } else {
-      const where = againstThreshold(d, required, r.spec.mappingToleranceFt);
+      const rearCite = r.spec.citation ?? "SMC 23.44.090 Table A, footnote 3";
+      const rearMin = project.alleyAdjacent ? undefined : r.spec.rearMinFt;
+      const where = rearMin !== undefined ? (d >= required + r.spec.mappingToleranceFt ? "CLEARS" : d < rearMin - r.spec.mappingToleranceFt ? "SHORT" : "NEAR") : againstThreshold(d, required, r.spec.mappingToleranceFt);
       if (where === "NEAR") {
-        out.push({ finding: verify(SUBJECT.REAR, r.rule, [`distanceToRearLotLineFt=${d}`, `requiredFt=${required}`], `The ADU would be ${num(d)} ft from the rear lot line against a ${num(required)} ft rear setback (SMC 23.44.090 Table A, footnote 3). ${nearText(d, required, r.spec.mappingToleranceFt)}`), verifyItem: "Confirm the rear lot line with a survey; the ADU is close to the rear setback." });
+        out.push({ finding: verify(SUBJECT.REAR, r.rule, [`distanceToRearLotLineFt=${d}`, `requiredFt=${required}`], `The ADU would be ${num(d)} ft from the rear lot line against a ${num(required)} ft rear setback${rearMin !== undefined ? ` (${num(rearMin)} ft minimum)` : ""} (${rearCite}). ${nearText(d, rearMin !== undefined && d < required ? required : required, r.spec.mappingToleranceFt)}`), verifyItem: "Confirm the rear lot line with a survey; the ADU is close to the rear setback." });
       } else {
         const pass = where === "CLEARS";
         out.push({
-          finding: known(SUBJECT.REAR, r.rule, pass, [`distanceToRearLotLineFt=${d}`, `requiredFt=${required}`, `alleyAdjacent=${project.alleyAdjacent}`], `The ADU would be ${num(d)} ft from the rear lot line. An ADU's rear setback is ${num(required)} ft (SMC 23.44.090 Table A, footnote 3), so it ${pass ? "meets" : "does not meet"} that setback. ${DECLARED_BASIS}`),
+          finding: known(SUBJECT.REAR, r.rule, pass, [`distanceToRearLotLineFt=${d}`, `requiredFt=${required}`, `alleyAdjacent=${project.alleyAdjacent}`], `The ADU would be ${num(d)} ft from the rear lot line. An ADU's rear setback is ${num(required)} ft (${rearCite}), so it ${pass ? "meets" : "does not meet"} that setback. ${DECLARED_BASIS}`),
           ...(pass ? {} : { blocker: `The ADU is ${num(d)} ft from the rear lot line; ${num(required)} ft is required` }),
         });
       }
@@ -530,17 +557,17 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
       const minWhere = againstThreshold(d, minRequired, r.spec.mappingToleranceFt);
       if (minWhere === "SHORT") {
         out.push({
-          finding: known(SUBJECT.SIDE, r.rule, false, [`distanceToSideLotLineFt=${d}`, `minimumFt=${minRequired}`], `The ADU would be ${num(d)} ft from the nearest side lot line. The side setback is never less than ${num(minRequired)} ft (SMC 23.44.090 Table A). ${DECLARED_BASIS}`),
+          finding: known(SUBJECT.SIDE, r.rule, false, [`distanceToSideLotLineFt=${d}`, `minimumFt=${minRequired}`], `The ADU would be ${num(d)} ft from the nearest side lot line. The side setback is never less than ${num(minRequired)} ft (${r.spec.citation ?? "SMC 23.44.090 Table A"}). ${DECLARED_BASIS}`),
           blocker: `The ADU is ${num(d)} ft from a side lot line; at least ${num(minRequired)} ft is required`,
         });
       } else if (minWhere === "NEAR") {
         out.push({
-          finding: verify(SUBJECT.SIDE, r.rule, [`distanceToSideLotLineFt=${d}`, `minimumFt=${minRequired}`], `The ADU would be ${num(d)} ft from the nearest side lot line against a ${num(minRequired)} ft minimum side setback (SMC 23.44.090 Table A). ${nearText(d, minRequired, r.spec.mappingToleranceFt)}`),
+          finding: verify(SUBJECT.SIDE, r.rule, [`distanceToSideLotLineFt=${d}`, `minimumFt=${minRequired}`], `The ADU would be ${num(d)} ft from the nearest side lot line against a ${num(minRequired)} ft minimum side setback (${r.spec.citation ?? "SMC 23.44.090 Table A"}). ${nearText(d, minRequired, r.spec.mappingToleranceFt)}`),
           verifyItem: "Confirm the side lot line with a survey; the ADU is close to the side setback.",
         });
       } else if (smallFtsaLot || againstThreshold(d, r.spec.sideAverageFt, r.spec.mappingToleranceFt) === "CLEARS") {
         out.push({
-          finding: known(SUBJECT.SIDE, r.rule, true, [`distanceToSideLotLineFt=${d}`, `requiredFt=${smallFtsaLot ? r.spec.smallLotSideFt : r.spec.sideAverageFt}`], `The ADU would be ${num(d)} ft from the nearest side lot line, which meets the side setback (${smallFtsaLot ? `${num(r.spec.smallLotSideFt)} ft on a lot under ${sf(r.spec.smallLotAreaSqFt)} sq ft in a frequent transit service area` : `${num(r.spec.sideAverageFt)} ft average, ${num(r.spec.sideMinFt)} ft minimum`}; SMC 23.44.090 Table A). ${DECLARED_BASIS}`),
+          finding: known(SUBJECT.SIDE, r.rule, true, [`distanceToSideLotLineFt=${d}`, `requiredFt=${smallFtsaLot ? r.spec.smallLotSideFt : r.spec.sideAverageFt}`], `The ADU would be ${num(d)} ft from the nearest side lot line, which meets the side setback (${smallFtsaLot ? `${num(r.spec.smallLotSideFt)} ft on a lot under ${sf(r.spec.smallLotAreaSqFt)} sq ft in a frequent transit service area` : `${num(r.spec.sideAverageFt)} ft average, ${num(r.spec.sideMinFt)} ft minimum`}; ${r.spec.citation ?? "SMC 23.44.090 Table A"}). ${DECLARED_BASIS}`),
         });
       } else {
         out.push({
@@ -565,19 +592,21 @@ function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules:
       out.push({ finding: verify(SUBJECT.FRONT, r.rule, [`distanceToFrontLotLineFt=${d}`], `${num(d)} ft to the front lot line. ${gate}`) });
     } else {
       const requiredFront = units >= 3 ? r.spec.frontThreeOrMoreUnitsFt : r.spec.frontFt;
-      const wFront = againstThreshold(d, r.spec.frontFt, r.spec.mappingToleranceFt);
+      const frontCite = r.spec.citation ?? "SMC 23.44.090 Table A";
+      // Where the zone states a minimum below the average (Lowrise 7 ft average, 5 ft minimum), only a distance clearly short of the minimum fails.
+      const wFront = r.spec.frontMinFt !== undefined ? (d >= r.spec.frontFt + r.spec.mappingToleranceFt ? "CLEARS" : d < r.spec.frontMinFt - r.spec.mappingToleranceFt ? "SHORT" : "NEAR") : againstThreshold(d, r.spec.frontFt, r.spec.mappingToleranceFt);
       if (wFront === "CLEARS") {
-        out.push({ finding: known(SUBJECT.FRONT, r.rule, true, [`distanceToFrontLotLineFt=${d}`, `requiredFt=${r.spec.frontFt}`], `The ADU would be ${num(d)} ft from the front lot line, which meets the ${num(r.spec.frontFt)} ft front setback (SMC 23.44.090 Table A). ${DECLARED_BASIS}`) });
+        out.push({ finding: known(SUBJECT.FRONT, r.rule, true, [`distanceToFrontLotLineFt=${d}`, `requiredFt=${r.spec.frontFt}`], `The ADU would be ${num(d)} ft from the front lot line, which meets the ${num(r.spec.frontFt)} ft front setback (${frontCite}). ${DECLARED_BASIS}`) });
       } else if (units >= 3 && againstThreshold(d, requiredFront, r.spec.mappingToleranceFt) !== "SHORT") {
         out.push({
           finding: verify(SUBJECT.FRONT, r.rule, [`distanceToFrontLotLineFt=${d}`, `unitsAfterAdu=${units}`], `The ADU would be ${num(d)} ft from the front lot line. The front setback is ${num(r.spec.frontFt)} ft for lots with one or two dwelling units and ${num(r.spec.frontThreeOrMoreUnitsFt)} ft for lots with three or more (SMC 23.44.090 Table A). With this ADU the lot would have ${units}; whether ADUs count toward the three is for SDCI to confirm. ${wFront === "NEAR" ? nearText(d, r.spec.frontFt, r.spec.mappingToleranceFt) : ""}`.trim()),
           verifyItem: "Confirm the front setback that applies when the lot has three dwelling units.",
         });
       } else if (wFront === "NEAR") {
-        out.push({ finding: verify(SUBJECT.FRONT, r.rule, [`distanceToFrontLotLineFt=${d}`], `The ADU would be ${num(d)} ft from the front lot line against a ${num(r.spec.frontFt)} ft front setback (SMC 23.44.090 Table A). ${nearText(d, r.spec.frontFt, r.spec.mappingToleranceFt)}`), verifyItem: "Confirm the front lot line with a survey; the ADU is close to the front setback." });
+        out.push({ finding: verify(SUBJECT.FRONT, r.rule, [`distanceToFrontLotLineFt=${d}`], `The ADU would be ${num(d)} ft from the front lot line against a ${num(r.spec.frontFt)} ft front setback (${frontCite}). ${nearText(d, r.spec.frontFt, r.spec.mappingToleranceFt)}`), verifyItem: "Confirm the front lot line with a survey; the ADU is close to the front setback." });
       } else {
         out.push({
-          finding: known(SUBJECT.FRONT, r.rule, false, [`distanceToFrontLotLineFt=${d}`, `requiredFt=${requiredFront}`], `The ADU would be ${num(d)} ft from the front lot line; the front setback is ${num(requiredFront)} ft (SMC 23.44.090 Table A). ${DECLARED_BASIS}`),
+          finding: known(SUBJECT.FRONT, r.rule, false, [`distanceToFrontLotLineFt=${d}`, `requiredFt=${requiredFront}`], `The ADU would be ${num(d)} ft from the front lot line; the front setback is ${num(requiredFront)} ft (${frontCite}). ${DECLARED_BASIS}`),
           blocker: `The ADU is ${num(d)} ft from the front lot line; ${num(requiredFront)} ft is required`,
         });
       }
@@ -602,7 +631,7 @@ function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules, conv
   const d = project.distanceToDwellingFt;
   if (d === undefined) {
     out.push({
-      finding: verify(SUBJECT.SEPARATION, r.rule, [], `Cannot evaluate: ${project.dwellingSeparationEvidenceGapReason ?? "the distance to the existing dwelling is not available."} Structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (SMC 23.44.100.A).`),
+      finding: verify(SUBJECT.SEPARATION, r.rule, [], `Cannot evaluate: ${project.dwellingSeparationEvidenceGapReason ?? "the distance to the existing dwelling is not available."} Structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (${r.spec.citation ?? "SMC 23.44.100.A"}).`),
       verifyItem: "Identify the existing house on the map so its distance to the ADU can be measured.",
     });
   } else {
@@ -612,24 +641,24 @@ function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules, conv
       // The conversion allowance names lot coverage and yard or setback provisions, not the separation between structures, and the
       // Director may waive or modify standards to facilitate a conversion: so a short separation is never a known failure here.
       out.push({
-        finding: verify(SUBJECT.SEPARATION, r.rule, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The building to convert is ${num(d)} ft from the existing dwelling; structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (SMC 23.44.100.A). The conversion allowance covers lot coverage and setbacks, not this separation${conversionRule?.spec.directorMayWaiveAndModify ? ", though the Director may allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a)" : ""}, so this is for SDCI to resolve.${where === "NEAR" ? ` ${nearText(d, r.spec.minFt, r.spec.mappingToleranceFt)}` : ""}`),
+        finding: verify(SUBJECT.SEPARATION, r.rule, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The building to convert is ${num(d)} ft from the existing dwelling; structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (${r.spec.citation ?? "SMC 23.44.100.A"}). The conversion allowance covers lot coverage and setbacks, not this separation${conversionRule?.spec.directorMayWaiveAndModify ? ", though the Director may allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a)" : ""}, so this is for SDCI to resolve.${where === "NEAR" ? ` ${nearText(d, r.spec.minFt, r.spec.mappingToleranceFt)}` : ""}`),
         constraint: `The building to convert is ${num(d)} ft from the house; the 5 ft separation may need a waiver`,
         verifyItem: "Ask SDCI whether the 5 ft separation applies to this conversion or can be waived.",
       });
     } else if (where === "NEAR") {
       out.push({
-        finding: verify(SUBJECT.SEPARATION, r.rule, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The ADU would be ${num(d)} ft from the existing dwelling; structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (SMC 23.44.100.A). ${nearText(d, r.spec.minFt, r.spec.mappingToleranceFt)}`),
+        finding: verify(SUBJECT.SEPARATION, r.rule, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The ADU would be ${num(d)} ft from the existing dwelling; structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (${r.spec.citation ?? "SMC 23.44.100.A"}). ${nearText(d, r.spec.minFt, r.spec.mappingToleranceFt)}`),
         verifyItem: "Measure the distance between the ADU and the house on a survey; it is close to the 5 ft separation.",
       });
     } else out.push({
-      finding: known(SUBJECT.SEPARATION, r.rule, pass, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The ADU would be ${num(d)} ft from the existing dwelling. Structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (SMC 23.44.100.A; eaves may project up to 2 ft into the separation), so it ${pass ? "meets" : "does not meet"} that requirement. ${DECLARED_BASIS}`),
+      finding: known(SUBJECT.SEPARATION, r.rule, pass, [`distanceToDwellingFt=${d}`, `requiredFt=${r.spec.minFt}`], `The ADU would be ${num(d)} ft from the existing dwelling. Structures containing floor area must be at least ${num(r.spec.minFt)} ft apart (${r.spec.citation ?? "SMC 23.44.100.A"}; eaves may project up to 2 ft into the separation), so it ${pass ? "meets" : "does not meet"} that requirement. ${DECLARED_BASIS}`),
       ...(pass ? {} : { blocker: `The ADU is ${num(d)} ft from the existing house; ${num(r.spec.minFt)} ft is required` }),
     });
   }
   const other = project.nearestOtherStructure;
   if (other && other.distanceFt < r.spec.minFt) {
     out.push({
-      finding: verify(SUBJECT.OTHER_STRUCTURES, r.rule, [`nearestOtherStructureFt=${other.distanceFt}`], `Another mapped building${other.areaSqFt ? ` (about ${sf(other.areaSqFt)} sq ft)` : ""} is ${num(other.distanceFt)} ft from the ADU. The ${num(r.spec.minFt)} ft separation applies between structures that contain floor area (SMC 23.44.100.A); whether that building contains floor area (a garage or shed may not count the same way) is for SDCI to confirm.`),
+      finding: verify(SUBJECT.OTHER_STRUCTURES, r.rule, [`nearestOtherStructureFt=${other.distanceFt}`], `Another mapped building${other.areaSqFt ? ` (about ${sf(other.areaSqFt)} sq ft)` : ""} is ${num(other.distanceFt)} ft from the ADU. The ${num(r.spec.minFt)} ft separation applies between structures that contain floor area (${r.spec.citation ?? "SMC 23.44.100.A"}); whether that building contains floor area (a garage or shed may not count the same way) is for SDCI to confirm.`),
       verifyItem: "Confirm whether the nearby building counts as a structure with floor area for the 5 ft separation.",
     });
   }
@@ -643,22 +672,24 @@ function evaluateHeight(project: AduProjectDetails, rules: ActiveRules): Evaluat
   const base = r.spec.maxFt;
   const evidence = [`heightFt=${height}`, `limitFt=${base}`];
   if (height <= base) {
-    return { finding: known(SUBJECT.HEIGHT, r.rule, true, evidence, `The ADU's height of ${num(height)} ft is within the ${num(base)} ft height limit (SMC 23.44.070.A). ${DECLARED_BASIS}`) };
+    return { finding: known(SUBJECT.HEIGHT, r.rule, true, evidence, `The ADU's height of ${num(height)} ft is within the ${num(base)} ft height limit (${r.spec.citation ?? "SMC 23.44.070.A"}). ${DECLARED_BASIS}`) };
   }
   const ceiling = r.spec.treeRetentionMaxFt + r.spec.pitchedRoofRidgeAllowanceFt;
   if (height <= ceiling) {
     return {
-      finding: verify(SUBJECT.HEIGHT, r.rule, evidence, `The ADU's height of ${num(height)} ft is over the ${num(base)} ft limit. The limit is ${num(r.spec.treeRetentionMaxFt)} ft on lots that retain certain trees or earn enough tree points (SMC 23.44.070.A.2), and a pitched-roof ridge may rise up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft above the limit (SMC 23.44.070.B). Whether either applies is not determined here.`),
+      finding: verify(SUBJECT.HEIGHT, r.rule, evidence, `The ADU's height of ${num(height)} ft is over the ${num(base)} ft limit. ${r.spec.higherLimitText ?? `The limit is ${num(r.spec.treeRetentionMaxFt)} ft on lots that retain certain trees or earn enough tree points (SMC 23.44.070.A.2)`}, and ${r.spec.pitchedRoofText ?? `a pitched-roof ridge may rise up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft above the limit (SMC 23.44.070.B)`}. Whether either applies is not determined here.`),
       verifyItem: "Confirm how the ADU's height is measured and whether a taller height limit applies.",
     };
   }
   return {
-    finding: known(SUBJECT.HEIGHT, r.rule, false, evidence, `The ADU's height of ${num(height)} ft is over even the tallest limit that can apply (${num(r.spec.treeRetentionMaxFt)} ft with the tree allowance, plus up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft for a pitched-roof ridge; SMC 23.44.070). ${DECLARED_BASIS}`),
+    finding: known(SUBJECT.HEIGHT, r.rule, false, evidence, `The ADU's height of ${num(height)} ft is over even the tallest limit that can apply (${num(r.spec.treeRetentionMaxFt)} ft${r.spec.higherLimitText ? " where the higher limit applies" : " with the tree allowance"}, plus up to ${num(r.spec.pitchedRoofRidgeAllowanceFt)} ft for a pitched-roof ridge; ${r.spec.citation ?? "SMC 23.44.070"}). ${DECLARED_BASIS}`),
     blocker: `The ADU is ${num(height)} ft tall, over the tallest limit that can apply (${num(ceiling)} ft)`,
   };
 }
 
 function evaluateLotCoverage(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated {
+  const noLimit = rules.find<AduMfNoLotCoverageLimitSpec>(AduRuleType.MF_NO_LOT_COVERAGE_LIMIT);
+  if (noLimit) return { finding: known(SUBJECT.LOT_COVERAGE, noLimit.rule, true, ["lotCoverageLimit=none"], `${noLimit.spec.statement} ${DECLARED_BASIS}`) };
   const r = rules.find<AduLotCoverageSpec>(AduRuleType.LOT_COVERAGE);
   if (!r) return { uncovered: "lot coverage" };
   if (site.parcelAreaSqFt === undefined || site.existingMappedCoverageSqFt === undefined) {
@@ -716,7 +747,42 @@ function sqFtPerUnitBand<T extends { overSqFtPerUnit: number }>(bands: T[], sqFt
   return [...bands].sort((a, b) => b.overSqFtPerUnit - a.overSqFtPerUnit).find((b) => sqFtPerUnit > b.overSqFtPerUnit);
 }
 
+/** Floor area ratio in a multifamily zone: the zone's table figure applied to the declared existing floor area. Over the limit is never a definite failure (exemptions
+ * and the stacked-unit and regional-center figures are not determined here). */
+function evaluateMfFar(project: AduProjectDetails, site: AduSiteFacts, mf: { rule: RegulatoryRule; spec: AduMfFarSpec }): Evaluated {
+  const { rule, spec } = mf;
+  const cond = spec.conditionText ? ` ${spec.conditionText}` : "";
+  if (site.parcelAreaSqFt === undefined) {
+    return { finding: verify(SUBJECT.FAR, rule, [], `${spec.zoneText} limits total chargeable floor area to ${spec.far} times the lot area (SMC 23.45.510).${cond} The lot area was not available, so the limit could not be calculated.`), verifyItem: "Confirm the lot area and the floor area ratio limit." };
+  }
+  const limit = spec.far * site.parcelAreaSqFt;
+  const attached = isAttached(project);
+  const intactConversion = isConversion(project) && project.conversion?.keepsFootprintAndHeight === true;
+  const unmeasuredAddition = (isConversion(project) && !intactConversion) || attached;
+  const adu = isConversion(project) || attached ? 0 : estimateAduFloorAreaSqFt(project);
+  const evidence = [`farLimit=${spec.far}`, `limitSqFt=${Math.round(limit)}`, `aduFloorAreaSqFt=${Math.round(adu)}`];
+  const lead = `${spec.zoneText} limits the total chargeable floor area of all structures to ${spec.far} times the lot area, about ${sf(limit)} sq ft on ${sf(site.parcelAreaSqFt)} sq ft (SMC 23.45.510).${cond} Underground floors and portions of a story no more than 4 ft above grade are not counted.`;
+  if (project.existingChargeableFloorAreaSqFt === undefined) {
+    return { finding: verify(SUBJECT.FAR, rule, evidence, `${lead} You did not give the existing chargeable floor area, so how much room is left for the ADU could not be determined.`), verifyItem: "Add up the existing chargeable floor area of all structures and compare it to the floor area ratio limit." };
+  }
+  const total = project.existingChargeableFloorAreaSqFt + adu;
+  const totalEvidence = [...evidence, `existingChargeableFloorAreaSqFt=${Math.round(project.existingChargeableFloorAreaSqFt)}`, `totalSqFt=${Math.round(total)}`];
+  if (total <= limit && unmeasuredAddition) {
+    return { finding: verify(SUBJECT.FAR, rule, totalEvidence, `${lead} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft is ${sf(limit - total)} sq ft under the limit, but turning space inside the house into an ADU, or building an addition, can add chargeable floor area that was not collected and would count against that room.`), verifyItem: "Add the floor area of any addition to the existing chargeable floor area and compare it to the floor area ratio limit." };
+  }
+  if (total <= limit) {
+    return { finding: known(SUBJECT.FAR, rule, true, totalEvidence, `${lead} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, within the limit, ${sf(limit - total)} sq ft to spare. This rests on the floor area you declared.`) };
+  }
+  return {
+    finding: verify(SUBJECT.FAR, rule, totalEvidence, `${lead} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, over the limit by ${sf(total - limit)} sq ft. This rests on the floor area you declared, which may include exempt areas, and a higher figure applies in some circumstances.`),
+    constraint: `Existing plus ADU floor area of ${sf(total)} sq ft appears to exceed the ${sf(limit)} sq ft floor area ratio limit`,
+    verifyItem: "Confirm the chargeable floor area of all structures against the floor area ratio limit.",
+  };
+}
+
 function evaluateFar(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated {
+  const mfFar = rules.find<AduMfFarSpec>(AduRuleType.MF_FLOOR_AREA_RATIO);
+  if (mfFar) return evaluateMfFar(project, site, mfFar);
   const r = rules.find<AduFarSpec>(AduRuleType.FLOOR_AREA_RATIO);
   const d = rules.find<AduCountAndDensitySpec>(AduRuleType.COUNT_AND_DENSITY);
   if (!r || !d) return { uncovered: "floor area ratio" };
@@ -767,21 +833,23 @@ function evaluateAmenity(project: AduProjectDetails, site: AduSiteFacts, rules: 
   const r = rules.find<AduAmenitySpec>(AduRuleType.AMENITY_AREA);
   if (!r) return { uncovered: "amenity area" };
   const required = site.parcelAreaSqFt !== undefined ? Math.max(site.parcelAreaSqFt * r.spec.requiredFractionOfLot, r.spec.minSqFt) : undefined;
-  const requirement = `Amenity area of ${Math.round(r.spec.requiredFractionOfLot * 100)}% of the lot area${required !== undefined ? ` (about ${sf(required)} sq ft)` : ""}, at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, unenclosed and free of parking and driveways (SMC 23.44.110).`;
+  const requirement = `Amenity area of ${Math.round(r.spec.requiredFractionOfLot * 100)}% of the lot area${required !== undefined ? ` (about ${sf(required)} sq ft)` : ""}, at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, unenclosed and free of parking and driveways (${r.spec.citation ?? "SMC 23.44.110"}).`;
   const exemptUnit = project.existingAduCount === 0 && project.existingPrincipalDwellingUnits === 1;
   if (project.existingHouseBuiltBefore1982 === true && exemptUnit) {
     return {
-      finding: known(SUBJECT.AMENITY, r.rule, true, ["exemption=oneNewUnitOnPre1982Dwelling"], `No amenity area is required for one new dwelling unit added to a dwelling that existed as of January 1, 1982 (SMC 23.44.110.H.1). You reported a single house built before 1982 with no other ADU, so this ADU appears to qualify. This rests on what you told us.`),
+      finding: known(SUBJECT.AMENITY, r.rule, true, ["exemption=oneNewUnitOnPre1982Dwelling"], `No amenity area is required for one new dwelling unit added to a dwelling that existed as of January 1, 1982 (${r.spec.exemptionCitation ?? "SMC 23.44.110.H.1"}). You reported a single house built before 1982 with no other ADU, so this ADU appears to qualify. This rests on what you told us.`),
     };
   }
   const why = project.existingHouseBuiltBefore1982 === undefined ? "You did not say whether the house was built before 1982, which would exempt a single added unit." : project.existingHouseBuiltBefore1982 === true ? "The pre-1982 exemption covers only one new unit added to a single dwelling." : "The house was not built before 1982, so the exemption for one added unit does not apply.";
   return {
-    finding: verify(SUBJECT.AMENITY, r.rule, [`requiredSqFt=${required !== undefined ? Math.round(required) : "unknown"}`], `${requirement} ${why} Development that earns enough tree points for ten percent canopy at maturity is also exempt (SMC 23.44.110.H.2). Whether your site plan provides the area is not determined here.`),
+    finding: verify(SUBJECT.AMENITY, r.rule, [`requiredSqFt=${required !== undefined ? Math.round(required) : "unknown"}`], `${requirement} ${why} ${r.spec.canopyExemption === false ? "" : "Development that earns enough tree points for ten percent canopy at maturity is also exempt (SMC 23.44.110.H.2). "}Whether your site plan provides the area is not determined here.`),
     verifyItem: "Find where the amenity area would go on the site plan (or confirm an exemption applies).",
   };
 }
 
 function evaluateTrees(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated {
+  const note = rules.find<AduMfLandscapingNoteSpec>(AduRuleType.MF_LANDSCAPING_NOTE);
+  if (note) return { finding: verify(SUBJECT.TREES, note.rule, [], note.spec.text), verifyItem: TREE_INVENTORY_ITEM };
   const r = rules.find<AduTreesSpec>(AduRuleType.TREES);
   if (!r) return { uncovered: "tree requirement" };
   if (site.parcelAreaSqFt === undefined) {
@@ -801,13 +869,14 @@ function evaluateTrees(project: AduProjectDetails, site: AduSiteFacts, rules: Ac
 function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluated {
   const r = rules.find<AduDesignStandardsSpec>(AduRuleType.DESIGN_STANDARDS);
   if (!r) return { uncovered: "design standards" };
+  const cite = r.spec.citation ?? "SMC 23.44.140";
   if (isAttached(project) && project.attached && !project.attached.includesAddition) {
     return {
       finding: verify(
         SUBJECT.DESIGN,
         r.rule,
         ["newDwellingUnitWithinExistingStructure=true"],
-        "The design standards (pedestrian path, street-facing entry, windows and doors) apply to new dwelling units except those added within existing structures (SMC 23.44.140.A.1). An ADU made inside the existing house with no addition appears to fall outside them; whether SDCI treats it that way is for SDCI to confirm."
+        `The design standards (pedestrian path, street-facing entry, windows and doors) apply to new dwelling units except those added within existing structures (${cite}.A.1). An ADU made inside the existing house with no addition appears to fall outside them; whether SDCI treats it that way is for SDCI to confirm.`
       ),
       verifyItem: "Confirm with SDCI that the design standards do not apply to this ADU.",
     };
@@ -818,7 +887,7 @@ function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluat
         SUBJECT.DESIGN,
         r.rule,
         ["newDwellingUnitWithinExistingStructure=true"],
-        `The design standards (pedestrian path, street-facing entry, windows and doors) apply to new dwelling units except those added within existing structures (SMC 23.44.140.A.1). A conversion that keeps the existing building appears to fall outside them; whether SDCI treats it that way, and how any addition is treated, is for SDCI to confirm.`
+        `The design standards (pedestrian path, street-facing entry, windows and doors) apply to new dwelling units except those added within existing structures (${cite}.A.1). A conversion that keeps the existing building appears to fall outside them; whether SDCI treats it that way, and how any addition is treated, is for SDCI to confirm.`
       ),
       verifyItem: "Confirm with SDCI that the design standards do not apply to this conversion.",
     };
@@ -829,10 +898,10 @@ function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluat
     nearest === undefined
       ? "Whether the ADU is within the distance of a street at which the street-facing entry and window rules apply could not be determined."
       : nearest <= r.spec.streetFacingWithinFt
-        ? `The ADU would be ${num(nearest)} ft from a street lot line, within ${num(r.spec.streetFacingWithinFt)} ft, so its street-facing facade needs a pedestrian entry with at least ${num(r.spec.weatherProtectionFt)} ft by ${num(r.spec.weatherProtectionFt)} ft of weather protection and at least ${r.spec.facadeOpeningsPercent}% of that facade in windows and doors (SMC 23.44.140.D and E).`
-        : `The ADU would be ${num(nearest)} ft from the street lot line you indicated; the street-facing entry and window rules apply only within ${num(r.spec.streetFacingWithinFt)} ft of a street (SMC 23.44.140.A.2), but another street, or a shared driveway serving ten or more homes, could change that.`;
+        ? `The ADU would be ${num(nearest)} ft from a street lot line, within ${num(r.spec.streetFacingWithinFt)} ft, so its street-facing facade needs a pedestrian entry with at least ${num(r.spec.weatherProtectionFt)} ft by ${num(r.spec.weatherProtectionFt)} ft of weather protection and at least ${r.spec.facadeOpeningsPercent}% of that facade in windows and doors (${cite}.D and E).`
+        : `The ADU would be ${num(nearest)} ft from the street lot line you indicated; the street-facing entry and window rules apply only within ${num(r.spec.streetFacingWithinFt)} ft of a street (${cite}.A.2), but another street, or a shared driveway serving ten or more homes, could change that.`;
   return {
-    finding: verify(SUBJECT.DESIGN, r.rule, nearest === undefined ? [] : [`nearestStreetLotLineFt=${nearest}`], `Each unit needs a pedestrian path at least ${num(r.spec.pedestrianAccessMinWidthFt)} ft wide to the sidewalk or front lot line, which may be shared and may cross setbacks (SMC 23.44.140.C). ${streetFacing} These depend on your design.`),
+    finding: verify(SUBJECT.DESIGN, r.rule, nearest === undefined ? [] : [`nearestStreetLotLineFt=${nearest}`], `Each unit needs a pedestrian path at least ${num(r.spec.pedestrianAccessMinWidthFt)} ft wide to the sidewalk or front lot line, which may be shared and may cross setbacks (${cite}.C). ${streetFacing} These depend on your design.`),
     verifyItem: "Plan a 3 ft pedestrian path from the sidewalk to the ADU entrance.",
   };
 }
@@ -903,7 +972,7 @@ function evaluateConversion(project: AduProjectDetails, site: AduSiteFacts, rule
       SUBJECT.CONVERSION_HEIGHT,
       r.rule,
       ["heightCollected=false"],
-      "The conversion allowance names lot coverage and yard or setback provisions; it does not mention height (SMC 23.42.022.H.3.b). The building's height was not collected, so whether the height standards (32 ft, and 12 ft for an accessory structure in a required setback; SMC 23.44.070.A) are met is not determined; the Director may allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a)."
+      `The conversion allowance names lot coverage and yard or setback provisions; it does not mention height (SMC 23.42.022.H.3.b). The building's height was not collected, so whether the height standards (${r.spec.heightNote ?? "32 ft, and 12 ft for an accessory structure in a required setback; SMC 23.44.070.A"}) are met is not determined; the Director may allow waivers and modifications to facilitate a conversion (SMC 23.42.022.H.3.a).`
     ),
     verifyItem: "Confirm with SDCI whether the height standards apply to the building as it stands.",
   });

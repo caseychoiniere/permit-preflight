@@ -1,6 +1,6 @@
 # Zoning coverage matrix (project type x zone)
 
-Generated 2026-10-09T17:39:57.824Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
+Generated 2026-10-09T18:12:56.306Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
 
 Statuses: SUPPORTED = every core claim is covered (the minimum useful report; individual findings can still be REQUIRES_VERIFICATION); PARTIAL = some core claims; N/A = the governing code makes the project inapplicable in that zone (never used for 'not built yet'); not yet = a product limitation.
 
@@ -24,7 +24,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | PMM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | HR | Highrise | not yet | not yet | not yet | not yet | not yet |
-| IB | Industrial | not yet | not yet | not yet | not yet | not yet |
+| IB | Industrial | not yet | not yet | not yet | not yet | N/A |
 | IC | Industrial | not yet | not yet | not yet | not yet | not yet |
 | II | Industrial | not yet | not yet | not yet | not yet | not yet |
 | MML | Industrial | not yet | not yet | not yet | not yet | not yet |
@@ -52,7 +52,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | Family | shed | garage | fence | deck | adu |
 | --- | --- | --- | --- | --- | --- | --- |
-| C1 | Commercial | not yet | not yet | not yet | not yet | not yet |
+| C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | C2 | Commercial | not yet | not yet | not yet | not yet | not yet |
 | DH1 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DH2 | Downtown | not yet | not yet | not yet | not yet | not yet |
@@ -67,20 +67,20 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PMM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
-| HR | Highrise | not yet | not yet | not yet | not yet | not yet |
-| IB | Industrial | not yet | not yet | not yet | not yet | not yet |
+| HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| IB | Industrial | not yet | not yet | not yet | not yet | N/A |
 | IC | Industrial | not yet | not yet | not yet | not yet | not yet |
 | II | Industrial | not yet | not yet | not yet | not yet | not yet |
 | MML | Industrial | not yet | not yet | not yet | not yet | not yet |
 | UI | Industrial | not yet | not yet | not yet | not yet | not yet |
-| LR1 | Lowrise | not yet | not yet | not yet | not yet | not yet |
-| LR2 | Lowrise | not yet | not yet | not yet | not yet | not yet |
-| LR3 | Lowrise | not yet | not yet | not yet | not yet | not yet |
+| LR1 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| LR2 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| LR3 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | MPC-YT | Master Planned Community | not yet | not yet | not yet | not yet | not yet |
-| MR | Midrise | not yet | not yet | not yet | not yet | not yet |
-| NC1 | Neighborhood Commercial | not yet | not yet | not yet | not yet | not yet |
-| NC2 | Neighborhood Commercial | not yet | not yet | not yet | not yet | not yet |
-| NC3 | Neighborhood Commercial | not yet | not yet | not yet | not yet | not yet |
+| MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | NR | Neighborhood Residential | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | SM-D | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
 | SM-NG | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
@@ -98,7 +98,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | setbacks (core) | height (core) | separation from the house | lot coverage or floor area ratio | building-permit determination |
 | --- | --- | --- | --- | --- | --- |
-| C1 | - | - | - | - | yes |
+| C1 | yes | yes | - | yes | yes |
 | C2 | - | - | - | - | yes |
 | DH1 | - | - | - | - | yes |
 | DH2 | - | - | - | - | yes |
@@ -113,20 +113,20 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | - | - | yes |
 | PMM | - | - | - | - | yes |
 | PSM | - | - | - | - | yes |
-| HR | - | - | - | - | yes |
+| HR | yes | yes | - | yes | yes |
 | IB | - | - | - | - | yes |
 | IC | - | - | - | - | yes |
 | II | - | - | - | - | yes |
 | MML | - | - | - | - | yes |
 | UI | - | - | - | - | yes |
-| LR1 | - | - | - | - | yes |
-| LR2 | - | - | - | - | yes |
-| LR3 | - | - | - | - | yes |
+| LR1 | yes | yes | yes | yes | yes |
+| LR2 | yes | yes | yes | yes | yes |
+| LR3 | yes | yes | yes | yes | yes |
 | MPC-YT | - | - | - | - | yes |
-| MR | - | - | - | - | yes |
-| NC1 | - | - | - | - | yes |
-| NC2 | - | - | - | - | yes |
-| NC3 | - | - | - | - | yes |
+| MR | yes | yes | yes | yes | yes |
+| NC1 | yes | yes | - | yes | yes |
+| NC2 | yes | yes | - | yes | yes |
+| NC3 | yes | yes | - | yes | yes |
 | NR | yes | yes | yes | yes | yes |
 | SM-D | - | - | - | - | yes |
 | SM-NG | - | - | - | - | yes |
@@ -142,7 +142,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | setbacks (core) | height (core) | lot coverage or floor area ratio | garage access and driveway |
 | --- | --- | --- | --- | --- |
-| C1 | - | - | - | - |
+| C1 | yes | yes | yes | yes |
 | C2 | - | - | - | - |
 | DH1 | - | - | - | - |
 | DH2 | - | - | - | - |
@@ -157,20 +157,20 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | - | - |
 | PMM | - | - | - | - |
 | PSM | - | - | - | - |
-| HR | - | - | - | - |
+| HR | yes | yes | yes | - |
 | IB | - | - | - | - |
 | IC | - | - | - | - |
 | II | - | - | - | - |
 | MML | - | - | - | - |
 | UI | - | - | - | - |
-| LR1 | - | - | - | - |
-| LR2 | - | - | - | - |
-| LR3 | - | - | - | - |
+| LR1 | yes | yes | yes | yes |
+| LR2 | yes | yes | yes | yes |
+| LR3 | yes | yes | yes | yes |
 | MPC-YT | - | - | - | - |
-| MR | - | - | - | - |
-| NC1 | - | - | - | - |
-| NC2 | - | - | - | - |
-| NC3 | - | - | - | - |
+| MR | yes | yes | yes | yes |
+| NC1 | yes | yes | yes | yes |
+| NC2 | yes | yes | yes | yes |
+| NC3 | yes | yes | yes | yes |
 | NR | yes | yes | yes | - |
 | SM-D | - | - | - | - |
 | SM-NG | - | - | - | - |
@@ -186,7 +186,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | fence height in a side or rear setback (core) | fence height in a front or street-side setback (core) | fence height outside required setbacks | fence on a retaining wall | building-permit determination |
 | --- | --- | --- | --- | --- | --- |
-| C1 | - | - | - | - | yes |
+| C1 | yes | yes | yes | yes | yes |
 | C2 | - | - | - | - | yes |
 | DH1 | - | - | - | - | yes |
 | DH2 | - | - | - | - | yes |
@@ -201,20 +201,20 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | - | - | yes |
 | PMM | - | - | - | - | yes |
 | PSM | - | - | - | - | yes |
-| HR | - | - | - | - | yes |
+| HR | yes | yes | yes | yes | yes |
 | IB | - | - | - | - | yes |
 | IC | - | - | - | - | yes |
 | II | - | - | - | - | yes |
 | MML | - | - | - | - | yes |
 | UI | - | - | - | - | yes |
-| LR1 | - | - | - | - | yes |
-| LR2 | - | - | - | - | yes |
-| LR3 | - | - | - | - | yes |
+| LR1 | yes | yes | yes | yes | yes |
+| LR2 | yes | yes | yes | yes | yes |
+| LR3 | yes | yes | yes | yes | yes |
 | MPC-YT | - | - | - | - | yes |
-| MR | - | - | - | - | yes |
-| NC1 | - | - | - | - | yes |
-| NC2 | - | - | - | - | yes |
-| NC3 | - | - | - | - | yes |
+| MR | yes | yes | yes | yes | yes |
+| NC1 | yes | yes | yes | yes | yes |
+| NC2 | yes | yes | yes | yes | yes |
+| NC3 | yes | yes | yes | yes | yes |
 | NR | yes | yes | yes | yes | yes |
 | SM-D | - | - | - | - | yes |
 | SM-NG | - | - | - | - | yes |
@@ -230,7 +230,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | deck setback allowance (core) | lot coverage | building-permit determination |
 | --- | --- | --- | --- |
-| C1 | - | - | yes |
+| C1 | yes | yes | yes |
 | C2 | - | - | yes |
 | DH1 | - | - | yes |
 | DH2 | - | - | yes |
@@ -245,20 +245,20 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | IDR/C | - | - | yes |
 | PMM | - | - | yes |
 | PSM | - | - | yes |
-| HR | - | - | yes |
+| HR | yes | yes | yes |
 | IB | - | - | yes |
 | IC | - | - | yes |
 | II | - | - | yes |
 | MML | - | - | yes |
 | UI | - | - | yes |
-| LR1 | - | - | yes |
-| LR2 | - | - | yes |
-| LR3 | - | - | yes |
+| LR1 | yes | yes | yes |
+| LR2 | yes | yes | yes |
+| LR3 | yes | yes | yes |
 | MPC-YT | - | - | yes |
-| MR | - | - | yes |
-| NC1 | - | - | yes |
-| NC2 | - | - | yes |
-| NC3 | - | - | yes |
+| MR | yes | yes | yes |
+| NC1 | yes | yes | yes |
+| NC2 | yes | yes | yes |
+| NC3 | yes | yes | yes |
 | NR | yes | yes | yes |
 | SM-D | - | - | yes |
 | SM-NG | - | - | yes |
@@ -295,9 +295,9 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | II | - | - | - | - | - | - | - | - | - | - |
 | MML | - | - | - | - | - | - | - | - | - | - |
 | UI | - | - | - | - | - | - | - | - | - | - |
-| LR1 | - | - | - | - | - | - | - | - | - | - |
-| LR2 | - | - | - | - | - | - | - | - | - | - |
-| LR3 | - | - | - | - | - | - | - | - | - | - |
+| LR1 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| LR2 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| LR3 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | MPC-YT | - | - | - | - | - | - | - | - | - | - |
 | MR | - | - | - | - | - | - | - | - | - | - |
 | NC1 | - | - | - | - | - | - | - | - | - | - |

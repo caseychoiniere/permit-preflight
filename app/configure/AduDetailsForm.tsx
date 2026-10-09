@@ -88,7 +88,7 @@ export function AduDetailsForm({ onSubmit, onBack, serverErrors = [], initial }:
     <Card>
       <h1 className="text-lg font-semibold text-slate-900">Detached ADU details</h1>
       <p className="mt-1 text-sm text-slate-500">
-        This checks a new detached accessory dwelling unit (a backyard cottage) against Seattle&apos;s Neighborhood Residential rules. You&apos;ll place it on the map next. Please answer as accurately as you can; the report shows what it rests on.
+        This checks a new detached accessory dwelling unit (a backyard cottage) against the Seattle zoning standards for your property&apos;s zone. You&apos;ll place it on the map next. Please answer as accurately as you can; the report shows what it rests on.
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">

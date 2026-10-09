@@ -101,7 +101,7 @@ export function AduAttachedDetailsForm({ onSubmit, onBack, serverErrors = [], in
     <Card>
       <h1 className="text-lg font-semibold text-slate-900">ADU inside or attached to the house</h1>
       <p className="mt-1 text-sm text-slate-500">
-        This checks an accessory dwelling unit made inside your existing house (a basement, attic, garage or rooms) or attached to it, against Seattle&apos;s Neighborhood Residential rules. It is checked from the details you enter here; nothing is placed on a map.
+        This checks an accessory dwelling unit made inside your existing house (a basement, attic, garage or rooms) or attached to it, against the Seattle zoning standards for your property&apos;s zone. It is checked from the details you enter here; nothing is placed on a map.
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

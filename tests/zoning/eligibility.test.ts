@@ -97,3 +97,12 @@ describe("purchase eligibility - the minimum useful report contract", () => {
     expect(evaluatePurchaseEligibility({ projectType: "shed", zoning: singleZoneContext("LR1"), activeRules: permitOnly }).eligible).toBe(false);
   });
 });
+
+describe("not applicable is a code conclusion, not a missing feature", () => {
+  it("an ADU in the Industrial Buffer zone is NOT_APPLICABLE with its citation; a shed there is merely not yet supported", () => {
+    const adu = evaluatePurchaseEligibility({ projectType: "adu", zoning: singleZoneContext("IB U/45"), activeRules: [] });
+    expect(adu).toMatchObject({ eligible: false, code: "NOT_APPLICABLE_TO_ZONE" });
+    if (!adu.eligible) expect(adu.message).toContain("SMC 23.50.012");
+    expect(evaluatePurchaseEligibility({ projectType: "shed", zoning: singleZoneContext("IB U/45"), activeRules: [] })).toMatchObject({ code: "ZONE_NOT_YET_SUPPORTED" });
+  });
+});

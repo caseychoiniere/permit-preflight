@@ -9,7 +9,7 @@
  */
 
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
-import { CORE_CLAIMS, PROJECT_NOUN_PLURAL } from "./core-claims.js";
+import { CORE_CLAIMS, NOT_APPLICABLE, PROJECT_NOUN_PLURAL } from "./core-claims.js";
 import type { CoreProjectType } from "./core-claims.js";
 import { singleZoneContext } from "./context.js";
 import type { ZoningContext } from "./context.js";
@@ -17,7 +17,7 @@ import { ZONE_FAMILY_INFO } from "./designation.js";
 import type { ZoningDesignation } from "./designation.js";
 import { resolveApplicableRules } from "./resolve.js";
 
-export type EligibilityCode = "ZONING_UNAVAILABLE" | "ZONING_UNRESOLVED" | "ZONE_NOT_YET_SUPPORTED";
+export type EligibilityCode = "ZONING_UNAVAILABLE" | "ZONING_UNRESOLVED" | "ZONE_NOT_YET_SUPPORTED" | "NOT_APPLICABLE_TO_ZONE";
 
 export type PurchaseEligibility =
   | { eligible: true; zoneLabels: string[]; coveredClaims: string[]; unresolvedNotes: string[] }
@@ -61,6 +61,21 @@ export function evaluatePurchaseEligibility(input: { projectType: CoreProjectTyp
       missingClaims: [],
       retryable: false,
     };
+  }
+
+  // The governing code makes this project inapplicable in the zone (never "not built yet"): say so, and charge nothing.
+  for (const zone of zones) {
+    const na = NOT_APPLICABLE.find((n) => n.projectType === projectType && n.zoneCode === zone.zoneCode);
+    if (na) {
+      return {
+        eligible: false,
+        code: "NOT_APPLICABLE_TO_ZONE",
+        message: `Seattle zoning data maps this property as ${zone.raw}. ${na.reason} (${na.citation}), so Permit Preflight does not screen ${plural} there. Nothing was charged.`,
+        zoneLabels: zones.map((z) => z.raw),
+        missingClaims: [],
+        retryable: false,
+      };
+    }
   }
 
   const core = CORE_CLAIMS[projectType];

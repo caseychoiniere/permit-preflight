@@ -33,7 +33,7 @@ export const CORE_CLAIMS: Record<CoreProjectType, CoreClaim[]> = {
   ],
   deck: [{ claim: "deck setback allowance", anyOfRuleTypes: ["DECK_D1_SETBACK_HEIGHT_ALLOWANCE"] }],
   adu: [
-    { claim: "dwelling-unit count and density", anyOfRuleTypes: ["ADU_A1_COUNT_AND_DENSITY"] },
+    { claim: "dwelling-unit count and density", anyOfRuleTypes: ["ADU_A1_COUNT_AND_DENSITY", "ADU_MF_COUNT"] },
     { claim: "setbacks", anyOfRuleTypes: ["ADU_A3_SETBACKS"] },
     { claim: "height", anyOfRuleTypes: ["ADU_A5_HEIGHT"] },
   ],
@@ -50,3 +50,24 @@ export const PROJECT_NOUN_PLURAL: Record<CoreProjectType, string> = {
   deck: "decks",
   adu: "accessory dwelling units",
 };
+
+
+/**
+ * Combinations the governing code makes genuinely inapplicable. NOT_APPLICABLE is never "not built yet": each entry cites the code and was read in the source
+ * (2026-10-09). The ADU entry follows SMC 23.42.022.A ("allowed as a housing use in all zones where housing uses are allowed").
+ */
+export interface NotApplicableDeclaration {
+  projectType: CoreProjectType;
+  /** Matches the designation's zone code. */
+  zoneCode: string;
+  reason: string;
+  citation: string;
+}
+export const NOT_APPLICABLE: NotApplicableDeclaration[] = [
+  {
+    projectType: "adu",
+    zoneCode: "IB",
+    reason: "Residential uses are prohibited in the Industrial Buffer zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    citation: "SMC 23.50.012 Table A (J.1-J.3); SMC 23.42.022.A",
+  },
+];

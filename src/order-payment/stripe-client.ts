@@ -28,6 +28,16 @@ export interface CreateCheckoutSessionParams {
   cancelUrl: string;
   /** BR-U2B-14: reused for every retry of THIS specific session-creation call. */
   idempotencyKey: string;
+  /** The customer-facing line item on Stripe's page. Defaults to a generic name; checkout names the project type ("Detached Garage"). */
+  productName?: string;
+}
+
+const REPORT_PRODUCT_LABELS: Record<string, string> = { shed: "Shed", garage: "Detached Garage", fence: "Fence", deck: "Deck", adu: "Accessory Dwelling Unit" };
+
+/** The line-item name for a project type's report; the generic name when the type is unknown (e.g. a vacant-land request has none). */
+export function reportProductName(projectType: string | null | undefined): string {
+  const label = projectType ? REPORT_PRODUCT_LABELS[projectType] : undefined;
+  return label ? `Permit Preflight ${label} Screening Report` : "Permit Preflight Screening Report";
 }
 
 /** Constructs a real Stripe-backed client. Throws immediately if no API key is available. */
@@ -54,7 +64,7 @@ export function createStripeClient(options: StripeClientOptions = {}) {
               price_data: {
                 currency: params.currency,
                 unit_amount: params.priceCents,
-                product_data: { name: "Permit Preflight Shed Buildability Report" },
+                product_data: { name: params.productName ?? reportProductName(undefined) },
               },
               quantity: 1,
             },

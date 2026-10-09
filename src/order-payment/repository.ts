@@ -17,7 +17,7 @@ import { withFulfillmentTransaction } from "../db/client.js";
 import { orders, processedStripeEvents, screeningRequests, reportGenerationJobs, type OrderRow } from "../db/schema.js";
 import { ReportGenerationJobState } from "../report-generation-job/repository.js";
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../screening-request/authorization.js";
-import type { StripeClient } from "./stripe-client.js";
+import { reportProductName, type StripeClient } from "./stripe-client.js";
 import { OrderState, RefundReason } from "./types.js";
 import type { Order } from "./types.js";
 import { logger } from "../shared/logger.js";
@@ -172,8 +172,10 @@ async function resumeOrReusePendingOrder(
   if (!order.stripeCheckoutSessionId) {
     // Checkout-session creation was interrupted (network failure, lost response, or a crash) -
     // resume it using the SAME idempotency key, never a new Order.
+    const [requestRow] = await db.select({ projectType: screeningRequests.projectType }).from(screeningRequests).where(eq(screeningRequests.id, order.screeningRequestId));
     const session = await stripeClient.createCheckoutSession({
       orderId: order.id,
+      productName: reportProductName(requestRow?.projectType),
       priceCents: order.priceCents,
       currency: order.currency,
       successUrl,

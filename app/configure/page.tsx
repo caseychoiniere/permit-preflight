@@ -274,10 +274,10 @@ export default function ConfigurePage() {
       return;
     }
     const data = outcome.data;
-    setBoundaryPolygon(data.boundaryPolygon as typeof boundaryPolygon);
-    setBoundaryPolygonWgs84(data.boundaryPolygonWgs84 as typeof boundaryPolygonWgs84);
+    setBoundaryPolygon(data.boundaryPolygon as unknown as typeof boundaryPolygon);
+    setBoundaryPolygonWgs84(data.boundaryPolygonWgs84);
     setQualityCaveat(data.qualityCaveat as typeof qualityCaveat);
-    setExistingStructures(data.existingStructures as ExistingStructureDisplay[]);
+    setExistingStructures(data.existingStructures);
     setZoningAdvisory(null);
     setZoningCheckFailed(false);
     setLookupStage(null);

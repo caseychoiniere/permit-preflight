@@ -3,7 +3,7 @@
  * status, a null or non-object body, a missing field, an unknown status - becomes a controlled outcome with customer-facing copy, never a thrown TypeError, so the
  * lookup state can always be cleared. Unit-tested without a DOM.
  */
-import { ParcelResolutionStatus, type CandidateParcel, type ClarificationReason } from "../../src/parcel-resolution/types.js";
+import { CandidateParcelSource, ClarificationReason, ParcelResolutionStatus, type CandidateParcel } from "../../src/parcel-resolution/types.js";
 
 export const LOOKUP_ERROR_COPY = {
   NO_MATCH: "We couldn't find a parcel for this address. Please check it and try again.",
@@ -19,46 +19,90 @@ export type ResolveOutcome =
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
+const CLARIFICATION_REASONS: ReadonlySet<string> = new Set(Object.values(ClarificationReason));
+const CANDIDATE_SOURCES: ReadonlySet<string> = new Set(Object.values(CandidateParcelSource));
+
+/** A candidate exactly as the flow consumes it: an id, an optional canonical address, a known source, and (if present) an object of characteristics. */
+function validCandidate(c: unknown): c is CandidateParcel {
+  return (
+    isObject(c) &&
+    typeof c["parcelId"] === "string" &&
+    c["parcelId"] !== "" &&
+    (c["canonicalAddress"] === undefined || typeof c["canonicalAddress"] === "string") &&
+    typeof c["source"] === "string" &&
+    CANDIDATE_SOURCES.has(c["source"]) &&
+    (c["characteristics"] === undefined || isObject(c["characteristics"]))
+  );
+}
+
 export function interpretResolveResponse(httpOk: boolean, body: unknown): ResolveOutcome {
-  if (!isObject(body) || typeof body["status"] !== "string") return { kind: "ERROR", message: LOOKUP_ERROR_COPY.UNAVAILABLE };
+  const unavailable: ResolveOutcome = { kind: "ERROR", message: LOOKUP_ERROR_COPY.UNAVAILABLE };
+  // A non-2xx response is never interpreted as an outcome, whatever its body says.
+  if (!httpOk || !isObject(body) || typeof body["status"] !== "string") return unavailable;
   const status = body["status"];
   if (status === ParcelResolutionStatus.CONFIRMED) {
     const confirmed = body["confirmedParcel"];
-    const parcelId = isObject(confirmed) ? confirmed["parcelId"] : undefined;
-    return httpOk && typeof parcelId === "string" && parcelId !== "" ? { kind: "CONFIRMED", parcelId } : { kind: "ERROR", message: LOOKUP_ERROR_COPY.UNAVAILABLE };
+    return validCandidate(confirmed) ? { kind: "CONFIRMED", parcelId: confirmed.parcelId } : unavailable;
   }
   if (status === ParcelResolutionStatus.CLARIFICATION_REQUIRED) {
     const candidates = body["candidates"];
-    if (Array.isArray(candidates) && candidates.length > 0 && candidates.every((c) => isObject(c) && typeof c["parcelId"] === "string")) {
-      return { kind: "CLARIFY", candidates: candidates as CandidateParcel[], reason: body["clarificationReason"] as ClarificationReason };
-    }
-    return { kind: "ERROR", message: LOOKUP_ERROR_COPY.NO_MATCH };
+    const reason = body["clarificationReason"];
+    if (!Array.isArray(candidates) || candidates.length === 0 || !candidates.every(validCandidate)) return { kind: "ERROR", message: LOOKUP_ERROR_COPY.NO_MATCH };
+    // The reason is shown to the customer; an absent or unknown one means the response is not trustworthy.
+    if (typeof reason !== "string" || !CLARIFICATION_REASONS.has(reason)) return unavailable;
+    return { kind: "CLARIFY", candidates, reason: reason as ClarificationReason };
   }
-  if (status === ParcelResolutionStatus.RESOLUTION_UNAVAILABLE) return { kind: "ERROR", message: LOOKUP_ERROR_COPY.UNAVAILABLE };
+  if (status === ParcelResolutionStatus.RESOLUTION_UNAVAILABLE) return unavailable;
   if (status === ParcelResolutionStatus.NO_MATCH) return { kind: "ERROR", message: LOOKUP_ERROR_COPY.NO_MATCH };
-  return { kind: "ERROR", message: LOOKUP_ERROR_COPY.UNAVAILABLE };
+  return unavailable;
 }
 
+export interface GeoPoint {
+  lng: number;
+  lat: number;
+}
+export interface BoundaryStructure {
+  outlineId: string;
+  footprintWgs84: GeoPoint[];
+  areaSqFt?: number;
+}
 export interface BoundaryData {
-  boundaryPolygon: unknown;
-  boundaryPolygonWgs84: unknown;
+  /** SRID-tagged projected ring (SRID 2926), as the placement step's edge-role selection indexes it. */
+  boundaryPolygon: { points: { x: number; y: number }[]; srid: number };
+  /** The same ring in WGS84 for display. */
+  boundaryPolygonWgs84: GeoPoint[];
   qualityCaveat: string | undefined;
-  existingStructures: unknown[];
+  existingStructures: BoundaryStructure[];
 }
 
 export type BoundaryOutcome = { kind: "OK"; data: BoundaryData } | { kind: "ERROR"; message: string };
 
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isGeoPoint = (p: unknown): p is GeoPoint => isObject(p) && finite(p["lng"]) && finite(p["lat"]) && Math.abs(p["lat"]) <= 90 && Math.abs(p["lng"]) <= 180;
+const isRing = (r: unknown): r is GeoPoint[] => Array.isArray(r) && r.length >= 3 && r.every(isGeoPoint);
+
+function validStructure(s: unknown): s is BoundaryStructure {
+  return isObject(s) && typeof s["outlineId"] === "string" && s["outlineId"] !== "" && isRing(s["footprintWgs84"]) && (s["areaSqFt"] === undefined || finite(s["areaSqFt"]));
+}
+
 export function interpretBoundaryResponse(httpOk: boolean, body: unknown): BoundaryOutcome {
-  if (!isObject(body)) return { kind: "ERROR", message: LOOKUP_ERROR_COPY.BOUNDARY };
+  const failed: BoundaryOutcome = { kind: "ERROR", message: LOOKUP_ERROR_COPY.BOUNDARY };
+  if (!isObject(body)) return failed;
   if (typeof body["error"] === "string" && body["error"] !== "") return { kind: "ERROR", message: body["error"] };
-  if (!httpOk || !isObject(body["boundaryPolygon"]) || !Array.isArray(body["boundaryPolygonWgs84"])) return { kind: "ERROR", message: LOOKUP_ERROR_COPY.BOUNDARY };
+  if (!httpOk) return failed;
+  // The geometry is consumed as coordinates (edge roles index into the ring, the map draws it): validate the actual structure, not just "an object".
+  const polygon = body["boundaryPolygon"];
+  const points = isObject(polygon) ? polygon["points"] : undefined;
+  if (!isObject(polygon) || !finite(polygon["srid"]) || !Array.isArray(points) || points.length < 3 || !points.every((p) => isObject(p) && finite(p["x"]) && finite(p["y"]))) return failed;
+  if (!isRing(body["boundaryPolygonWgs84"])) return failed;
   return {
     kind: "OK",
     data: {
-      boundaryPolygon: body["boundaryPolygon"],
+      boundaryPolygon: polygon as BoundaryData["boundaryPolygon"],
       boundaryPolygonWgs84: body["boundaryPolygonWgs84"],
       qualityCaveat: typeof body["qualityCaveat"] === "string" ? body["qualityCaveat"] : undefined,
-      existingStructures: Array.isArray(body["existingStructures"]) ? body["existingStructures"] : [],
+      // Building outlines are optional display data: a malformed entry is dropped, the parcel itself is still usable.
+      existingStructures: Array.isArray(body["existingStructures"]) ? body["existingStructures"].filter(validStructure) : [],
     },
   };
 }

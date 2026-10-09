@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-10-09T23:20:07.978Z",
- "activeRuleCount": 151,
+ "generatedAt": "2026-10-09T23:35:08.057Z",
+ "activeRuleCount": 164,
  "approvedRuleCount": 0,
  "live": [
   {
@@ -188,17 +188,17 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -208,7 +208,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -222,27 +222,27 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -251,27 +251,27 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -285,17 +285,17 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -3193,7 +3193,7 @@
    "zoneCode": "IC",
    "family": "INDUSTRIAL",
    "example": "IC-65 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "NOT_APPLICABLE",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -3245,7 +3245,11 @@
      "core": false,
      "covered": false
     }
-   ]
+   ],
+   "notApplicable": {
+    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
+   }
   },
   {
    "projectType": "shed",
@@ -3373,7 +3377,7 @@
    "zoneCode": "II",
    "family": "INDUSTRIAL",
    "example": "II U/85",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "NOT_APPLICABLE",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -3425,7 +3429,11 @@
      "core": false,
      "covered": false
     }
-   ]
+   ],
+   "notApplicable": {
+    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
+   }
   },
   {
    "projectType": "shed",
@@ -3553,7 +3561,7 @@
    "zoneCode": "MML",
    "family": "INDUSTRIAL",
    "example": "MML U/45",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "NOT_APPLICABLE",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -3605,7 +3613,11 @@
      "core": false,
      "covered": false
     }
-   ]
+   ],
+   "notApplicable": {
+    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
+   }
   },
   {
    "projectType": "shed",
@@ -7214,17 +7226,17 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation from the house",
@@ -7234,7 +7246,7 @@
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -7248,27 +7260,27 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage or floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "garage access and driveway",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -7277,27 +7289,27 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "fence height in a side or rear setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height in a front or street-side setback",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence height outside required setbacks",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "fence on a retaining wall",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -7311,17 +7323,17 @@
    "zoneCode": "C2",
    "family": "C",
    "example": "C2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "deck setback allowance",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "building-permit determination",
@@ -10219,7 +10231,7 @@
    "zoneCode": "IC",
    "family": "INDUSTRIAL",
    "example": "IC-65 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "NOT_APPLICABLE",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -10271,7 +10283,11 @@
      "core": false,
      "covered": false
     }
-   ]
+   ],
+   "notApplicable": {
+    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
+   }
   },
   {
    "projectType": "shed",
@@ -10399,7 +10415,7 @@
    "zoneCode": "II",
    "family": "INDUSTRIAL",
    "example": "II U/85",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "NOT_APPLICABLE",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -10451,7 +10467,11 @@
      "core": false,
      "covered": false
     }
-   ]
+   ],
+   "notApplicable": {
+    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
+   }
   },
   {
    "projectType": "shed",
@@ -10579,7 +10599,7 @@
    "zoneCode": "MML",
    "family": "INDUSTRIAL",
    "example": "MML U/45",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "NOT_APPLICABLE",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
@@ -10631,7 +10651,11 @@
      "core": false,
      "covered": false
     }
-   ]
+   ],
+   "notApplicable": {
+    "reason": "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+    "citation": "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A"
+   }
   },
   {
    "projectType": "shed",

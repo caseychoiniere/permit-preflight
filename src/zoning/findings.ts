@@ -12,6 +12,7 @@ import type { ZoningDesignation } from "./designation.js";
 import type { ZoningResolution } from "./resolve.js";
 
 export const ZONING_SUBJECT = "Zoning applied to this screening";
+export const C2_USE_SUBJECT = "Residential use in a Commercial 2 zone";
 export const OVERLAY_SUBJECT = "Overlay districts (shoreline, historic, landmark)";
 
 const MAPPING_CAVEAT = "That data is general mapping, not a legal determination; SDCI confirms the zone.";
@@ -119,6 +120,17 @@ export function zoningFindings(resolution: ZoningResolution, opts: ZoningFinding
       subject: ZONING_SUBJECT,
       supportingEvidence: [`zoning=${d.raw}`, `zoneFamily=${d.family}`, `basis=${resolution.basis}`],
       explanationBasis: `Seattle zoning data maps this property as ${mapped}. This screening applies the ${standards} relevant to the proposed ${noun} (SMC Chapter ${ZONE_FAMILY_INFO[d.family].chapter}).${lotNote}${coverageNote} ${[...designationNotes(d), MAPPING_CAVEAT].join(" ")}`,
+    });
+  }
+
+  // Commercial 2: the standards for these structures are the chapter's (SMC 23.47A), but residential use is only a conditional use there (23.47A.004 Table A), so a house
+  // and its accessory structures may be a conditional use, a legal nonconforming use (whose expansion is limited, SMC 23.42.100-.112) or neither: not checked.
+  if (resolution.status === "RESOLVED" && (resolution.governing ?? resolution.locationZones[0])?.zoneCode === "C2") {
+    out.push({
+      classification: FindingClassification.REQUIRES_VERIFICATION,
+      subject: C2_USE_SUBJECT,
+      supportingEvidence: ["zoneCode=C2"],
+      explanationBasis: `In a Commercial 2 (C2) zone residential uses are conditional uses (SMC 23.47A.004 Table A). The standards screened here for the proposed ${noun} are those of Chapter 23.47A, but Permit Preflight does not check whether a dwelling on this property was approved as a conditional use or is a legal nonconforming use (whose expansion is limited, SMC 23.42.100-23.42.112), which can affect whether a new accessory structure is allowed. SDCI confirms this.`,
     });
   }
 

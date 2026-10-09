@@ -70,4 +70,15 @@ export const NOT_APPLICABLE: NotApplicableDeclaration[] = [
     reason: "Residential uses are prohibited in the Industrial Buffer zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
     citation: "SMC 23.50.012 Table A (J.1-J.3); SMC 23.42.022.A",
   },
+  // Chapter 23.50A (Maritime Manufacturing and Logistics, Industrial Innovation, Industrial Commercial): Table A row J. "Residential uses not listed below" is prohibited (X); the only
+  // exceptions are artist's studio/dwellings (EB/CU or X) and caretaker's quarters (P). Housing is not a permitted use, so an ADU (a housing use, SMC 23.42.022.A-B) cannot be
+  // established. Urban Industrial (UI) is NOT listed: residential uses there are conditional uses (CU), a different situation that is not yet supported rather than inapplicable.
+  ...(["MML", "II", "IC"] as const).map(
+    (zoneCode): NotApplicableDeclaration => ({
+      projectType: "adu",
+      zoneCode,
+      reason: "Residential uses are prohibited in this Industrial zone except artist's studio/dwellings and caretaker's quarters, and an accessory dwelling unit is allowed only where housing uses are allowed",
+      citation: "SMC 23.50A.040 Table A (J.1-J.3); SMC 23.42.022.A",
+    })
+  ),
 ];

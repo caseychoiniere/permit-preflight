@@ -3,7 +3,7 @@
  * mechanisms (bootstrapUnit6bGovernance, then sourceVerifyRule -> markRuleTested -> approveRule) and STOPS at APPROVED: it never calls activateRule and
  * never touches any other row. Safe to re-run: bootstrap never overwrites; a row already APPROVED (or ACTIVE) is skipped; any other state aborts.
  *
- * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise | commercial | lowrise-adu | garage-separation | midrise-highrise-adu | commercial-adu)
+ * Usage: ADMIN_OPERATOR_ID=<operator> npx tsx scripts/zoning-rules-governance.ts <set>   (set: lowrise | commercial | lowrise-adu | garage-separation | midrise-highrise-adu | commercial-adu | commercial-c2)
  */
 
 import { inArray } from "drizzle-orm";
@@ -17,6 +17,7 @@ import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../tests/fi
 import { ADU_MF_FIXED_ROW_IDS, aduMultifamilyCandidates } from "../tests/fixtures/multifamily-adu-candidates.js";
 import { ADU_MR_HR_FIXED_ROW_IDS, aduMrHrCandidates } from "../tests/fixtures/multifamily-adu-mr-hr-candidates.js";
 import { ADU_COMM_FIXED_ROW_IDS, aduCommercialCandidates } from "../tests/fixtures/commercial-adu-candidates.js";
+import { COMMERCIAL_C2_FIXED_ROW_IDS, allCommercialC2Candidates } from "../tests/fixtures/commercial-c2-candidates.js";
 import { COMMERCIAL_FIXED_ROW_IDS, allCommercialCandidates } from "../tests/fixtures/commercial-candidates.js";
 import { GARAGE_SEPARATION_FIXED_ROW_IDS, garageSeparationCandidates } from "../tests/fixtures/garage-separation-candidates.js";
 
@@ -40,6 +41,14 @@ const SETS: Record<string, RuleSet> = {
     basis: "Ordinance 127376 (2025), SMC 23.42.022 and Chapter 23.45, Municode Library CURRENT, read live 2026-10-09",
     tests: "tests/regulatory-rule-governance/multifamily-adu-candidates.test.ts (every declared case executed against the real ADU evaluator and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
     placementRows: (c) => ["ADU_A3_SETBACKS", "ADU_A4_SEPARATION"].includes((c.ruleSpecification as { ruleType: string }).ruleType),
+  },
+  "commercial-c2": {
+    name: "Commercial 2 (C2) shed, detached garage, fence and deck rules",
+    candidates: allCommercialC2Candidates,
+    rowIds: COMMERCIAL_C2_FIXED_ROW_IDS,
+    basis: "Ordinance 127375/127376 (2025), SMC Chapter 23.47A (same standards for NC and C zones; residential use conditional in C2, 23.47A.004), Municode Library CURRENT (version Sep 25 2026), read live 2026-10-09",
+    tests: "tests/regulatory-rule-governance/commercial-c2-candidates.test.ts (every declared case executed against the real evaluators and the zone resolver using this row's own persisted specification) and tests/zoning/*.test.ts",
+    placementRows: () => false,
   },
   "commercial-adu": {
     name: "Neighborhood Commercial (NC1-NC3) and Commercial 1 (C1) ADU rules",

@@ -1975,3 +1975,16 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: Next: Phase D research (C2, Seattle Mixed, Downtown, remaining special zones).
 
 ---
+
+## Citywide Coverage Phase D: C2 Accessory Structures, Industrial ADU Not-Applicable, Assessment
+**Timestamp**: 2026-10-09T23:40:00Z
+**User Input**: "PRIORITY 4 - CONTINUE CITYWIDE COVERAGE ... investigate, where realistically applicable: C2, Seattle Mixed zones, Downtown zones, remaining residentially relevant special zones, industrial zones where the project/use can actually be lawful, MPC / special districts ... Do not force support where the project is genuinely not applicable. Do not confuse NOT_APPLICABLE with NOT_YET_SUPPORTED."
+**AI Response**:
+- **C2:** Chapter 23.47A has no C2-specific setback, height, FAR, fence or deck standard, so 13 rows (clones of the NC/C1 rows, scope "C2", own UUIDs, re-verified) were advanced through the lifecycle to ACTIVE (authorization recorded in each RULE_ACTIVATED entry). Residential use is a conditional use in C2 (23.47A.004 Table A footnote 15): every C2 report carries a REQUIRES_VERIFICATION finding "Residential use in a Commercial 2 zone" (also mentioning legal nonconforming use, 23.42.100-.112). ADUs in C2 stay unsupported with a specific purchase message.
+- **Industrial:** ADUs are NOT_APPLICABLE in MML, II and IC (SMC 23.50A.040 Table A J.1-J.3 prohibits residential uses; IB already was). UI is NOT declared inapplicable (residential is conditional there).
+- **SM, Downtown, MPC, MIO, industrial accessory structures:** assessed in `aidlc-docs/construction/citywide-zoning/phase-d-assessment.md`: all NOT_YET_SUPPORTED with reasons, demand notes and a recommended order; no support was forced.
+- **Tests:** unit 1722, C2 candidate tests (33), eligibility tests for the new N/A and C2 cases, live C2 parcel in the zone-families integration test (13 tests pass).
+**Reviewer**: submitted with the next checkpoint.
+**Context**: Next: paid-path certification when the founder's test payments arrive; continue manual-QA feedback loop.
+
+---

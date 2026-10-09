@@ -90,6 +90,16 @@ export function evaluatePurchaseEligibility(input: { projectType: CoreProjectTyp
   if (blocking.length > 0) {
     const first = blocking[0]!;
     const named = blocking.map((m) => `${m.zone.raw}, a ${zoneName(m.zone)} zone`).join(" and ");
+    if (input.projectType === "adu" && blocking.every((m) => m.zone.zoneCode === "C2")) {
+      return {
+        eligible: false,
+        code: "ZONE_NOT_YET_SUPPORTED",
+        message: `Seattle zoning data maps this property as ${named}. In a Commercial 2 zone residential uses are conditional uses (SMC 23.47A.004), so whether an accessory dwelling unit can be established depends on that approval, which Permit Preflight does not screen. Nothing was charged.`,
+        zoneLabels: zones.map((z) => z.raw),
+        missingClaims: [...new Set(blocking.flatMap((m) => m.missing))],
+        retryable: false,
+      };
+    }
     return {
       eligible: false,
       code: "ZONE_NOT_YET_SUPPORTED",

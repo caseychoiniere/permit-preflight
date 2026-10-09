@@ -1,6 +1,6 @@
 # Zoning coverage matrix (project type x zone)
 
-Generated 2026-10-09T23:20:07.978Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
+Generated 2026-10-09T23:35:08.057Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
 
 Statuses: SUPPORTED = every core claim is covered (the minimum useful report; individual findings can still be REQUIRES_VERIFICATION); PARTIAL = some core claims; N/A = the governing code makes the project inapplicable in that zone (never used for 'not built yet'); not yet = a product limitation.
 
@@ -9,7 +9,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | Zone | Family | shed | garage | fence | deck | adu |
 | --- | --- | --- | --- | --- | --- | --- |
 | C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
-| C2 | Commercial | not yet | not yet | not yet | not yet | not yet |
+| C2 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | DH1 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DH2 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DMC | Downtown | not yet | not yet | not yet | not yet | not yet |
@@ -25,9 +25,9 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | IB | Industrial | not yet | not yet | not yet | not yet | N/A |
-| IC | Industrial | not yet | not yet | not yet | not yet | not yet |
-| II | Industrial | not yet | not yet | not yet | not yet | not yet |
-| MML | Industrial | not yet | not yet | not yet | not yet | not yet |
+| IC | Industrial | not yet | not yet | not yet | not yet | N/A |
+| II | Industrial | not yet | not yet | not yet | not yet | N/A |
+| MML | Industrial | not yet | not yet | not yet | not yet | N/A |
 | UI | Industrial | not yet | not yet | not yet | not yet | not yet |
 | LR1 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | LR2 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
@@ -53,7 +53,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | Zone | Family | shed | garage | fence | deck | adu |
 | --- | --- | --- | --- | --- | --- | --- |
 | C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
-| C2 | Commercial | not yet | not yet | not yet | not yet | not yet |
+| C2 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
 | DH1 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DH2 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DMC | Downtown | not yet | not yet | not yet | not yet | not yet |
@@ -69,9 +69,9 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | PSM | Downtown | not yet | not yet | not yet | not yet | not yet |
 | HR | Highrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | IB | Industrial | not yet | not yet | not yet | not yet | N/A |
-| IC | Industrial | not yet | not yet | not yet | not yet | not yet |
-| II | Industrial | not yet | not yet | not yet | not yet | not yet |
-| MML | Industrial | not yet | not yet | not yet | not yet | not yet |
+| IC | Industrial | not yet | not yet | not yet | not yet | N/A |
+| II | Industrial | not yet | not yet | not yet | not yet | N/A |
+| MML | Industrial | not yet | not yet | not yet | not yet | N/A |
 | UI | Industrial | not yet | not yet | not yet | not yet | not yet |
 | LR1 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | LR2 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
@@ -99,7 +99,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | Zone | setbacks (core) | height (core) | separation from the house | lot coverage or floor area ratio | building-permit determination |
 | --- | --- | --- | --- | --- | --- |
 | C1 | yes | yes | - | yes | yes |
-| C2 | - | - | - | - | yes |
+| C2 | yes | yes | - | yes | yes |
 | DH1 | - | - | - | - | yes |
 | DH2 | - | - | - | - | yes |
 | DMC | - | - | - | - | yes |
@@ -143,7 +143,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | Zone | setbacks (core) | height (core) | lot coverage or floor area ratio | garage access and driveway |
 | --- | --- | --- | --- | --- |
 | C1 | yes | yes | yes | yes |
-| C2 | - | - | - | - |
+| C2 | yes | yes | yes | yes |
 | DH1 | - | - | - | - |
 | DH2 | - | - | - | - |
 | DMC | - | - | - | - |
@@ -187,7 +187,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | Zone | fence height in a side or rear setback (core) | fence height in a front or street-side setback (core) | fence height outside required setbacks | fence on a retaining wall | building-permit determination |
 | --- | --- | --- | --- | --- | --- |
 | C1 | yes | yes | yes | yes | yes |
-| C2 | - | - | - | - | yes |
+| C2 | yes | yes | yes | yes | yes |
 | DH1 | - | - | - | - | yes |
 | DH2 | - | - | - | - | yes |
 | DMC | - | - | - | - | yes |
@@ -231,7 +231,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | Zone | deck setback allowance (core) | lot coverage | building-permit determination |
 | --- | --- | --- | --- |
 | C1 | yes | yes | yes |
-| C2 | - | - | yes |
+| C2 | yes | yes | yes |
 | DH1 | - | - | yes |
 | DH2 | - | - | yes |
 | DMC | - | - | yes |

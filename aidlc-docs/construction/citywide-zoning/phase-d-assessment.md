@@ -1,0 +1,23 @@
+# Phase D assessment - zone families still unsupported (2026-10-09)
+
+Status after this checkpoint (live matrix: `aidlc-docs/operations/zoning-coverage-matrix.md`): shed, detached garage, fence, deck and ADU are SUPPORTED in NR, LR1-3, MR, HR, NC1-3 and C1; shed, garage, fence and deck are also SUPPORTED in C2. This document records, for every remaining family, whether the gap is genuinely NOT_APPLICABLE or only NOT_YET_SUPPORTED, what realistic demand there is, what would be needed, and the recommended next step. "Not applicable" is declared only where the code itself makes the project impossible (cited in `src/zoning/core-claims.ts`); "not yet" is a product limitation.
+
+| Family | Shed / garage / fence / deck | ADU | Reasoning |
+|---|---|---|---|
+| **C2** | SUPPORTED (13 rows, this checkpoint). Same Chapter 23.47A standards as NC and C1; every C2 report carries a REQUIRES_VERIFICATION finding that residential use is a conditional use there (SMC 23.47A.004 Table A row J, footnote 15) and that a dwelling may be a legal nonconforming use whose expansion is limited (SMC 23.42.100-23.42.112). | NOT_YET_SUPPORTED. Residential is a conditional use, so whether an ADU can exist depends on that approval, which the product does not screen; the purchase message says so. Not NOT_APPLICABLE: housing is allowed there (conditionally). | Chapter 23.47A has no C2-specific setback, height, FAR, fence or deck variation (read live, version Sep 25 2026). |
+| **Industrial - MML, II, IC (23.50A)** | NOT_YET_SUPPORTED, low demand. Accessory structures on an industrial lot would follow 23.50A height (23.50A.140), floor area (23.50A.100), landscaping/screening and the lot-line rules; residential structures there are legacy nonconforming. Feasible, but the customer who owns a shed on an industrial lot is typically a business, not the product's persona. | **NOT_APPLICABLE** (new, this checkpoint): SMC 23.50A.040 Table A row J prohibits residential uses except artist's studio/dwellings and caretaker's quarters (MML X, II X, IC X), and an ADU requires a housing use (23.42.022.A-B). | |
+| **Industrial - IB (23.50)** | NOT_YET_SUPPORTED, same reasoning (23.50.030 setbacks, 23.50.024 height). | NOT_APPLICABLE (earlier): 23.50.012 Table A J.1-J.3. | |
+| **Industrial - UI (23.50A)** | NOT_YET_SUPPORTED, low demand. | NOT_YET_SUPPORTED (not N/A): residential uses are CONDITIONAL (CU) in UI. | |
+| **Seattle Mixed (SM-*, Chapter 23.48)** | NOT_YET_SUPPORTED. Each SM sub-zone (SM-SLU, SM-U, SM-D, SM-NG, SM-NR, SM-RB, SM-UP, ...) has its own subchapter (setbacks, height by designation, FAR, MHA); about a dozen rule families with different figures. | NOT_YET_SUPPORTED. ADUs are allowed where housing is, but a lot with a principal dwelling unit and an ADU in SM zones is rare. | Highest effort per customer. Do after a demand signal. |
+| **Downtown (Chapter 23.49)** | NOT_YET_SUPPORTED. Towers and podiums; an accessory shed/garage/deck on a downtown lot is rare and the standards (23.49.0xx) are per-zone with bonus systems. | NOT_YET_SUPPORTED (not N/A: housing is allowed; the ADU concept is simply rare there). | Very low demand. |
+| **Master Planned Communities (MPC-YT)** | NOT_YET_SUPPORTED. Yesler Terrace has its own development standards (Chapter 23.75); deterministic screening is possible but the lot population is tiny and mostly public/nonprofit housing. | NOT_YET_SUPPORTED. | |
+| **Major Institution Overlay (MIO-*-NR/LR/...)** | NOT_YET_SUPPORTED, deliberately. The master plan and Chapter 23.69 govern the underlying zone; standards differ per institution. The product refuses to apply the underlying zone's standards (reports name the overlay and make no zone-specific conclusion). | Same. | Not NOT_APPLICABLE: development is allowed, under a different regime. |
+
+## Recommended order if/when demand appears
+1. A customer-demand signal: log blocked purchase attempts per zone family (the early advisory and the checkout gate both already compute them) and review monthly. This is cheap and replaces guessing.
+2. UI / MML / II / IC / IB accessory structures (shared Chapter 23.50 and 23.50A text; ~10 rows each, plus the C2-style nonconforming-use note).
+3. SM zones, one sub-zone at a time, starting with the one a real blocked customer is in.
+4. Downtown and MPC only on a specific request.
+
+## What not to do
+Do not extend an existing family's row scope to a new family without re-reading that family's chapter (the Lowrise garage-separation work showed how a rule can look identical and not be). Do not treat a conditional-use zone as NOT_APPLICABLE.

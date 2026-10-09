@@ -7,7 +7,7 @@
  * entry each. Re-runnable.
  *
  * Usage: ADMIN_OPERATOR_ID=<operator> ACTIVATION_AUTHORIZATION="<who authorized, when, for which set>" npx tsx scripts/zoning-rules-activate.ts <set...>
- *   set: lowrise (multifamily shed/garage/fence/deck) | lowrise-adu | commercial | garage-separation | midrise-highrise-adu | commercial-adu
+ *   set: lowrise (multifamily shed/garage/fence/deck) | lowrise-adu | commercial | garage-separation | midrise-highrise-adu | commercial-adu | commercial-c2
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
@@ -19,11 +19,12 @@ import { MULTIFAMILY_FIXED_ROW_IDS } from "../tests/fixtures/multifamily-candida
 import { ADU_MF_FIXED_ROW_IDS } from "../tests/fixtures/multifamily-adu-candidates.js";
 import { ADU_MR_HR_FIXED_ROW_IDS } from "../tests/fixtures/multifamily-adu-mr-hr-candidates.js";
 import { ADU_COMM_FIXED_ROW_IDS } from "../tests/fixtures/commercial-adu-candidates.js";
+import { COMMERCIAL_C2_FIXED_ROW_IDS } from "../tests/fixtures/commercial-c2-candidates.js";
 import { GARAGE_SEPARATION_FIXED_ROW_IDS } from "../tests/fixtures/garage-separation-candidates.js";
 
 process.loadEnvFile(".env.local");
 
-const SETS: Record<string, Record<string, string>> = { lowrise: MULTIFAMILY_FIXED_ROW_IDS, "lowrise-adu": ADU_MF_FIXED_ROW_IDS, commercial: COMMERCIAL_FIXED_ROW_IDS, "garage-separation": GARAGE_SEPARATION_FIXED_ROW_IDS, "midrise-highrise-adu": ADU_MR_HR_FIXED_ROW_IDS, "commercial-adu": ADU_COMM_FIXED_ROW_IDS };
+const SETS: Record<string, Record<string, string>> = { lowrise: MULTIFAMILY_FIXED_ROW_IDS, "lowrise-adu": ADU_MF_FIXED_ROW_IDS, commercial: COMMERCIAL_FIXED_ROW_IDS, "garage-separation": GARAGE_SEPARATION_FIXED_ROW_IDS, "midrise-highrise-adu": ADU_MR_HR_FIXED_ROW_IDS, "commercial-adu": ADU_COMM_FIXED_ROW_IDS, "commercial-c2": COMMERCIAL_C2_FIXED_ROW_IDS };
 
 async function main() {
   const operatorId = requireOperatorId();

@@ -22,11 +22,12 @@ import { COMMERCIAL_FIXED_ROW_IDS, allCommercialCandidates } from "../fixtures/c
 import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../fixtures/multifamily-candidates.js";
 import { ADU_MF_FIXED_ROW_IDS, aduMultifamilyCandidates } from "../fixtures/multifamily-adu-candidates.js";
 import { GARAGE_SEPARATION_FIXED_ROW_IDS, garageSeparationCandidates } from "../fixtures/garage-separation-candidates.js";
+import { COMMERCIAL_C2_FIXED_ROW_IDS, allCommercialC2Candidates } from "../fixtures/commercial-c2-candidates.js";
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
 const act = (cands: typeof allMultifamilyCandidates, ids: Record<string, string>): RegulatoryRule[] => cands.map((c) => ({ ...draft(c), id: ids[c.id]!, lifecycleState: "ACTIVE", acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] }) as RegulatoryRule);
-const EXTRA: RegulatoryRule[] = [...act(allMultifamilyCandidates, MULTIFAMILY_FIXED_ROW_IDS), ...act(allCommercialCandidates, COMMERCIAL_FIXED_ROW_IDS), ...act(aduMultifamilyCandidates, ADU_MF_FIXED_ROW_IDS), ...act(garageSeparationCandidates as never, GARAGE_SEPARATION_FIXED_ROW_IDS)];
+const EXTRA: RegulatoryRule[] = [...act(allMultifamilyCandidates, MULTIFAMILY_FIXED_ROW_IDS), ...act(allCommercialCandidates, COMMERCIAL_FIXED_ROW_IDS), ...act(aduMultifamilyCandidates, ADU_MF_FIXED_ROW_IDS), ...act(garageSeparationCandidates as never, GARAGE_SEPARATION_FIXED_ROW_IDS), ...act(allCommercialC2Candidates, COMMERCIAL_C2_FIXED_ROW_IDS)];
 const EXTRA_IDS = new Set(EXTRA.map((r) => r.id));
 let extraNotActive: RegulatoryRule[] = EXTRA;
 const AFFECTED = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca", "seattle-zoning", "seattle-landmarks", "seattle-frequent-transit"];
@@ -41,6 +42,7 @@ const PARCELS: { pin: string; label: string; family: string; code?: string }[] =
   { pin: "7625701280", label: "NC2-40 (M)", family: "NC", code: "NC2" },
   { pin: "1794501135", label: "NC2P-55 (M)", family: "NC", code: "NC2" },
   { pin: "1972206390", label: "C1-55 (M)", family: "C", code: "C1" },
+  { pin: "2433200166", label: "C2-55 (M)", family: "C", code: "C2" },
 ];
 
 describe.skipIf(!hasDb)("citywide zoning - real parcels across zone families", () => {

@@ -1,6 +1,6 @@
 # Zoning coverage matrix (project type x zone)
 
-Generated 2026-10-09T23:13:53.696Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
+Generated 2026-10-09T23:20:07.978Z from the rule rows by scripts/zoning-coverage-matrix.ts. Do not edit by hand: re-run the script. The machine-readable form is zoning-coverage-matrix.json.
 
 Statuses: SUPPORTED = every core claim is covered (the minimum useful report; individual findings can still be REQUIRES_VERIFICATION); PARTIAL = some core claims; N/A = the governing code makes the project inapplicable in that zone (never used for 'not built yet'); not yet = a product limitation.
 
@@ -8,7 +8,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | Family | shed | garage | fence | deck | adu |
 | --- | --- | --- | --- | --- | --- | --- |
-| C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | C2 | Commercial | not yet | not yet | not yet | not yet | not yet |
 | DH1 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DH2 | Downtown | not yet | not yet | not yet | not yet | not yet |
@@ -34,9 +34,9 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | LR3 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | MPC-YT | Master Planned Community | not yet | not yet | not yet | not yet | not yet |
 | MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
-| NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
-| NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
-| NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | NR | Neighborhood Residential | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | SM-D | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
 | SM-NG | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
@@ -52,7 +52,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | Family | shed | garage | fence | deck | adu |
 | --- | --- | --- | --- | --- | --- | --- |
-| C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| C1 | Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | C2 | Commercial | not yet | not yet | not yet | not yet | not yet |
 | DH1 | Downtown | not yet | not yet | not yet | not yet | not yet |
 | DH2 | Downtown | not yet | not yet | not yet | not yet | not yet |
@@ -78,9 +78,9 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | LR3 | Lowrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | MPC-YT | Master Planned Community | not yet | not yet | not yet | not yet | not yet |
 | MR | Midrise | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
-| NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
-| NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
-| NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | not yet |
+| NC1 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| NC2 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
+| NC3 | Neighborhood Commercial | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | NR | Neighborhood Residential | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED | SUPPORTED |
 | SM-D | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
 | SM-NG | Seattle Mixed | not yet | not yet | not yet | not yet | not yet |
@@ -274,7 +274,7 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 
 | Zone | dwelling-unit count and density (core) | setbacks (core) | height (core) | size limit | separation between structures | lot coverage | floor area ratio | amenity area | trees | design standards |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| C1 | - | - | - | - | - | - | - | - | - | - |
+| C1 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | C2 | - | - | - | - | - | - | - | - | - | - |
 | DH1 | - | - | - | - | - | - | - | - | - | - |
 | DH2 | - | - | - | - | - | - | - | - | - | - |
@@ -300,9 +300,9 @@ Statuses: SUPPORTED = every core claim is covered (the minimum useful report; in
 | LR3 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | MPC-YT | - | - | - | - | - | - | - | - | - | - |
 | MR | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| NC1 | - | - | - | - | - | - | - | - | - | - |
-| NC2 | - | - | - | - | - | - | - | - | - | - |
-| NC3 | - | - | - | - | - | - | - | - | - | - |
+| NC1 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| NC2 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| NC3 | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | NR | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | SM-D | - | - | - | - | - | - | - | - | - | - |
 | SM-NG | - | - | - | - | - | - | - | - | - | - |

@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-10-09T23:13:53.696Z",
- "activeRuleCount": 139,
+ "generatedAt": "2026-10-09T23:20:07.978Z",
+ "activeRuleCount": 151,
  "approvedRuleCount": 0,
  "live": [
   {
@@ -129,57 +129,57 @@
    "zoneCode": "C1",
    "family": "C",
    "example": "C1-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4813,57 +4813,57 @@
    "zoneCode": "NC1",
    "family": "NC",
    "example": "NC1-30 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -4993,57 +4993,57 @@
    "zoneCode": "NC2",
    "family": "NC",
    "example": "NC2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -5173,57 +5173,57 @@
    "zoneCode": "NC3",
    "family": "NC",
    "example": "NC3-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -7155,57 +7155,57 @@
    "zoneCode": "C1",
    "family": "C",
    "example": "C1-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -11839,57 +11839,57 @@
    "zoneCode": "NC1",
    "family": "NC",
    "example": "NC1-30 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -12019,57 +12019,57 @@
    "zoneCode": "NC2",
    "family": "NC",
    "example": "NC2-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },
@@ -12199,57 +12199,57 @@
    "zoneCode": "NC3",
    "family": "NC",
    "example": "NC3-40 (M)",
-   "status": "NOT_YET_SUPPORTED",
+   "status": "SUPPORTED",
    "claims": [
     {
      "claim": "dwelling-unit count and density",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "setbacks",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "height",
      "core": true,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "size limit",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "separation between structures",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "lot coverage",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "floor area ratio",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "amenity area",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "trees",
      "core": false,
-     "covered": false
+     "covered": true
     },
     {
      "claim": "design standards",
      "core": false,
-     "covered": false
+     "covered": true
     }
    ]
   },

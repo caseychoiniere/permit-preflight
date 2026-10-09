@@ -30,7 +30,7 @@ function run(input: AduTestInput) {
 describe("real ADU candidates - structure", () => {
   it("exactly twelve, one per AduRuleType, unique ids, each with a fixed row UUID", () => {
     expect(realAduCandidates).toHaveLength(12);
-    expect(realAduCandidates.map((c) => (c.ruleSpecification as { ruleType: string }).ruleType).sort()).toEqual(Object.values(AduRuleType).filter((t) => !t.startsWith("ADU_MF_")).sort());
+    expect(realAduCandidates.map((c) => (c.ruleSpecification as { ruleType: string }).ruleType).sort()).toEqual(Object.values(AduRuleType).filter((t) => !t.startsWith("ADU_MF_") && !t.startsWith("ADU_COMM_")).sort());
     expect(new Set(realAduCandidates.map((c) => c.id)).size).toBe(12);
     expect(new Set(Object.values(ADU_FIXED_ROW_IDS)).size).toBe(12);
     for (const c of realAduCandidates) {

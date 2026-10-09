@@ -1961,3 +1961,17 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: Remaining real implementation gaps are ADUs in MR, HR, NC and C (blocked at checkout with a plain reason) and the not-yet-supported zone families.
 
 ---
+
+## Product Expansion: Parcel-Search Loading, Report-Generation Experience, ADUs in MR, HR, NC1-3 and C1
+**Timestamp**: 2026-10-09T23:30:00Z
+**User Input**: "CONTINUE BUILDING - PRODUCT EXPANSION + LOADING EXPERIENCE ... PRIORITY 1 - PARCEL SEARCH LOADING STATE ... PRIORITY 2 - REPORT GENERATION EXPERIENCE ... PRIORITY 3 - ADU ZONING EXPANSION: MR, HR, NC1, NC2, NC3, C1 ... Use current authoritative Seattle code. Do not assume LR ADU rules simply carry over ... automatically open purchases when the minimum-useful-report contract becomes satisfied ... New deterministic regulatory rules should proceed through the established lifecycle normally ... Use aidlc-reviewer as adversarial QA."
+**AI Response**:
+- **Parcel search:** loading state starts in ~100 ms ("Looking up the property…", then "Loading the parcel map and nearby buildings…"), duplicate submission blocked, one fixed-height live region (status or error), form submit on Enter, empty-address guard, a fixed-height "Checking zoning…" line on the project-type step; response interpreters (`app/configure/lookup-helpers.ts`) reject non-2xx, null/malformed bodies, unknown reasons and malformed geometry so the busy state always clears.
+- **Report generation:** `ReportGenerationProgress` (CSS/SVG, no dependency): indeterminate, no percentage, no checkmarks until the report is really ready, cycling present-progressive copy, long-wait (45 s) and very-long (150 s) copy that never asks for a refresh or a second payment and says it will "try to email" a link; refund states stop the animation, show the order reference (status API returns it only in refund states) and scope wording to the order. Reduced motion neutralizes every animated class (tested). Dev preview at /dev/loading-preview. Reviewer: REVISE x2, then APPROVE (e78a8cf7).
+- **ADU MR/HR (17 rows) and NC1-3/C1 (12 rows), all ACTIVE:** SMC 23.42.022 (same standards as principal dwelling units unless the zone says otherwise) plus Chapter 23.45 (MR Table B setbacks, 15 ft rear, taller-than-42-ft guard; separation 5 ft in MR, none in HR; height 80/60/440; FAR 4.5/3.2/7; amenity on a floor-area basis; no lot-coverage or density-by-lot-area limit) and Chapter 23.47A (no setback unless a residential zone abuts - read from Seattle's zoning layer; mapped height; FAR by height used as a lowest figure; amenity 5% of residential floor area, no 1982 exemption; no general lot-coverage limit). C2 stays excluded (residential is a conditional use). Engine support: no-separation statement, floor-area amenity basis, commercial setbacks/height claims, FAR phrase/citation parameters, design-standards note.
+- **Purchase eligibility:** with the rows ACTIVE the minimum-useful-report contract is met and ADU purchases opened automatically for MR, HR, NC1-3 and C1 (all five project types now open in NR, LR, MR, HR, NC1-3, C1); C2, SM, Downtown, Industrial, MPC and MIO remain blocked.
+- **Tests:** unit 1686, integration 35 files / 201 passed, build clean; 7 live ADU zone-family tests (MR, HR, NC2, NC2P with neighbor, C1, tall MR ADU, Lowrise control).
+**Reviewer**: UI slice APPROVE (e78a8cf7-eb98-4cd5-9c90-dd4f3965682e) after REVISE d42cf43c and b568e180; ADU slice submitted next.
+**Context**: Next: Phase D research (C2, Seattle Mixed, Downtown, remaining special zones).
+
+---

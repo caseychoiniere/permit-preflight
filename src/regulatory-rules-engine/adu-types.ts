@@ -42,6 +42,9 @@ export interface AduAttachedDetails {
 export interface AduProjectDetails {
   projectType: "adu";
   aduType: AduType;
+  /** Commercial zones (SMC 23.47A.014): whether a residential zone abuts the lot or is across an alley from it, from Seattle's zoning layer. */
+  abutsResidentialZone?: "YES" | "NO" | "UNKNOWN";
+  adjacentResidentialZones?: string[];
   /** The new ADU's footprint and height; absent for a conversion, whose footprint is the mapped outline. */
   widthFt?: number;
   depthFt?: number;
@@ -82,6 +85,8 @@ export interface AduProjectDetails {
 /** Server-derived facts about the property that are not the customer's declarations. */
 export interface AduSiteFacts {
   parcelAreaSqFt?: number;
+  /** Neighborhood Commercial and Commercial zones: the height limit mapped on the Official Land Use Map, the number in the zone designation (NC2-40 -> 40), when the lot has a single one. */
+  mappedHeightFt?: number;
   /** Sum of mapped existing-structure footprint area (Seattle Building Outlines), undefined if not retrieved. */
   existingMappedCoverageSqFt?: number;
   inFrequentTransitServiceArea?: boolean;
@@ -107,6 +112,9 @@ export const AduRuleType = {
   MF_NO_LOT_COVERAGE_LIMIT: "ADU_MF_NO_LOT_COVERAGE_LIMIT",
   MF_FLOOR_AREA_RATIO: "ADU_MF_FAR",
   MF_LANDSCAPING_NOTE: "ADU_MF_LANDSCAPING_NOTE",
+  // Neighborhood Commercial and Commercial (C1) zones, SMC Chapter 23.47A: setbacks only where a residential zone abuts, and the height mapped on the Official Land Use Map.
+  COMM_SETBACKS: "ADU_COMM_SETBACKS",
+  COMM_HEIGHT: "ADU_COMM_HEIGHT",
 } as const;
 export type AduRuleType = (typeof AduRuleType)[keyof typeof AduRuleType];
 
@@ -139,6 +147,26 @@ export interface AduSizeLimitSpec {
   /** A larger cap that applies only if conditions Permit Preflight cannot establish are met (Lowrise: 1,500 sq ft, SMC 23.42.022.G.1.c). Up to it, the result is REQUIRES_VERIFICATION, never a failure. */
   conditionalExtendedCapSqFt?: number;
   conditionalExtendedCapText?: string;
+}
+/** SMC 23.47A.014: no setback is required in an NC or C zone except where a residential zone abuts the lot or is across an alley from it. */
+export interface AduCommSetbacksSpec {
+  ruleType: typeof AduRuleType.COMM_SETBACKS;
+  /** Portions of a structure above this height are subject to the upper-level setback along a lot line that abuts or is across an alley from a residential zone (13 ft). */
+  upperLevelAboveFt: number;
+  /** No entrance, window or other opening closer than this to an abutting residentially zoned lot (5 ft). */
+  openingMinFromResidentialLotFt: number;
+  /** The triangular setback at the corner of an abutting residential lot extends this far along the street and side lot lines (15 ft). */
+  cornerTriangleFt: number;
+  citation: string;
+}
+/** SMC 23.47A.012: the limit is the height mapped for the zone (30 ft at the lowest), with small exceptions. */
+export interface AduCommHeightSpec {
+  ruleType: typeof AduRuleType.COMM_HEIGHT;
+  /** The lowest mapped limit: at or under it the ADU is within the limit in every NC and C zone. */
+  safeMaxFt: number;
+  /** The most the mapped limit can be exceeded by under SMC 23.47A.012.A.1 (4 ft or 7 ft): between the mapped limit and this the result is REQUIRES_VERIFICATION. */
+  exceptionAllowanceFt: number;
+  citation: string;
 }
 export interface AduSetbacksSpec {
   ruleType: typeof AduRuleType.SETBACKS;
@@ -207,6 +235,8 @@ export interface AduAmenitySpec {
   citation?: string;
   exemptionCitation?: string;
   canopyExemption?: boolean;
+  /** Commercial zones (SMC 23.47A.024) have no exemption for a unit added to a 1982 structure: the exemption branch and its sentence are dropped. */
+  noPre1982Exemption?: boolean;
 }
 export interface AduTreesSpec {
   ruleType: typeof AduRuleType.TREES;
@@ -222,6 +252,8 @@ export interface AduDesignStandardsSpec {
   facadeOpeningsPercent: number;
   /** Customer-facing citations (default the Neighborhood Residential section "SMC 23.44.140"). */
   citation?: string;
+  /** Zones whose street-level standards cannot be assessed from the declared details (commercial zones, SMC 23.47A.008): the finding is this note, always REQUIRES_VERIFICATION. */
+  noteText?: string;
 }
 
 export interface AduConversionSpec {
@@ -254,6 +286,11 @@ export interface AduMfFarSpec {
   far: number;
   zoneText: string;
   conditionText?: string;
+  /** Customer-facing citation (default "SMC 23.45.510"). */
+  citation?: string;
+  /** Where the zone's figure depends on something not carried by the designation (commercial zones: the mapped height), `far` is the LOWEST figure that can apply: this phrase replaces
+   * "limits ... to" so the sentence says so ("sets a limit that depends on the mapped height and is never less than"). */
+  floorPhrase?: string;
 }
 export interface AduMfLandscapingNoteSpec {
   ruleType: typeof AduRuleType.MF_LANDSCAPING_NOTE;

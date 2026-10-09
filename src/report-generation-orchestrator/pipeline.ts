@@ -1392,17 +1392,51 @@ async function runAduPipeline(
     .from(regulatoryRules)
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.ADU)));
 
+  // Neighborhood Commercial and Commercial zones (SMC 23.47A.014): setbacks exist only where a residential zone abuts the lot or is across an alley from it, so the zoning
+  // within a short distance of the lot is read (a failed read is UNKNOWN, never "no neighbor"); the height limit is the number mapped in the designation (23.47A.012).
+  const lotIsCommercial = zoningContext.lotZones.some((z) => z.designation.family === "NC" || z.designation.family === "C");
+  let neighborsFact: ZoningFactValue | undefined;
+  let neighborsError: string | undefined;
+  if (lotIsCommercial && parcelGeometryAvailable) {
+    try {
+      const buffered = await bufferPolygon(db, geometryFact!.value!, ADJACENCY_BUFFER_FT);
+      neighborsFact = await withStageTiming("PROPERTY_INTELLIGENCE", job.id, () => queryZoningForPolygon(buffered, 8000, "PARCEL"));
+    } catch (error) {
+      neighborsError = "Seattle's zoning data near the property could not be read";
+      logger.warn("SOURCE_FAILURE", { reportGenerationJobId: job.id, error: error instanceof Error ? error.message : String(error) });
+    }
+  } else if (lotIsCommercial) {
+    neighborsError = "the property boundary was not available to check the zoning next to it";
+  }
+  const aduZoningFact = getFact<ZoningFactValue>(propertyContext, "zoning");
+  const aduLandmarkFact = getFact<LandmarkFactValue>(propertyContext, "landmark-designation");
+  const aduZoningContext = lotIsCommercial
+    ? buildZoningContext({
+        lot: aduZoningFact?.availabilityState === AvailabilityState.AVAILABLE ? aduZoningFact.value : undefined,
+        ...(aduLandmarkFact?.availabilityState === AvailabilityState.AVAILABLE && aduLandmarkFact.value ? { landmark: aduLandmarkFact.value } : {}),
+        ...(neighborsFact ? { neighbors: neighborsFact } : {}),
+        ...(neighborsError ? { neighborsError } : {}),
+      })
+    : zoningContext;
+  const mappedHeights = new Set(aduZoningContext.lotZones.filter((z) => z.designation.family === "NC" || z.designation.family === "C").map((z) => /-(\d+)$/.exec(z.designation.baseZone)?.[1]));
+  const mappedHeightFt = lotIsCommercial && mappedHeights.size === 1 && [...mappedHeights][0] !== undefined && aduZoningContext.lotZones.every((z) => z.designation.family === "NC" || z.designation.family === "C") ? Number([...mappedHeights][0]) : undefined;
+  if (aduZoningContext.adjacentResidential) {
+    project.abutsResidentialZone = aduZoningContext.adjacentResidential.status;
+    project.adjacentResidentialZones = aduZoningContext.adjacentResidential.zones;
+  }
+
   const outcome = await withStageTiming("RULES_ENGINE", job.id, async () =>
     evaluateAdu({
       project,
       site: {
+        ...(mappedHeightFt !== undefined ? { mappedHeightFt } : {}),
         parcelAreaSqFt: rawParcelAreaSqFt,
         existingMappedCoverageSqFt: existingStructureCoverageFact?.mappedFootprintAreaSqFt,
         inFrequentTransitServiceArea: frequentTransitFact?.availabilityState === AvailabilityState.AVAILABLE ? frequentTransitFact.value?.inFrequentTransitServiceArea : undefined,
         ecaFindings,
       },
       candidateActiveRules: withExtraRules(activeRuleRows, ProjectType.ADU, deps),
-      zoningContext,
+      zoningContext: aduZoningContext,
     })
   );
 
@@ -1419,6 +1453,7 @@ async function runAduPipeline(
     ...(existingStructuresWgs84Display ? [{ factType: "existing-structures-wgs84-display", value: existingStructuresWgs84Display, provenance: {} }] : []),
     ...(dwellingSelectionNotMatchedExplanation ? [{ factType: "dwelling-selection-outcome", value: { outcome: "SELECTION_NOT_MATCHED", explanation: dwellingSelectionNotMatchedExplanation }, provenance: {} }] : []),
     ...(existingStructureCoverageFact ? [existingStructureCoverageEvidenceEntry(existingStructureCoverageFact)] : []),
+    ...(neighborsFact ? [{ factType: "zoning-adjacent", value: neighborsFact, provenance: {} }] : []),
     ...assembleAduEvidence(outcome),
   ];
 

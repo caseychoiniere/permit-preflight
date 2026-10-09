@@ -34,8 +34,8 @@ export const CORE_CLAIMS: Record<CoreProjectType, CoreClaim[]> = {
   deck: [{ claim: "deck setback allowance", anyOfRuleTypes: ["DECK_D1_SETBACK_HEIGHT_ALLOWANCE"] }],
   adu: [
     { claim: "dwelling-unit count and density", anyOfRuleTypes: ["ADU_A1_COUNT_AND_DENSITY", "ADU_MF_COUNT"] },
-    { claim: "setbacks", anyOfRuleTypes: ["ADU_A3_SETBACKS"] },
-    { claim: "height", anyOfRuleTypes: ["ADU_A5_HEIGHT"] },
+    { claim: "setbacks", anyOfRuleTypes: ["ADU_A3_SETBACKS", "ADU_COMM_SETBACKS"] },
+    { claim: "height", anyOfRuleTypes: ["ADU_A5_HEIGHT", "ADU_COMM_HEIGHT"] },
   ],
 };
 

@@ -2,7 +2,7 @@
  * ADU screening across zone families - live pipeline on real parcels (DB-gated; 2026-10-09): Midrise and Highrise (and, below, commercial) use their own rows, name the
  * real zoning, state each zone's own standards, and never carry Neighborhood Residential or Lowrise text. Candidate rows that are not ACTIVE in the connected database (a fresh
  * environment) are evaluated through the pipeline's test-only seam; a row that IS active is never injected too (two active rows for one claim conflict).
- *   MR (M1) 2784600070 | HR (M) 8590900490 | LR1 (M) 1931300060 (control: Lowrise unchanged)
+ *   MR (M1) 2784600070 | HR (M) 8590900490 | NC2-40 (M) 7625701280 (no residential neighbor) | NC2P-55 (M) 1794501135 (residential neighbor) | C1-55 (M) 1972206390 | LR1 (M) 1931300060 (control)
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -16,13 +16,14 @@ import { fetchBuildingFootprints } from "../../src/property-intelligence/seattle
 import { draft } from "../../src/regulatory-rule-governance/lifecycle.js";
 import type { RegulatoryRule } from "../../src/regulatory-rule-governance/types.js";
 import { ADU_MR_HR_FIXED_ROW_IDS, aduMrHrCandidates } from "../fixtures/multifamily-adu-mr-hr-candidates.js";
+import { ADU_COMM_FIXED_ROW_IDS, aduCommercialCandidates } from "../fixtures/commercial-adu-candidates.js";
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
 const AFFECTED = ["king-county-parcel-polygon", "seattle-building-outlines", "seattle-eca", "seattle-zoning", "seattle-landmarks", "seattle-frequent-transit"];
 const act = (c: { id: string } & Record<string, unknown>, ids: Record<string, string>): RegulatoryRule =>
   ({ ...draft(c as never), id: ids[c.id]!, lifecycleState: "ACTIVE", acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] }) as RegulatoryRule;
-const EXTRA: RegulatoryRule[] = [...aduMrHrCandidates.map((c) => act(c as never, ADU_MR_HR_FIXED_ROW_IDS))];
+const EXTRA: RegulatoryRule[] = [...aduMrHrCandidates.map((c) => act(c as never, ADU_MR_HR_FIXED_ROW_IDS)), ...aduCommercialCandidates.map((c) => act(c as never, ADU_COMM_FIXED_ROW_IDS))];
 let extraNotActive: RegulatoryRule[] = EXTRA;
 
 type F = { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string; appliedRule?: { id: string } };
@@ -125,6 +126,41 @@ describe.skipIf(!hasDb)("ADU across zone families - real parcels", () => {
     const rear = findings(tall.artifact).find((x) => x.subject === "ADU rear setback");
     expect(rear?.classification).toBe("REQUIRES_VERIFICATION");
     expect(rear?.explanationBasis).toMatch(/taller than 42 ft/);
+  }, 240_000);
+
+  it("NC2-40 (M), no residential neighbor: completes with Chapter 23.47A standards - no setback requirement, mapped 40 ft height, no separation or lot-coverage limit - and nothing uncovered", async () => {
+    const { job, artifact } = await generateAdu("7625701280");
+    expect(job?.state).toBe("COMPLETE");
+    const z = zoning(artifact);
+    expect(z.status).toBe("RESOLVED");
+    expect(z.governing).toBe("NC2-40 (M)");
+    expect(uncovered(artifact)).toEqual([]);
+    const f = findings(artifact);
+    const setbacks = f.find((x) => x.subject === "ADU setbacks in a commercial zone");
+    expect(setbacks?.classification).toBe("KNOWN");
+    expect(setbacks?.complianceOutcome).toBe("PASS");
+    expect(f.find((x) => x.subject === "ADU height")?.explanationBasis).toMatch(/30 ft at the lowest/);
+    expect(f.find((x) => x.subject === "Separation from the existing dwelling")?.explanationBasis).toMatch(/no required separation/);
+    expect(f.find((x) => x.subject === "Floor area ratio (FAR)")?.explanationBasis).toContain("SMC 23.47A.013");
+    for (const x of f) expect(x.explanationBasis, x.subject).not.toMatch(/23\.44\.|23\.45\.|Neighborhood Residential|Lowrise|Midrise|Highrise/);
+  }, 240_000);
+
+  it("NC2P-55 (M) next to residential zoning: the setback claim names the abutting-zone rules and is REQUIRES_VERIFICATION; the neighboring zoning read is persisted as evidence", async () => {
+    const { job, artifact } = await generateAdu("1794501135");
+    expect(job?.state).toBe("COMPLETE");
+    expect(uncovered(artifact)).toEqual([]);
+    const setbacks = findings(artifact).find((x) => x.subject === "ADU setbacks in a commercial zone");
+    expect(setbacks?.classification).toBe("REQUIRES_VERIFICATION");
+    expect(setbacks?.explanationBasis).toMatch(/upper-level setback/);
+    expect((artifact!.evidence as { factType: string }[]).some((e) => e.factType === "zoning-adjacent")).toBe(true);
+  }, 240_000);
+
+  it("C1-55 (M): completes with Commercial 1 standards and nothing uncovered", async () => {
+    const { job, artifact } = await generateAdu("1972206390");
+    expect(job?.state).toBe("COMPLETE");
+    expect(zoning(artifact).governing).toBe("C1-55 (M)");
+    expect(uncovered(artifact)).toEqual([]);
+    expect(findings(artifact).find((x) => x.subject === "Zoning applied to this screening")?.explanationBasis).toContain("Commercial (C1)");
   }, 240_000);
 
   it("control - Lowrise (LR1 M) is unchanged: Lowrise text, nothing uncovered", async () => {

@@ -45,6 +45,8 @@ import type {
   AduMfNoLotCoverageLimitSpec,
   AduProjectDetails,
   AduSeparationSpec,
+  AduCommHeightSpec,
+  AduCommSetbacksSpec,
   AduSetbacksSpec,
   AduSiteFacts,
   AduSizeLimitSpec,
@@ -128,12 +130,15 @@ const SPEC_GUARDS: Record<string, (s: Record<string, unknown>) => boolean> = {
     typeof s["directorMayWaiveAndModify"] === "boolean",
   [AduRuleType.ATTACHED]: (s) =>
     typeof s["capExemptionBeforeDate"] === "string" && !Number.isNaN(Date.parse(s["capExemptionBeforeDate"] as string)) && nonNegativeFinite(s["attachedGarageExclusionSqFt"]),
+  [AduRuleType.COMM_SETBACKS]: (s) => positiveFinite(s["upperLevelAboveFt"]) && positiveFinite(s["openingMinFromResidentialLotFt"]) && positiveFinite(s["cornerTriangleFt"]) && typeof s["citation"] === "string",
+  [AduRuleType.COMM_HEIGHT]: (s) => positiveFinite(s["safeMaxFt"]) && nonNegativeFinite(s["exceptionAllowanceFt"]) && typeof s["citation"] === "string",
   [AduRuleType.MF_COUNT]: (s) => positiveFinite(s["maxAdusPerLot"]) && typeof s["noDensityLimitText"] === "string",
   [AduRuleType.MF_NO_LOT_COVERAGE_LIMIT]: (s) => typeof s["statement"] === "string" && (s["statement"] as string).length > 0,
   [AduRuleType.MF_FLOOR_AREA_RATIO]: (s) => positiveFinite(s["far"]) && typeof s["zoneText"] === "string",
   [AduRuleType.MF_LANDSCAPING_NOTE]: (s) => typeof s["text"] === "string" && (s["text"] as string).length > 0,
   [AduRuleType.DESIGN_STANDARDS]: (s) =>
-    positiveFinite(s["pedestrianAccessMinWidthFt"]) && positiveFinite(s["streetFacingWithinFt"]) && positiveFinite(s["weatherProtectionFt"]) && positiveFinite(s["facadeOpeningsPercent"]),
+    (typeof s["noteText"] === "string" && (s["noteText"] as string).length > 0) ||
+    (positiveFinite(s["pedestrianAccessMinWidthFt"]) && positiveFinite(s["streetFacingWithinFt"]) && positiveFinite(s["weatherProtectionFt"]) && positiveFinite(s["facadeOpeningsPercent"])),
 };
 
 interface ActiveRules {
@@ -501,7 +506,25 @@ function spatialQualityGate(project: AduProjectDetails, rule: RegulatoryRule): s
   return `The distance rests on ${q} parcel geometry, which this rule has not been approved to rely on, so it is not treated as a definite result.`;
 }
 
+/** Neighborhood Commercial and Commercial zones (SMC 23.47A.014): no setback unless a residential zone abuts the lot or is across an alley from it. */
+function evaluateCommSetbacks(project: AduProjectDetails, rules: ActiveRules): Evaluated[] | undefined {
+  const r = rules.find<AduCommSetbacksSpec>(AduRuleType.COMM_SETBACKS);
+  if (!r) return undefined;
+  const status = project.abutsResidentialZone ?? "UNKNOWN";
+  const evidence = [`abutsResidentialZone=${status}`, ...(project.adjacentResidentialZones?.length ? [`adjacentResidentialZones=${project.adjacentResidentialZones.join(",")}`] : [])];
+  if (status === "NO") {
+    return [{ finding: known("ADU setbacks in a commercial zone", r.rule, true, evidence, `${r.spec.citation} requires a setback in a Neighborhood Commercial or Commercial zone only where a lot abuts, or is across an alley from, a residential zone. Seattle's zoning data shows no residential zone abutting or across an alley from this property, so the ADU has no zoning setback requirement from this section. Chapter 23.53 can still require a setback for street or alley widening, which is not evaluated. ${DECLARED_BASIS}`) }];
+  }
+  const why = status === "YES" ? `Seattle's zoning data shows residential zoning abutting or across an alley from this property (${project.adjacentResidentialZones?.join(", ") ?? "residential zone"}).` : "Whether a residential zone abuts this property could not be read from Seattle's zoning data.";
+  return [{
+    finding: verify("ADU setbacks in a commercial zone", r.rule, evidence, `${why} Where a lot abuts a residential zone, ${r.spec.citation} requires a triangular setback at the corner of an abutting residential lot (${num(r.spec.cornerTriangleFt)} ft along the street and side lot lines), an upper-level setback for any portion of a structure above ${num(r.spec.upperLevelAboveFt)} ft${project.heightFt !== undefined ? (project.heightFt > r.spec.upperLevelAboveFt ? ` (the ADU is ${num(project.heightFt)} ft tall)` : ` (the ADU is ${num(project.heightFt)} ft tall, so it is not above that height)`) : ""}, and no entrance, window or other opening closer than ${num(r.spec.openingMinFromResidentialLotFt)} ft to an abutting residentially zoned lot. Which lot line abuts the residential lot and where the openings would be are not known to Permit Preflight, so this is left for SDCI to confirm.`),
+    verifyItem: "Confirm with SDCI whether a residential zone abuts the lot and which setbacks follow.",
+  }];
+}
+
 function evaluateSetbacks(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated[] {
+  const comm = evaluateCommSetbacks(project, rules);
+  if (comm) return comm;
   const r = rules.find<AduSetbacksSpec>(AduRuleType.SETBACKS);
   if (!r) return [{ uncovered: "ADU setbacks" }];
   const out: Evaluated[] = [];
@@ -677,7 +700,29 @@ function evaluateSeparation(project: AduProjectDetails, rules: ActiveRules, conv
   return out;
 }
 
-function evaluateHeight(project: AduProjectDetails, rules: ActiveRules): Evaluated {
+/** Neighborhood Commercial and Commercial zones (SMC 23.47A.012): the height limit is the one mapped on the Official Land Use Map (the number in the zone designation). */
+function evaluateCommHeight(project: AduProjectDetails, site: AduSiteFacts, rules: ActiveRules): Evaluated | undefined {
+  const r = rules.find<AduCommHeightSpec>(AduRuleType.COMM_HEIGHT);
+  if (!r) return undefined;
+  const height = project.heightFt ?? 0;
+  const mapped = site.mappedHeightFt;
+  const evidence = [`heightFt=${height}`, `safeMaxFt=${r.spec.safeMaxFt}`, ...(mapped !== undefined ? [`mappedHeightFt=${mapped}`] : [])];
+  if (height <= r.spec.safeMaxFt) {
+    return { finding: known(SUBJECT.HEIGHT, r.rule, true, evidence, `The height limit in a Neighborhood Commercial or Commercial zone is the height mapped for the zone (the number in its designation, ${num(r.spec.safeMaxFt)} ft at the lowest; ${r.spec.citation}). The ADU's height of ${num(height)} ft is within even the lowest mapped limit, so it is within this zone's limit. ${DECLARED_BASIS}`) };
+  }
+  if (mapped !== undefined) {
+    if (height <= mapped) return { finding: known(SUBJECT.HEIGHT, r.rule, true, evidence, `The height limit here is the ${num(mapped)} ft mapped for this zone (${r.spec.citation}). The ADU's height of ${num(height)} ft is within it. ${DECLARED_BASIS}`) };
+    if (height > mapped + r.spec.exceptionAllowanceFt) {
+      return { finding: known(SUBJECT.HEIGHT, r.rule, false, evidence, `The height limit here is the ${num(mapped)} ft mapped for this zone (${r.spec.citation}); the exceptions in that section add at most ${num(r.spec.exceptionAllowanceFt)} ft. The ADU's height of ${num(height)} ft is over even that. ${DECLARED_BASIS}`), blocker: `The ADU is ${num(height)} ft tall, over the ${num(mapped)} ft mapped limit plus the exceptions` };
+    }
+    return { finding: verify(SUBJECT.HEIGHT, r.rule, evidence, `The ADU's height of ${num(height)} ft is over the ${num(mapped)} ft limit mapped for this zone (${r.spec.citation}) but within the most that the exceptions in that section can add (${num(r.spec.exceptionAllowanceFt)} ft), which depend on street-level uses and other conditions not known here.`), verifyItem: "Confirm with SDCI whether a height exception applies." };
+  }
+  return { finding: verify(SUBJECT.HEIGHT, r.rule, evidence, `The height limit in a Neighborhood Commercial or Commercial zone is the height mapped for the zone (the number in its designation; ${r.spec.citation}), which can be as low as ${num(r.spec.safeMaxFt)} ft. The ADU is ${num(height)} ft tall, above that lowest limit, and the mapped limit for this property could not be read from a single designation, so it is left for SDCI to confirm.`), verifyItem: "Confirm the mapped height limit for the property." };
+}
+
+function evaluateHeight(project: AduProjectDetails, rules: ActiveRules, site: AduSiteFacts = { ecaFindings: [] }): Evaluated {
+  const comm = evaluateCommHeight(project, site, rules);
+  if (comm) return comm;
   const r = rules.find<AduHeightSpec>(AduRuleType.HEIGHT);
   if (!r) return { uncovered: "ADU height" };
   const height = project.heightFt ?? 0;
@@ -764,8 +809,9 @@ function sqFtPerUnitBand<T extends { overSqFtPerUnit: number }>(bands: T[], sqFt
 function evaluateMfFar(project: AduProjectDetails, site: AduSiteFacts, mf: { rule: RegulatoryRule; spec: AduMfFarSpec }): Evaluated {
   const { rule, spec } = mf;
   const cond = spec.conditionText ? ` ${spec.conditionText}` : "";
+  const farCite = spec.citation ?? "SMC 23.45.510";
   if (site.parcelAreaSqFt === undefined) {
-    return { finding: verify(SUBJECT.FAR, rule, [], `${spec.zoneText} limits total chargeable floor area to ${spec.far} times the lot area (SMC 23.45.510).${cond} The lot area was not available, so the limit could not be calculated.`), verifyItem: "Confirm the lot area and the floor area ratio limit." };
+    return { finding: verify(SUBJECT.FAR, rule, [], `${spec.zoneText} ${spec.floorPhrase ?? "limits total chargeable floor area to"} ${spec.far} times the lot area (${farCite}).${cond} The lot area was not available, so the limit could not be calculated.`), verifyItem: "Confirm the lot area and the floor area ratio limit." };
   }
   const limit = spec.far * site.parcelAreaSqFt;
   const attached = isAttached(project);
@@ -773,7 +819,7 @@ function evaluateMfFar(project: AduProjectDetails, site: AduSiteFacts, mf: { rul
   const unmeasuredAddition = (isConversion(project) && !intactConversion) || attached;
   const adu = isConversion(project) || attached ? 0 : estimateAduFloorAreaSqFt(project);
   const evidence = [`farLimit=${spec.far}`, `limitSqFt=${Math.round(limit)}`, `aduFloorAreaSqFt=${Math.round(adu)}`];
-  const lead = `${spec.zoneText} limits the total chargeable floor area of all structures to ${spec.far} times the lot area, about ${sf(limit)} sq ft on ${sf(site.parcelAreaSqFt)} sq ft (SMC 23.45.510).${cond} Underground floors and portions of a story no more than 4 ft above grade are not counted.`;
+  const lead = `${spec.zoneText} ${spec.floorPhrase ?? "limits the total chargeable floor area of all structures to"} ${spec.far} times the lot area, about ${sf(limit)} sq ft on ${sf(site.parcelAreaSqFt)} sq ft (${farCite}).${cond} Underground floors and portions of a story no more than 4 ft above grade are not counted.`;
   if (project.existingChargeableFloorAreaSqFt === undefined) {
     return { finding: verify(SUBJECT.FAR, rule, evidence, `${lead} You did not give the existing chargeable floor area, so how much room is left for the ADU could not be determined.`), verifyItem: "Add up the existing chargeable floor area of all structures and compare it to the floor area ratio limit." };
   }
@@ -786,8 +832,8 @@ function evaluateMfFar(project: AduProjectDetails, site: AduSiteFacts, mf: { rul
     return { finding: known(SUBJECT.FAR, rule, true, totalEvidence, `${lead} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, within the limit, ${sf(limit - total)} sq ft to spare. This rests on the floor area you declared.`) };
   }
   return {
-    finding: verify(SUBJECT.FAR, rule, totalEvidence, `${lead} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, over the limit by ${sf(total - limit)} sq ft. This rests on the floor area you declared, which may include exempt areas, and a higher figure applies in some circumstances.`),
-    constraint: `Existing plus ADU floor area of ${sf(total)} sq ft appears to exceed the ${sf(limit)} sq ft floor area ratio limit`,
+    finding: verify(SUBJECT.FAR, rule, totalEvidence, `${lead} Your existing ${sf(project.existingChargeableFloorAreaSqFt)} sq ft plus the ${sf(adu)} sq ft ADU is ${sf(total)} sq ft, ${spec.floorPhrase ? `over that lowest figure by ${sf(total - limit)} sq ft; the limit for this property's mapped height is higher, so whether it is exceeded cannot be told here` : `over the limit by ${sf(total - limit)} sq ft`}. This rests on the floor area you declared, which may include exempt areas, and a higher figure applies in some circumstances.`),
+    constraint: spec.floorPhrase ? `Existing plus ADU floor area of ${sf(total)} sq ft is above the lowest floor area ratio figure (${sf(limit)} sq ft); the mapped-height limit may be higher` : `Existing plus ADU floor area of ${sf(total)} sq ft appears to exceed the ${sf(limit)} sq ft floor area ratio limit`,
     verifyItem: "Confirm the chargeable floor area of all structures against the floor area ratio limit.",
   };
 }
@@ -855,12 +901,12 @@ function evaluateAmenity(project: AduProjectDetails, site: AduSiteFacts, rules: 
     ? `Amenity area of ${Math.round(r.spec.requiredFractionOfFloorArea! * 100)}% of the total gross floor area of the residential structure (for this ADU alone about ${sf(adu * r.spec.requiredFractionOfFloorArea!)} sq ft, but each private amenity area must be at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, so at least ${sf(r.spec.minSqFt)} sq ft), unenclosed and free of parking and driveways (${r.spec.citation ?? "SMC 23.44.110"}). Which structure's floor area counts, and whether existing amenity area already satisfies it, is not known to Permit Preflight.`
     : `Amenity area of ${Math.round((r.spec.requiredFractionOfLot ?? 0) * 100)}% of the lot area${required !== undefined ? ` (about ${sf(required)} sq ft)` : ""}, at least ${sf(r.spec.minSqFt)} sq ft and ${num(r.spec.minDimensionFt)} ft in each dimension, unenclosed and free of parking and driveways (${r.spec.citation ?? "SMC 23.44.110"}).`;
   const exemptUnit = project.existingAduCount === 0 && project.existingPrincipalDwellingUnits === 1;
-  if (project.existingHouseBuiltBefore1982 === true && exemptUnit) {
+  if (!r.spec.noPre1982Exemption && project.existingHouseBuiltBefore1982 === true && exemptUnit) {
     return {
       finding: known(SUBJECT.AMENITY, r.rule, true, ["exemption=oneNewUnitOnPre1982Dwelling"], `No amenity area is required for one new dwelling unit added to a dwelling that existed as of January 1, 1982 (${r.spec.exemptionCitation ?? "SMC 23.44.110.H.1"}). You reported a single house built before 1982 with no other ADU, so this ADU appears to qualify. This rests on what you told us.`),
     };
   }
-  const why = project.existingHouseBuiltBefore1982 === undefined ? "You did not say whether the house was built before 1982, which would exempt a single added unit." : project.existingHouseBuiltBefore1982 === true ? "The pre-1982 exemption covers only one new unit added to a single dwelling." : "The house was not built before 1982, so the exemption for one added unit does not apply.";
+  const why = r.spec.noPre1982Exemption ? "" : project.existingHouseBuiltBefore1982 === undefined ? "You did not say whether the house was built before 1982, which would exempt a single added unit." : project.existingHouseBuiltBefore1982 === true ? "The pre-1982 exemption covers only one new unit added to a single dwelling." : "The house was not built before 1982, so the exemption for one added unit does not apply.";
   return {
     finding: verify(SUBJECT.AMENITY, r.rule, [`requiredSqFt=${required !== undefined ? Math.round(required) : "unknown"}`], `${requirement} ${why} ${r.spec.canopyExemption === false ? "" : "Development that earns enough tree points for ten percent canopy at maturity is also exempt (SMC 23.44.110.H.2). "}Whether your site plan provides the area is not determined here.`),
     verifyItem: "Find where the amenity area would go on the site plan (or confirm an exemption applies).",
@@ -890,6 +936,7 @@ function evaluateDesign(project: AduProjectDetails, rules: ActiveRules): Evaluat
   const r = rules.find<AduDesignStandardsSpec>(AduRuleType.DESIGN_STANDARDS);
   if (!r) return { uncovered: "design standards" };
   const cite = r.spec.citation ?? "SMC 23.44.140";
+  if (r.spec.noteText !== undefined) return { finding: verify(SUBJECT.DESIGN, r.rule, [], r.spec.noteText), verifyItem: "Ask SDCI whether the street-level standards apply to the ADU." };
   if (isAttached(project) && project.attached && !project.attached.includesAddition) {
     return {
       finding: verify(
@@ -1142,7 +1189,7 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
   // An ADU needs the zone's own standards (density or floor area, setbacks, height, ...). The conclusion is made only when the zoning resolves
   // and at least one zone-specific ADU rule governs it; anything else (an unresolved or split zoning, or a zone without active ADU rules yet)
   // produces no ADU conclusion at all.
-  const aduZoneRuleTypes: string[] = [AduRuleType.COUNT_AND_DENSITY, AduRuleType.SETBACKS, AduRuleType.HEIGHT, AduRuleType.FLOOR_AREA_RATIO, AduRuleType.LOT_COVERAGE];
+  const aduZoneRuleTypes: string[] = [AduRuleType.COUNT_AND_DENSITY, AduRuleType.SETBACKS, AduRuleType.HEIGHT, AduRuleType.FLOOR_AREA_RATIO, AduRuleType.LOT_COVERAGE, AduRuleType.MF_COUNT, AduRuleType.COMM_SETBACKS, AduRuleType.COMM_HEIGHT];
   const ruleTypeOfRow = (r: RegulatoryRule): string => (r.ruleSpecification as { ruleType?: string }).ruleType ?? "";
   // Rules exist for ADUs, but none of the zone-specific ones governs the zone this property is in: say so, rather than listing every claim as unscreened.
   const zoneHasNoAduRules =
@@ -1203,7 +1250,7 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
         finding: verify(SUBJECT.POSITION, undefined, [`footprintInsideParcelFraction=${(project.footprintInsideParcelFraction ?? 0).toFixed(2)}`], `About ${pct}% of the ADU footprint you placed lies outside the property boundary shown, so its distances to the property lines and the house are not meaningful and were not evaluated. Move the footprint fully inside the parcel to get a read on setbacks, separation and lot coverage.`),
         verifyItem: "Place the ADU fully inside the parcel to evaluate setbacks, separation and lot coverage.",
       });
-      evaluated.push(evaluateCount(project, rules), evaluateDensity(project, site, rules), evaluateSize(project, rules), evaluateHeight(project, rules), evaluateFar(project, site, rules), evaluateAmenity(project, site, rules), evaluateTrees(project, site, rules), evaluateDesign(project, rules));
+      evaluated.push(evaluateCount(project, rules), evaluateDensity(project, site, rules), evaluateSize(project, rules), evaluateHeight(project, rules, site), evaluateFar(project, site, rules), evaluateAmenity(project, site, rules), evaluateTrees(project, site, rules), evaluateDesign(project, rules));
     } else {
       evaluated.push(
         evaluateCount(project, rules),
@@ -1211,7 +1258,7 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
         evaluateSize(project, rules),
         ...evaluateSetbacks(project, site, rules),
         ...evaluateSeparation(project, rules),
-        evaluateHeight(project, rules),
+        evaluateHeight(project, rules, site),
         evaluateLotCoverage(project, site, rules),
         evaluateFar(project, site, rules),
         evaluateAmenity(project, site, rules),

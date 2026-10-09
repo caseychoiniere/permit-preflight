@@ -18,6 +18,7 @@ import type { RegulatoryRule } from "../src/regulatory-rule-governance/types.js"
 import { MULTIFAMILY_FIXED_ROW_IDS, allMultifamilyCandidates } from "../tests/fixtures/multifamily-candidates.js";
 import { ADU_MF_FIXED_ROW_IDS, aduMultifamilyCandidates } from "../tests/fixtures/multifamily-adu-candidates.js";
 import { ADU_MR_HR_FIXED_ROW_IDS, aduMrHrCandidates } from "../tests/fixtures/multifamily-adu-mr-hr-candidates.js";
+import { ADU_COMM_FIXED_ROW_IDS, aduCommercialCandidates } from "../tests/fixtures/commercial-adu-candidates.js";
 import { COMMERCIAL_FIXED_ROW_IDS, allCommercialCandidates } from "../tests/fixtures/commercial-candidates.js";
 import { GARAGE_SEPARATION_FIXED_ROW_IDS, garageSeparationCandidates } from "../tests/fixtures/garage-separation-candidates.js";
 
@@ -28,6 +29,7 @@ const asActiveRules = (cands: typeof allMultifamilyCandidates, ids: Record<strin
 const EXTRA_SETS: Record<string, RegulatoryRule[]> = {
   "lowrise-adu": asActiveRules(aduMultifamilyCandidates, ADU_MF_FIXED_ROW_IDS),
   "midrise-highrise-adu": asActiveRules(aduMrHrCandidates, ADU_MR_HR_FIXED_ROW_IDS),
+  "commercial-adu": asActiveRules(aduCommercialCandidates, ADU_COMM_FIXED_ROW_IDS),
   commercial: asActiveRules(allCommercialCandidates, COMMERCIAL_FIXED_ROW_IDS),
   "garage-separation": asActiveRules(garageSeparationCandidates, GARAGE_SEPARATION_FIXED_ROW_IDS),
   "mf-hr-new": asActiveRules(allMultifamilyCandidates.filter((c) => /-hr-2026$/.test(c.id) && /separation|parking-access/.test(c.id)), MULTIFAMILY_FIXED_ROW_IDS),

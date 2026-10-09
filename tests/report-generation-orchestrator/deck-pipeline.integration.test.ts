@@ -95,7 +95,7 @@ describe.skipIf(!hasDb)("Deck report generation pipeline - live end-to-end integ
       expect(bySubject("Deck setback (side setback)")?.classification).toBe("REQUIRES_VERIFICATION");
       expect(findings.some((f) => f.complianceOutcome === "FAIL")).toBe(false);
       expect(bySubject("Deck and lot coverage")?.classification).toBe("REQUIRES_VERIFICATION");
-      expect(bySubject("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN"); // verified plain NR
+      expect(bySubject("Zoning applied to this screening")?.classification).toBe("KNOWN"); // verified plain NR
 
       const evidence = artifact!.evidence as { factType: string; value: unknown }[];
       const factTypes = evidence.map((e) => e.factType);
@@ -132,9 +132,11 @@ describe.skipIf(!hasDb)("Deck report generation pipeline - live end-to-end integ
       const { job, artifact } = await generate({ heightAboveGradeIn: 40, widthFt: 10, depthFt: 12, attachment: "DETACHED", buildingRelation: "OPEN_GROUND_BELOW", setbackLocations: ["SIDE_SETBACK"] }, "3298700485");
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as { subject: string; classification: string; explanationBasis: string }[];
-      expect(findings.some((f) => f.subject.startsWith("Deck setback") || f.subject === "Deck and lot coverage")).toBe(false);
-      const z = findings.find((f) => f.subject === "Zoning applicability (Neighborhood Residential zones)")!;
+      // No Neighborhood Residential deck rule is applied to a Lowrise parcel, whatever Lowrise rows are or are not active.
+      expect(findings.some((f) => /23\.44/.test(f.explanationBasis))).toBe(false);
+      const z = findings.find((f) => f.subject === "Zoning applied to this screening")!;
       expect(z.explanationBasis).toContain("LR1");
+      expect(z.explanationBasis).not.toContain("Neighborhood Residential");
       const evidence = artifact!.evidence as { factType: string; value: unknown }[];
       expect((evidence.find((e) => e.factType === "deck-permit-requirement")!.value as { buildingPermit: string }).buildingPermit).toBe("REQUIRED");
     },

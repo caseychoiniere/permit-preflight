@@ -1,0 +1,3252 @@
+[
+{
+"ZONING": "C1-145 (M)",
+"BASE_ZONE": "C1-145",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-200 (M)",
+"BASE_ZONE": "C1-200",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-30",
+"BASE_ZONE": "C1-30",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-40",
+"BASE_ZONE": "C1-40",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-40 (M)",
+"BASE_ZONE": "C1-40",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-55 (M)",
+"BASE_ZONE": "C1-55",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-65",
+"BASE_ZONE": "C1-65",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-75 (M)",
+"BASE_ZONE": "C1-75",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-75 (M1)",
+"BASE_ZONE": "C1-75",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1-95 (M)",
+"BASE_ZONE": "C1-95",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1P-40 (M)",
+"BASE_ZONE": "C1P-40",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1P-55 (M)",
+"BASE_ZONE": "C1P-55",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C1P-75 (M)",
+"BASE_ZONE": "C1P-75",
+"ZONELUT": "C1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2-30",
+"BASE_ZONE": "C2-30",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2-40",
+"BASE_ZONE": "C2-40",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2-40 (M)",
+"BASE_ZONE": "C2-40",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2-55 (M)",
+"BASE_ZONE": "C2-55",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2-65 (M1)",
+"BASE_ZONE": "C2-65",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2-75 (M)",
+"BASE_ZONE": "C2-75",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "C2P-55 (M)",
+"BASE_ZONE": "C2P-55",
+"ZONELUT": "C2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "DH1/45",
+"BASE_ZONE": "DH1/45",
+"ZONELUT": "DH1",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DH2/55",
+"BASE_ZONE": "DH2/55",
+"ZONELUT": "DH2",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DH2/75",
+"BASE_ZONE": "DH2/75",
+"ZONELUT": "DH2",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DH2/85",
+"BASE_ZONE": "DH2/85",
+"ZONELUT": "DH2",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC 240/290-440",
+"BASE_ZONE": "DMC 240/290-440",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC 340/290-440",
+"BASE_ZONE": "DMC 340/290-440",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC 85/75-170",
+"BASE_ZONE": "DMC 85/75-170",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC-145",
+"BASE_ZONE": "DMC-145",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC-170",
+"BASE_ZONE": "DMC-170",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC-75",
+"BASE_ZONE": "DMC-75",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMC-95",
+"BASE_ZONE": "DMC-95",
+"ZONELUT": "DMC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/C 145/75",
+"BASE_ZONE": "DMR/C 145/75",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/C 280/125",
+"BASE_ZONE": "DMR/C 280/125",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/C 75/75-170",
+"BASE_ZONE": "DMR/C 75/75-170",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/C 75/75-95",
+"BASE_ZONE": "DMR/C 75/75-95",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/C 95/75",
+"BASE_ZONE": "DMR/C 95/75",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/R 145/65",
+"BASE_ZONE": "DMR/R 145/65",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/R 280/65",
+"BASE_ZONE": "DMR/R 280/65",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DMR/R 95/65",
+"BASE_ZONE": "DMR/R 95/65",
+"ZONELUT": "DMR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DOC1 U/450-U",
+"BASE_ZONE": "DOC1 U/450-U",
+"ZONELUT": "DOC1",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DOC2 500/300-550",
+"BASE_ZONE": "DOC2 500/300-550",
+"ZONELUT": "DOC2",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "DRC 85-170",
+"BASE_ZONE": "DRC 85-170",
+"ZONELUT": "DRC",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "HR",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "IB U/45",
+"BASE_ZONE": "IB U/45",
+"ZONELUT": "IB",
+"CLASS_DESC": "Manufacturing/Industrial",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50",
+"MIO_NAME": null
+},
+{
+"ZONING": "IC-45",
+"BASE_ZONE": "IC-45",
+"ZONELUT": "IC",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "IC-65 (M)",
+"BASE_ZONE": "IC-65",
+"ZONELUT": "IC",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDM 165/85-170",
+"BASE_ZONE": "IDM 165/85-170",
+"ZONELUT": "IDM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDM 85/85-170",
+"BASE_ZONE": "IDM 85/85-170",
+"ZONELUT": "IDM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDM-65-150",
+"BASE_ZONE": "IDM-65-150",
+"ZONELUT": "IDM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDM-75-85",
+"BASE_ZONE": "IDM-75-85",
+"ZONELUT": "IDM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDR 170",
+"BASE_ZONE": "IDR 170",
+"ZONELUT": "IDR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDR 45/125-270",
+"BASE_ZONE": "IDR 45/125-270",
+"ZONELUT": "IDR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "IDR/C 125/150-270",
+"BASE_ZONE": "IDR/C 125/150-270",
+"ZONELUT": "IDR",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "II 85-240",
+"BASE_ZONE": "II 85-240",
+"ZONELUT": "II",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "II U/125",
+"BASE_ZONE": "II U/125",
+"ZONELUT": "II",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "II U/160",
+"BASE_ZONE": "II U/160",
+"ZONELUT": "II",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "II U/85",
+"BASE_ZONE": "II U/85",
+"ZONELUT": "II",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR1",
+"BASE_ZONE": "LR1",
+"ZONELUT": "LR1",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "LR1",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR1 (M1)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "LR1",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR1 RC (M)",
+"BASE_ZONE": "LR1 RC",
+"ZONELUT": "LR1",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR1 RC (M1)",
+"BASE_ZONE": "LR1 RC",
+"ZONELUT": "LR1",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR2",
+"BASE_ZONE": "LR2",
+"ZONELUT": "LR2",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR2 (0.75)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "LR2",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "LR2",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR2 (M1)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "LR2",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR2 RC (M)",
+"BASE_ZONE": "LR2 RC",
+"ZONELUT": "LR2",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR2 RC (M1)",
+"BASE_ZONE": "LR2 RC",
+"ZONELUT": "LR2",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3",
+"BASE_ZONE": "LR3",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3 (M1)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3 (M2)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3 RC",
+"BASE_ZONE": "LR3 RC",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3 RC (M)",
+"BASE_ZONE": "LR3 RC",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "LR3 RC (M1)",
+"BASE_ZONE": "LR3 RC",
+"ZONELUT": "LR3",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "Lowrise Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "MIO-105-C2-75 (M)",
+"BASE_ZONE": "C2-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-105-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Northwest Hospital & Medical Center"
+},
+{
+"ZONING": "MIO-105-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "South Seattle College"
+},
+{
+"ZONING": "MIO-105-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Kaiser Permanente"
+},
+{
+"ZONING": "MIO-105-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "North Seattle College"
+},
+{
+"ZONING": "MIO-105-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Cherry Hill Campus"
+},
+{
+"ZONING": "MIO-105-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-105-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "VA Puget Sound Health Care System"
+},
+{
+"ZONING": "MIO-105-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Harborview Medical Center"
+},
+{
+"ZONING": "MIO-105-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Central College"
+},
+{
+"ZONING": "MIO-105-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-105-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Ballard Campus"
+},
+{
+"ZONING": "MIO-105-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-105-NC2-55 (M)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Kaiser Permanente"
+},
+{
+"ZONING": "MIO-105-NC2P-55 (M)",
+"BASE_ZONE": "NC2P-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Kaiser Permanente"
+},
+{
+"ZONING": "MIO-105-NC3-55 (M)",
+"BASE_ZONE": "NC3-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Central College"
+},
+{
+"ZONING": "MIO-105-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Central College"
+},
+{
+"ZONING": "MIO-105-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-105-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Ballard Campus"
+},
+{
+"ZONING": "MIO-105-NC3-95 (M)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-105-NC3P-55 (M)",
+"BASE_ZONE": "NC3P-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Central College"
+},
+{
+"ZONING": "MIO-105-NC3P-75 (M)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Central College"
+},
+{
+"ZONING": "MIO-105-NC3P-75 (M)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-105-NC3P-75 (M)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-C1-55 (M)",
+"BASE_ZONE": "C1-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-C1-75 (M)",
+"BASE_ZONE": "C1-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-160-IC-65 (M)",
+"BASE_ZONE": "IC-65",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Northwest Hospital & Medical Center"
+},
+{
+"ZONING": "MIO-160-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Cherry Hill Campus"
+},
+{
+"ZONING": "MIO-160-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-NC3-200 (M)",
+"BASE_ZONE": "NC3-200",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-160-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-160-NC3-95 (M)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-160-NC3P-95 (M)",
+"BASE_ZONE": "NC3P-95",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-160-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Cherry Hill Campus"
+},
+{
+"ZONING": "MIO-160/125-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-160/125-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-160/140-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-160/140-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-200-C1-75 (M)",
+"BASE_ZONE": "C1-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-200-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-200-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Northwest Hospital & Medical Center"
+},
+{
+"ZONING": "MIO-200-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-200-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-200-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-240-C1-75 (M)",
+"BASE_ZONE": "C1-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-240-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Harborview Medical Center"
+},
+{
+"ZONING": "MIO-240-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-240-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Virgina Mason Medical Center"
+},
+{
+"ZONING": "MIO-240-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-240-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-240-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-240-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "VA Puget Sound Health Care System"
+},
+{
+"ZONING": "MIO-240-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-240-NC3P-200 (M)",
+"BASE_ZONE": "NC3P-200",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Virgina Mason Medical Center"
+},
+{
+"ZONING": "MIO-37-C1-55 (M)",
+"BASE_ZONE": "C1-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-C1-75 (M)",
+"BASE_ZONE": "C1-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-C2-55 (M)",
+"BASE_ZONE": "C2-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-IC-65 (M)",
+"BASE_ZONE": "IC-65",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "North Seattle College"
+},
+{
+"ZONING": "MIO-37-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-37-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "VA Puget Sound Health Care System"
+},
+{
+"ZONING": "MIO-37-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "North Seattle College"
+},
+{
+"ZONING": "MIO-37-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-37-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-37-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-LR3 RC (M)",
+"BASE_ZONE": "LR3 RC",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-MML U/45",
+"BASE_ZONE": "MML U/45",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-37-NC1-55 (M)",
+"BASE_ZONE": "NC1-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-NC2-55 (M)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-37-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-37-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Cherry Hill Campus"
+},
+{
+"ZONING": "MIO-50-C1-55 (M)",
+"BASE_ZONE": "C1-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-50-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-50-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "South Seattle College"
+},
+{
+"ZONING": "MIO-50-LR1 RC (M)",
+"BASE_ZONE": "LR1 RC",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "South Seattle College"
+},
+{
+"ZONING": "MIO-50-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-50-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Kaiser Permanente"
+},
+{
+"ZONING": "MIO-50-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "North Seattle College"
+},
+{
+"ZONING": "MIO-50-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-50-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-50-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-50-NC1-55 (M)",
+"BASE_ZONE": "NC1-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-50-NC2-55 (M)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-50-NC2-75 (M1)",
+"BASE_ZONE": "NC2-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-50-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-65-C1-55 (M)",
+"BASE_ZONE": "C1-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-65-IC-65 (M)",
+"BASE_ZONE": "IC-65",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-65-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-65-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Northwest Hospital & Medical Center"
+},
+{
+"ZONING": "MIO-65-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Pacific University"
+},
+{
+"ZONING": "MIO-65-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-65-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-65-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-65-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Cherry Hill Campus"
+},
+{
+"ZONING": "MIO-65-LR3 (M)",
+"BASE_ZONE": "LR3",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-65-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Ballard Campus"
+},
+{
+"ZONING": "MIO-65-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-65-NC2-55 (M)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-65-NC2P-55 (M)",
+"BASE_ZONE": "NC2P-55",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-65-NC2P-75 (M)",
+"BASE_ZONE": "NC2P-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-65-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Ballard Campus"
+},
+{
+"ZONING": "MIO-65-NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-65-NC3-95 (M)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Ballard Campus"
+},
+{
+"ZONING": "MIO-65-NC3P-75 (M)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Central College"
+},
+{
+"ZONING": "MIO-65-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-65-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center Cherry Hill Campus"
+},
+{
+"ZONING": "MIO-70-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-70-MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-70-NC3-95 (M)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-70-NC3P-200 (M)",
+"BASE_ZONE": "NC3P-200",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-70-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MIO-90-HR (M)",
+"BASE_ZONE": "HR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Swedish Medical Center First Hill Campus"
+},
+{
+"ZONING": "MIO-90-LR1 (M)",
+"BASE_ZONE": "LR1",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-90-LR2 (M)",
+"BASE_ZONE": "LR2",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "University of Washington"
+},
+{
+"ZONING": "MIO-90-NC3-95 (M)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle University"
+},
+{
+"ZONING": "MIO-90-NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "MIO",
+"CLASS_DESC": "Major Institutions",
+"CATEGORY_DESC": "Major Institutions",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.69",
+"MIO_NAME": "Seattle Children's Hospital"
+},
+{
+"ZONING": "MML U/45",
+"BASE_ZONE": "MML U/45",
+"ZONELUT": "MML",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "MML U/65",
+"BASE_ZONE": "MML U/65",
+"ZONELUT": "MML",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "MML U/85",
+"BASE_ZONE": "MML U/85",
+"ZONELUT": "MML",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "MPC-YT",
+"BASE_ZONE": "MPC-YT",
+"ZONELUT": "MPC",
+"CLASS_DESC": "Master Planned Community",
+"CATEGORY_DESC": "Master Planned Community",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.75",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR",
+"BASE_ZONE": "MR",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR (M)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR (M1)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR (M1)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR (M2)",
+"BASE_ZONE": "MR",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.45",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR RC (M)",
+"BASE_ZONE": "MR RC",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "MR RC (M1)",
+"BASE_ZONE": "MR RC",
+"ZONELUT": "MR",
+"CLASS_DESC": "Multi-Family/Residential-Commercial",
+"CATEGORY_DESC": "High-Density Multi-Family",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.46",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-30",
+"BASE_ZONE": "NC1-30",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-30 (M)",
+"BASE_ZONE": "NC1-30",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-40",
+"BASE_ZONE": "NC1-40",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-40 (M)",
+"BASE_ZONE": "NC1-40",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-40 (M1)",
+"BASE_ZONE": "NC1-40",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-40 (M2)",
+"BASE_ZONE": "NC1-40",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-55 (M)",
+"BASE_ZONE": "NC1-55",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-55 (M1)",
+"BASE_ZONE": "NC1-55",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-55 (M2)",
+"BASE_ZONE": "NC1-55",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-65 (M1)",
+"BASE_ZONE": "NC1-65",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-65 (M2)",
+"BASE_ZONE": "NC1-65",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-75 (M)",
+"BASE_ZONE": "NC1-75",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-75 (M1)",
+"BASE_ZONE": "NC1-75",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1-75 (M2)",
+"BASE_ZONE": "NC1-75",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1P-40 (M)",
+"BASE_ZONE": "NC1P-40",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1P-55 (M)",
+"BASE_ZONE": "NC1P-55",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1P-55 (M1)",
+"BASE_ZONE": "NC1P-55",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1P-55 (M2)",
+"BASE_ZONE": "NC1P-55",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC1P-65 (M1)",
+"BASE_ZONE": "NC1P-65",
+"ZONELUT": "NC1",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-30",
+"BASE_ZONE": "NC2-30",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-40",
+"BASE_ZONE": "NC2-40",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-40 (M)",
+"BASE_ZONE": "NC2-40",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-40 (M2)",
+"BASE_ZONE": "NC2-40",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-55 (M)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-55 (M1)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-55 (M2)",
+"BASE_ZONE": "NC2-55",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-65",
+"BASE_ZONE": "NC2-65",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-65 (M1)",
+"BASE_ZONE": "NC2-65",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-65 (M2)",
+"BASE_ZONE": "NC2-65",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-75 (M)",
+"BASE_ZONE": "NC2-75",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-75 (M1)",
+"BASE_ZONE": "NC2-75",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2-75 (M2)",
+"BASE_ZONE": "NC2-75",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-30 (M1)",
+"BASE_ZONE": "NC2P-30",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-40",
+"BASE_ZONE": "NC2P-40",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-40 (M)",
+"BASE_ZONE": "NC2P-40",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-40 (M1)",
+"BASE_ZONE": "NC2P-40",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-55 (M)",
+"BASE_ZONE": "NC2P-55",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-55 (M1)",
+"BASE_ZONE": "NC2P-55",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-55 (M2)",
+"BASE_ZONE": "NC2P-55",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-65",
+"BASE_ZONE": "NC2P-65",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-65 (M1)",
+"BASE_ZONE": "NC2P-65",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-75 (M)",
+"BASE_ZONE": "NC2P-75",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-75 (M1)",
+"BASE_ZONE": "NC2P-75",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC2P-75 (M2)",
+"BASE_ZONE": "NC2P-75",
+"ZONELUT": "NC2",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-145 (M)",
+"BASE_ZONE": "NC3-145",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-200 (M)",
+"BASE_ZONE": "NC3-200",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-40",
+"BASE_ZONE": "NC3-40",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-40 (M)",
+"BASE_ZONE": "NC3-40",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-55 (M)",
+"BASE_ZONE": "NC3-55",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-55 (M1)",
+"BASE_ZONE": "NC3-55",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-65",
+"BASE_ZONE": "NC3-65",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-65 (M1)",
+"BASE_ZONE": "NC3-65",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-75 (M)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-75 (M1)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-75 (M2)",
+"BASE_ZONE": "NC3-75",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-95 (M)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3-95 (M1)",
+"BASE_ZONE": "NC3-95",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-200 (M)",
+"BASE_ZONE": "NC3P-200",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-40",
+"BASE_ZONE": "NC3P-40",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-55 (M)",
+"BASE_ZONE": "NC3P-55",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-65",
+"BASE_ZONE": "NC3P-65",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-65 (M)",
+"BASE_ZONE": "NC3P-65",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-65 (M1)",
+"BASE_ZONE": "NC3P-65",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-75 (M)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-75 (M1)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-75 (M2)",
+"BASE_ZONE": "NC3P-75",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-95 (M)",
+"BASE_ZONE": "NC3P-95",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NC3P-95 (M2)",
+"BASE_ZONE": "NC3P-95",
+"ZONELUT": "NC3",
+"CLASS_DESC": "Commercial/Mixed Use",
+"CATEGORY_DESC": "Neighborhood Commercial",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.47A",
+"MIO_NAME": null
+},
+{
+"ZONING": "NR",
+"BASE_ZONE": "NR",
+"ZONELUT": "NR",
+"CLASS_DESC": "Neighborhood Residential",
+"CATEGORY_DESC": "Neighborhood Residential",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.44",
+"MIO_NAME": null
+},
+{
+"ZONING": "PMM-85",
+"BASE_ZONE": "PMM-85",
+"ZONELUT": "PMM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "PSM 100/100-120",
+"BASE_ZONE": "PSM 100/100-120",
+"ZONELUT": "PSM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "PSM 100/100-130",
+"BASE_ZONE": "PSM 100/100-130",
+"ZONELUT": "PSM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "PSM 100/120-150",
+"BASE_ZONE": "PSM 100/120-150",
+"ZONELUT": "PSM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "PSM-100",
+"BASE_ZONE": "PSM-100",
+"ZONELUT": "PSM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "PSM-245",
+"BASE_ZONE": "PSM-245",
+"ZONELUT": "PSM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "PSM-85-120",
+"BASE_ZONE": "PSM-85-120",
+"ZONELUT": "PSM",
+"CLASS_DESC": "Downtown",
+"CATEGORY_DESC": "Downtown",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.49",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-D 95 (M)",
+"BASE_ZONE": "SM-D 95",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NG 145",
+"BASE_ZONE": "SM-NG 145",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NG 240",
+"BASE_ZONE": "SM-NG 240",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NR 145 (M)",
+"BASE_ZONE": "SM-NR 145",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NR 75 (M)",
+"BASE_ZONE": "SM-NR 75",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NR 75 (M2)",
+"BASE_ZONE": "SM-NR 75",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NR 95 (M)",
+"BASE_ZONE": "SM-NR 95",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-NR 95 (M1)",
+"BASE_ZONE": "SM-NR 95",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-RB 125 (M)",
+"BASE_ZONE": "SM-RB 125",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-RB 125 (M1)",
+"BASE_ZONE": "SM-RB 125",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-RB 125 (M2)",
+"BASE_ZONE": "SM-RB 125",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-RB 55 (M1)",
+"BASE_ZONE": "SM-RB 55",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-RB 85 (M)",
+"BASE_ZONE": "SM-RB 85",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-RB 85 (M2)",
+"BASE_ZONE": "SM-RB 85",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M2",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 100/65-145",
+"BASE_ZONE": "SM-SLU 100/65-145",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 100/95",
+"BASE_ZONE": "SM-SLU 100/95",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 145",
+"BASE_ZONE": "SM-SLU 145",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 175/85-280",
+"BASE_ZONE": "SM-SLU 175/85-280",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 240/125-440",
+"BASE_ZONE": "SM-SLU 240/125-440",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 85-280",
+"BASE_ZONE": "SM-SLU 85-280",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU 85/65-160",
+"BASE_ZONE": "SM-SLU 85/65-160",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-SLU/R 65/95",
+"BASE_ZONE": "SM-SLU/R 65/95",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-U 75-240 (M1)",
+"BASE_ZONE": "SM-U 75-240",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-U 85",
+"BASE_ZONE": "SM-U 85",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-U 95-320 (M1)",
+"BASE_ZONE": "SM-U 95-320",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-U/R 75-240 (M1)",
+"BASE_ZONE": "SM-U/R 75-240",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 160 (M)",
+"BASE_ZONE": "SM-UP 160",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 65",
+"BASE_ZONE": "SM-UP 65",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 65 (M)",
+"BASE_ZONE": "SM-UP 65",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 65 (M1)",
+"BASE_ZONE": "SM-UP 65",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 85",
+"BASE_ZONE": "SM-UP 85",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 85 (M)",
+"BASE_ZONE": "SM-UP 85",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 85 (M1)",
+"BASE_ZONE": "SM-UP 85",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M1",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "SM-UP 95 (M)",
+"BASE_ZONE": "SM-UP 95",
+"ZONELUT": "SM",
+"CLASS_DESC": "Seattle Mixed",
+"CATEGORY_DESC": "Seattle Mixed",
+"MHA_VALUE": "M",
+"CHAPTER": "Chapter 23.48",
+"MIO_NAME": null
+},
+{
+"ZONING": "UI U/30",
+"BASE_ZONE": "UI U/30",
+"ZONELUT": "UX",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "UI U/45",
+"BASE_ZONE": "UI U/45",
+"ZONELUT": "UX",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "UI U/65",
+"BASE_ZONE": "UI U/65",
+"ZONELUT": "UX",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+},
+{
+"ZONING": "UI U/85",
+"BASE_ZONE": "UI U/85",
+"ZONELUT": "UX",
+"CLASS_DESC": "Industrial and Maritime",
+"CATEGORY_DESC": "Industrial",
+"MHA_VALUE": null,
+"CHAPTER": "Chapter 23.50A",
+"MIO_NAME": null
+}
+]

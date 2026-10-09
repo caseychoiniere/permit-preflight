@@ -11,5 +11,6 @@ export function assembleDeckEvidence(outcome: DeckEvaluationOutcome): { factType
     { factType: "deck-declared-inputs", value: outcome.declaredInputs, provenance: {} },
     ...(outcome.permitRequirement ? [{ factType: "deck-permit-requirement", value: outcome.permitRequirement, provenance: {} }] : []),
     { factType: "uncovered-constraint-types", value: outcome.uncoveredConstraintTypes, provenance: {} },
+    ...(outcome.zoningApplied ? [{ factType: "zoning-resolution", value: outcome.zoningApplied, provenance: {} }] : []),
   ];
 }

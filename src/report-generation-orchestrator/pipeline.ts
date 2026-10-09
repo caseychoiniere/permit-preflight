@@ -15,9 +15,13 @@ import { assemblePropertyContext, type FactRetriever } from "../property-intelli
 import { createKingCountyParcelGeometryRetriever } from "../property-intelligence/king-county-parcel-geometry.js";
 import { createSeattleBuildingOutlinesRetriever } from "../property-intelligence/seattle-building-outlines.js";
 import { createSeattleEcaRetriever } from "../property-intelligence/seattle-eca.js";
-import { createSeattleFrequentTransitRetriever, createSeattleLandmarkRetriever, createSeattleZoningRetriever } from "../property-intelligence/seattle-zoning.js";
+import { createSeattleFrequentTransitRetriever, createSeattleLandmarkRetriever, createSeattleZoningRetriever, queryZoningForPolygon } from "../property-intelligence/seattle-zoning.js";
 import type { FrequentTransitFactValue, LandmarkFactValue, ZoningFactValue } from "../property-intelligence/seattle-zoning.js";
-import { deriveZoningApplicability, type ZoningApplicability } from "../regulatory-rules-engine/zoning-applicability.js";
+import { buildZoningContext } from "../zoning/context.js";
+import type { ZoningContext } from "../zoning/context.js";
+import { resolveApplicableRules } from "../zoning/resolve.js";
+import { deriveIsInRequiredSetbackMf } from "../regulatory-rules-engine/evaluate-multifamily-accessory.js";
+import type { MfAccessoryHeightSpec } from "../regulatory-rules-engine/evaluate-multifamily-accessory.js";
 import {
   classifyExistingStructures,
   findPrimaryDwelling,
@@ -32,6 +36,7 @@ import { recordIngestionResult } from "../data-source-registry/index.js";
 import type { EvidenceQuality } from "../property-intelligence/types.js";
 import type { CriticalAreaFinding, GeographicPoint, Polygon } from "../spatial-analysis/types.js";
 import {
+  computeRearAxisPositions,
   computeBuildableEnvelope,
   computeDistanceToDwelling,
   computeEcaExclusionGeometry,
@@ -427,11 +432,13 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
 
     const zoningFact = getFact<ZoningFactValue>(propertyContext, "zoning");
     const landmarkFact = getFact<LandmarkFactValue>(propertyContext, "landmark-designation");
-    // Fail closed: an unavailable zoning fact is UNRESOLVED (the pre-existing "zoning not verified" wording).
-    const zoningApplicability = deriveZoningApplicability(
-      zoningFact?.availabilityState === AvailabilityState.AVAILABLE ? zoningFact.value : undefined,
-      landmarkFact?.availabilityState === AvailabilityState.AVAILABLE ? landmarkFact.value : undefined
-    );
+    // Fail closed: an unavailable zoning fact leaves no zone-specific conclusion (zoning/resolve.ts reports UNRESOLVED). Shed and garage add the
+    // proposed footprint's own zoning below, once the footprint exists.
+    const lotZoningInput = {
+      lot: zoningFact?.availabilityState === AvailabilityState.AVAILABLE ? zoningFact.value : undefined,
+      ...(landmarkFact?.availabilityState === AvailabilityState.AVAILABLE && landmarkFact.value ? { landmark: landmarkFact.value } : {}),
+    };
+    const zoningContext: ZoningContext = buildZoningContext(lotZoningInput);
 
     // Unit 3, 2026-08-25: wires the existing recordIngestionResult contract into this already-
     // implemented authoritative retrieval path (property-intelligence/assemble.ts itself is NOT
@@ -521,17 +528,17 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     // Unit 7 - a sibling branch, never a third arm inside the shed/garage path below: a fence has no
     // footprint, placement, lot-line roles or setback geometry, only declared inputs.
     if (snapshot.projectType === ProjectType.FENCE) {
-      await runFencePipeline(db, job, snapshot, screeningRequest.id, propertyContext, environmentalConstraintsFact?.value ?? [], zoningApplicability, deps);
+      await runFencePipeline(db, job, snapshot, screeningRequest.id, propertyContext, environmentalConstraintsFact?.value ?? [], zoningContext, deps);
       return;
     }
     // Unit 8 - same sibling-branch discipline as fences: a deck is declared, not placed.
     if (snapshot.projectType === ProjectType.DECK) {
-      await runDeckPipeline(db, job, snapshot, screeningRequest.id, propertyContext, zoningApplicability, deps);
+      await runDeckPipeline(db, job, snapshot, screeningRequest.id, propertyContext, zoningContext, deps);
       return;
     }
     // Unit 11 - a placed, measured sibling branch (like the shed's spatial path, but evaluated by evaluate-adu.ts).
     if (snapshot.projectType === ProjectType.ADU) {
-      await runAduPipeline(db, job, snapshot, screeningRequest.id, propertyContext, geometryFact, buildingFootprintsFact, environmentalConstraintsFact?.value ?? [], zoningApplicability, deps);
+      await runAduPipeline(db, job, snapshot, screeningRequest.id, propertyContext, geometryFact, buildingFootprintsFact, environmentalConstraintsFact?.value ?? [], zoningContext, deps);
       return;
     }
     // From here on the request is a shed or garage (the vacant-land, fence, deck and ADU branches returned above).
@@ -679,6 +686,44 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       );
     const activePolicyRows = await db.select().from(inferencePolicies).where(eq(inferencePolicies.lifecycleState, LifecycleState.ACTIVE));
 
+    // Citywide zoning coverage - a structure is regulated by the zone it stands in. When the lot has more than one zoning designation the
+    // proposed footprint's own zoning is read (a second, small query against the same layer); with a single designation the footprint is in it.
+    // A failed footprint lookup is not a failed report: the claims that depend on the structure's zone then fall back to the lot's zones and, if
+    // those differ, are reported as needing verification.
+    let footprintZoningFact: ZoningFactValue | undefined;
+    let footprintZoningError: string | undefined;
+    if (footprintProjected && !footprintOutsideParcelReason && zoningContext.lotZones.length > 1) {
+      try {
+        footprintZoningFact = await withStageTiming("PROPERTY_INTELLIGENCE", job.id, () => queryZoningForPolygon(footprintProjected!, 8000, "PROJECT_FOOTPRINT"));
+      } catch (error) {
+        footprintZoningError = "Seattle's zoning data could not be read for the proposed footprint";
+        logger.warn("SOURCE_FAILURE", { reportGenerationJobId: job.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    const accessoryZoningContext = buildZoningContext({
+      ...lotZoningInput,
+      ...(footprintZoningFact ? { footprint: footprintZoningFact } : {}),
+      ...(footprintZoningError ? { footprintError: footprintZoningError } : {}),
+    });
+    const accessoryResolution = resolveApplicableRules({ zoning: accessoryZoningContext, candidateRules: rowsToRegulatoryRules(activeRuleRows) });
+    const ruleTypeOfRow = (r: RegulatoryRule): string | undefined => (r.ruleSpecification as { ruleType?: string }).ruleType;
+    const mfHeightRule = accessoryResolution.rules.find((r) => ruleTypeOfRow(r) === "MF_ACC_HEIGHT");
+    const mfSetbacksActive = accessoryResolution.rules.some((r) => ruleTypeOfRow(r) === "MF_ACC_SETBACKS");
+    // Where the structure stands along the front-to-rear axis (multifamily accessory placement, SMC 23.45.518.H.1.a-b). Skipped unless that rule is in play.
+    const rearAxisPositions = async (dwelling?: Polygon) => {
+      const roles = accessoryDetails.lotLineRoleAssignment;
+      if (!mfSetbacksActive || !footprintProjected || footprintOutsideParcelReason || !geometryFact?.value || roles?.status !== LotLineRoleStatus.ASSIGNED || !roles.rearEdgeRef) return undefined;
+      return computeRearAxisPositions(db, geometryFact.value, roles.rearEdgeRef, footprintProjected, dwelling);
+    };
+    const deriveRequiredSetback = (ctx: Parameters<typeof deriveIsInRequiredSetback>[0]) =>
+      mfHeightRule
+        ? deriveIsInRequiredSetbackMf(
+            { ...ctx, alleyAdjacent: accessoryDetails.alleyAdjacent },
+            (mfHeightRule.ruleSpecification as unknown as MfAccessoryHeightSpec).required,
+            (mfHeightRule.ruleSpecification as unknown as MfAccessoryHeightSpec).mappingToleranceFt ?? 0
+          )
+        : deriveIsInRequiredSetback(ctx);
+
     // Unit 4 - project-type-dispatched (BR-U4-2). Shed's branch is byte-for-byte the prior
     // behavior; garage additionally assembles LotCoverageFacts server-side (BR-U4-8 - never from
     // client-asserted numbers).
@@ -688,7 +733,8 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
     if (snapshot.projectType === ProjectType.GARAGE) {
       const garageDetails = accessoryDetails as GarageProjectConfiguration;
       // Same bounded-band derivation the shed uses: needed for the location-sensitive accessory height limit (12 ft in a required setback, 32 ft outside).
-      const garageRequiredSetback = deriveIsInRequiredSetback({
+      const garageRearAxis = await rearAxisPositions();
+      const garageRequiredSetback = deriveRequiredSetback({
         distanceToFrontLotLineFt,
         distanceToRearLotLineFt,
         distanceToSideLotLineFt,
@@ -700,6 +746,9 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         projectType: "garage",
         isInRequiredSetback: garageRequiredSetback.isInRequiredSetback,
         requiredSetbackEvidenceGapReasons: garageRequiredSetback.requiredSetbackEvidenceGapReasons,
+        ...(rawParcelAreaSqFt !== undefined ? { parcelAreaSqFt: rawParcelAreaSqFt } : {}),
+        ...(garageRearAxis ? { farthestFromRearLotLineFt: garageRearAxis.structureFarthestFt } : {}),
+        besideDwelling: "UNKNOWN" as const,
         widthFt: garageDetails.widthFt,
         depthFt: garageDetails.depthFt,
         heightFt: garageDetails.heightFt,
@@ -731,6 +780,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // THIS fetch's own outlineIds - a selection that no longer matches anything returned resolves
       // every footprint to UNKNOWN, never a guess.
       let primaryDwellingFound = false;
+      let primaryDwellingFootprint: Polygon | undefined;
       let primaryDwellingSelectionStatus: "SELECTED" | undefined;
       const buildingFootprintsAvailable = Boolean(buildingFootprintsFact?.availabilityState === AvailabilityState.AVAILABLE && buildingFootprintsFact.value && footprintProjected);
       if (buildingFootprintsAvailable) {
@@ -747,6 +797,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         );
         const primaryDwelling = findPrimaryDwelling(structures);
         primaryDwellingFound = Boolean(primaryDwelling);
+        primaryDwellingFootprint = primaryDwelling?.footprint;
         primaryDwellingSelectionStatus = shedDetails.primaryDwellingSelection?.status === "SELECTED" ? "SELECTED" : undefined;
         if (primaryDwelling && !footprintOutsideParcelReason) {
           distanceToDwellingFt = await withStageTiming("SPATIAL_ANALYSIS", job.id, () => computeDistanceToDwelling(db, footprintProjected!, primaryDwelling.footprint));
@@ -808,7 +859,12 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // from the exact same role/distance facts gathered above for the existing setback findings -
       // no new fetch, no new geometry engine.
       const shedDetailsForPermit = accessoryDetails as ShedProjectConfiguration;
-      const requiredSetback = deriveIsInRequiredSetback({
+      // A shed wholly behind the house (its farthest point nearer the rear lot line than the house's nearest) cannot stand between the house and a
+      // side lot line (SMC 23.45.518.H.1.a); anything else leaves that undetermined here rather than guessed.
+      const shedRearAxis = await rearAxisPositions(primaryDwellingFootprint);
+      const besideDwelling: "NOT_BESIDE" | "UNKNOWN" =
+        shedRearAxis?.dwellingNearestFt !== undefined && shedRearAxis.structureFarthestFt < shedRearAxis.dwellingNearestFt ? "NOT_BESIDE" : "UNKNOWN";
+      const requiredSetback = deriveRequiredSetback({
         distanceToFrontLotLineFt,
         distanceToRearLotLineFt,
         distanceToSideLotLineFt,
@@ -846,6 +902,9 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         utilityIntent: shedDetailsForPermit.utilityIntent,
         isInRequiredSetback: requiredSetback.isInRequiredSetback,
         requiredSetbackEvidenceGapReasons: requiredSetback.requiredSetbackEvidenceGapReasons,
+        ...(rawParcelAreaSqFt !== undefined ? { parcelAreaSqFt: rawParcelAreaSqFt } : {}),
+        ...(shedRearAxis ? { farthestFromRearLotLineFt: shedRearAxis.structureFarthestFt } : {}),
+        besideDwelling,
       };
     }
 
@@ -858,7 +917,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
         candidateActiveInferencePolicies: rowsToInferencePolicies(activePolicyRows),
         lotCoverageFacts,
         shedLotCoverageFacts,
-        zoningApplicability,
+        zoningContext: accessoryZoningContext,
       })
     );
 
@@ -961,6 +1020,10 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
       // constraint type rather than presenting an empty findings array as a clean screening
       // result.
       { factType: "uncovered-constraint-types", value: outcome.uncoveredConstraintTypes, provenance: {} },
+      // Citywide zoning coverage - which zoning designations this screening applied and which rules and claims it settled, persisted with the
+      // immutable snapshot so the report and an audit can show exactly what was applied.
+      ...(outcome.zoningApplied ? [{ factType: "zoning-resolution", value: outcome.zoningApplied, provenance: {} }] : []),
+      ...(footprintZoningFact ? [{ factType: "zoning-project-footprint", value: footprintZoningFact, provenance: {} }] : []),
       // Unit 6B Capability B - the PermitRequirementFinding aggregate (buildingPermit/reviewPath),
       // present only once evaluateProject's own ACTIVE-gate (allRuleTypesActive against every
       // constituent ShedPermitRuleType row) is satisfied - dormant in production today (all 19
@@ -1012,7 +1075,7 @@ async function runFencePipeline(
   screeningRequestId: string,
   propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
   ecaFindings: CriticalAreaFinding[],
-  zoningApplicability: ZoningApplicability,
+  zoningContext: ZoningContext,
   deps: PipelineDependencies
 ): Promise<void> {
   const project: FenceProjectDetails = { projectType: "fence", ...(snapshot.projectDetails as FenceProjectConfiguration) };
@@ -1023,7 +1086,7 @@ async function runFencePipeline(
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.FENCE)));
 
   const outcome = await withStageTiming("RULES_ENGINE", job.id, async () =>
-    evaluateFence({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), ecaFindings, zoningApplicability })
+    evaluateFence({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), ecaFindings, zoningContext })
   );
 
   const explanationResult = deps.generateExplanation
@@ -1063,7 +1126,7 @@ async function runDeckPipeline(
   snapshot: ExistingPropertyScreeningRequestSnapshot,
   screeningRequestId: string,
   propertyContext: Awaited<ReturnType<typeof assemblePropertyContext>>,
-  zoningApplicability: ZoningApplicability,
+  zoningContext: ZoningContext,
   deps: PipelineDependencies
 ): Promise<void> {
   const project: DeckProjectDetails = { projectType: "deck", ...(snapshot.projectDetails as DeckProjectConfiguration) };
@@ -1073,7 +1136,7 @@ async function runDeckPipeline(
     .from(regulatoryRules)
     .where(and(eq(regulatoryRules.lifecycleState, LifecycleState.ACTIVE), eq(regulatoryRules.applicableWorkflowType, "EXISTING_PROPERTY"), eq(regulatoryRules.applicableProjectType, ProjectType.DECK)));
 
-  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), zoningApplicability }));
+  const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: rowsToRegulatoryRules(activeRuleRows), zoningContext }));
 
   const explanationResult = deps.generateExplanation
     ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
@@ -1115,7 +1178,7 @@ async function runAduPipeline(
   geometryFact: PropertyFact<Polygon> | undefined,
   buildingFootprintsFact: PropertyFact<RawBuildingFootprint[]> | undefined,
   ecaFindings: CriticalAreaFinding[],
-  zoningApplicability: ZoningApplicability,
+  zoningContext: ZoningContext,
   deps: PipelineDependencies
 ): Promise<void> {
   const details = snapshot.projectDetails as AduProjectConfiguration;
@@ -1294,7 +1357,7 @@ async function runAduPipeline(
         ecaFindings,
       },
       candidateActiveRules: rowsToRegulatoryRules(activeRuleRows),
-      zoningApplicability,
+      zoningContext,
     })
   );
 

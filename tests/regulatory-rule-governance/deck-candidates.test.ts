@@ -28,7 +28,7 @@ function projectFrom(input: Record<string, unknown>): DeckProjectDetails {
 describe("real deck candidates - structure", () => {
   it("exactly six, one per DeckRuleType, unique ids, fixed row UUIDs, NR/deck, real content", () => {
     expect(realDeckCandidates).toHaveLength(6);
-    expect(realDeckCandidates.map((c) => (c.ruleSpecification as { ruleType: string }).ruleType).sort()).toEqual(Object.values(DeckRuleType).sort());
+    expect(realDeckCandidates.map((c) => (c.ruleSpecification as { ruleType: string }).ruleType).sort()).toEqual(Object.values(DeckRuleType).filter((t) => !t.startsWith("DECK_MF_")).sort());
     expect(new Set(realDeckCandidates.map((c) => c.id)).size).toBe(6);
     expect(new Set(Object.values(DECK_FIXED_ROW_IDS)).size).toBe(6);
     for (const c of realDeckCandidates) {

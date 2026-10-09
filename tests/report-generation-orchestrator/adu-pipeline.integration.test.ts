@@ -1,20 +1,18 @@
 /**
  * Unit 11 ADU pipeline - live end-to-end integration (DB-gated like every other pipeline suite).
  * Real parcel 1498301270 (plain NR, 120 x 50 ft, one house, in the frequent transit service area, verified
- * 2026-10-08) and the former fixture 3298700485 (LR1). The ADU rules are inserted here as this suite's OWN
- * random-id ACTIVE copies of the real candidates (the real rows are only APPROVED) and deleted afterward.
+ * 2026-10-08) and the former fixture 3298700485 (LR1). The twelve real ADU rows are ACTIVE and are used as they are.
  */
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, type Db } from "../../src/db/client.js";
-import { screeningRequests, reportGenerationJobs, evidenceReportArtifacts, regulatoryRules } from "../../src/db/schema.js";
+import { screeningRequests, reportGenerationJobs, evidenceReportArtifacts } from "../../src/db/schema.js";
 import type { AduAttachedConfiguration, AduConversionConfiguration, AduNewDetachedConfiguration, ExistingPropertyScreeningRequestSnapshot } from "../../src/screening-request/types.js";
 import { createReportGenerationJob, claimQueuedJob } from "../../src/report-generation-job/repository.js";
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
-import { realAduCandidates, tierForRealAduCandidate } from "../fixtures/adu-candidates.js";
+import { ADU_FIXED_ROW_IDS } from "../fixtures/adu-candidates.js";
 import type { AduFeasibility } from "../../src/regulatory-rules-engine/adu-types.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
@@ -70,33 +68,13 @@ function conversion(over: Partial<AduConversionConfiguration> = {}): AduConversi
 describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integration", () => {
   let db: Db;
   const screeningIds: string[] = [];
-  const ruleIds: string[] = [];
   let healthSnapshot: DataSourceHealthSnapshot;
 
   beforeAll(async () => {
     db = getDb();
     healthSnapshot = await snapshotDataSourceHealth(db, AFFECTED);
-    const rows = realAduCandidates.map((c) => {
-      const id = randomUUID();
-      ruleIds.push(id);
-      return {
-        id,
-        subject: `ADU-PIPELINE-INTEGRATION-TEST-ONLY: ${c.subject}`,
-        applicableProjectType: "adu",
-        applicableWorkflowType: "EXISTING_PROPERTY",
-        applicableZone: "NR",
-        ruleSpecification: c.ruleSpecification,
-        citation: c.citation,
-        lifecycleState: "ACTIVE",
-        tier: tierForRealAduCandidate(c.id),
-        caveats: c.caveats,
-        testCases: c.testCases,
-        verificationHistory: [{ tier: "TIER_1", founderIdentity: "adu-pipeline-integration-test@example.com", founderVerifiedAt: "2026-01-01T00:00:00.000Z" }],
-        isTestOnlyFixture: true,
-        acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"],
-      };
-    });
-    await db.insert(regulatoryRules).values(rows as never);
+    // The twelve real ADU rows are ACTIVE (activated 2026-10-08). This suite no longer inserts its own copies: a second ACTIVE row for the same
+    // claim in the same zone is an authoring defect the zone-aware rule resolver deliberately refuses to evaluate.
   });
 
   afterAll(async () => {
@@ -106,7 +84,6 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
         await db.delete(reportGenerationJobs).where(eq(reportGenerationJobs.screeningRequestId, id));
         await db.delete(screeningRequests).where(eq(screeningRequests.id, id));
       }
-      await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, ruleIds));
     } finally {
       await restoreDataSourceHealth(db, healthSnapshot);
     }
@@ -135,7 +112,7 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as F[];
       const by = (s: string) => findings.find((f) => f.subject === s);
-      expect(by("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN");
+      expect(by("Zoning applied to this screening")?.classification).toBe("KNOWN");
       expect(by("ADU rear setback")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
       expect(by("ADU side setback")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
       expect(by("ADU front setback")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
@@ -155,8 +132,8 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
       expect(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value).toEqual([]);
       expect((evidence.find((e) => e.factType === "frequent-transit-service-area")!.value as { inFrequentTransitServiceArea: boolean }).inFrequentTransitServiceArea).toBe(true);
       expect(JSON.stringify(findings)).not.toContain("adu-feasibility");
-      // The real ADU rules are ACTIVE too (activated 2026-10-08), so the artifact lists them alongside this test's own copies.
-      expect(artifact!.ruleVersionsUsed as string[]).toEqual(expect.arrayContaining(ruleIds));
+      // The artifact lists the real, ACTIVE ADU rows that governed it.
+      expect(artifact!.ruleVersionsUsed as string[]).toEqual(expect.arrayContaining(Object.values(ADU_FIXED_ROW_IDS)));
     },
     120_000
   );
@@ -220,7 +197,7 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as F[];
       expect(findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
-      expect(findings.find((f) => f.subject === "Zoning applicability (Neighborhood Residential zones)")!.explanationBasis).toContain("LR1");
+      expect(findings.find((f) => f.subject === "Zoning applied to this screening")!.explanationBasis).toContain("LR1");
       const feasibility = feasibilityOf(artifact);
       expect(feasibility.headline).toBe("CANNOT_TELL");
       expect(feasibility.summary).toContain("LR1");
@@ -235,7 +212,7 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as F[];
       const by = (s: string) => findings.find((f) => f.subject === s);
-      expect(by("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN");
+      expect(by("Zoning applied to this screening")?.classification).toBe("KNOWN");
       expect(by("Conversion of an existing accessory structure")?.classification).toBe("REQUIRES_VERIFICATION");
       expect(by("Setbacks and lot coverage (conversion)")?.classification).toBe("REQUIRES_VERIFICATION"); // described from the declarations, never a KNOWN fact
       expect(by("ADU rear setback")).toBeUndefined();
@@ -297,7 +274,7 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as F[];
       const by = (s: string) => findings.find((f) => f.subject === s);
-      expect(by("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN");
+      expect(by("Zoning applied to this screening")?.classification).toBe("KNOWN");
       expect(by("Number of ADUs on the lot")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
       // Density is KNOWN/PASS, or REQUIRES_VERIFICATION when the live critical-area map indicates possible excluded land - never a FAIL here.
       expect(by("Dwelling units allowed on the lot (density)")?.complianceOutcome).not.toBe("FAIL");
@@ -318,6 +295,6 @@ describe.skipIf(!hasDb)("ADU report generation pipeline - live end-to-end integr
 describe.skipIf(hasDb)("ADU pipeline integration (skipped)", () => {
   it("documents why this suite did not run - DATABASE_URL is not provisioned", () => {
     expect(hasDb).toBe(false);
-    expect(realAduCandidates).toHaveLength(12);
+    expect(Object.keys(ADU_FIXED_ROW_IDS)).toHaveLength(12);
   });
 });

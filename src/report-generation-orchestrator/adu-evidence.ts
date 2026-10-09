@@ -12,5 +12,6 @@ export function assembleAduEvidence(outcome: AduEvaluationOutcome): { factType: 
     { factType: "adu-declared-inputs", value: outcome.declaredInputs, provenance: {} },
     { factType: "adu-feasibility", value: outcome.feasibility, provenance: {} },
     { factType: "uncovered-constraint-types", value: outcome.uncoveredConstraintTypes, provenance: {} },
+    ...(outcome.zoningApplied ? [{ factType: "zoning-resolution", value: outcome.zoningApplied, provenance: {} }] : []),
   ];
 }

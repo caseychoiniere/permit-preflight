@@ -4,7 +4,9 @@ import type { RegulatoryRule } from "../../src/regulatory-rule-governance/types.
 import { evaluateAdu, estimateAduFloorAreaSqFt, unitsAfterAdu } from "../../src/regulatory-rules-engine/evaluate-adu.js";
 import { AduRuleType } from "../../src/regulatory-rules-engine/adu-types.js";
 import type { AduProjectDetails, AduSiteFacts } from "../../src/regulatory-rules-engine/adu-types.js";
-import type { ZoningApplicability } from "../../src/regulatory-rules-engine/zoning-applicability.js";
+import { singleZoneContext, splitZoneContext, unavailableZoneContext } from "../../src/zoning/context.js";
+import type { ZoningContext } from "../../src/zoning/context.js";
+import { ZONING_SUBJECT } from "../../src/zoning/findings.js";
 import { MappedIntersectionResult, AdvisoryStatus } from "../../src/spatial-analysis/types.js";
 import type { CriticalAreaFinding } from "../../src/spatial-analysis/types.js";
 import { ADU_FIXED_ROW_IDS, realAduCandidates } from "../fixtures/adu-candidates.js";
@@ -12,11 +14,10 @@ import { baseAduProject, baseAduSite } from "../fixtures/adu-evaluation-base.js"
 
 const ALL: RegulatoryRule[] = realAduCandidates.map((c) => ({ ...draft(c), id: ADU_FIXED_ROW_IDS[c.id]!, lifecycleState: "ACTIVE", acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"] }));
 const without = (...types: string[]) => ALL.filter((r) => !types.includes((r.ruleSpecification as { ruleType: string }).ruleType));
-const overlays = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
-const NR: ZoningApplicability = { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays };
+const NR: ZoningContext = singleZoneContext("NR");
 
-function run(p: Partial<AduProjectDetails> = {}, s: Partial<AduSiteFacts> = {}, rules = ALL, zoning: ZoningApplicability | undefined = NR) {
-  return evaluateAdu({ project: { ...baseAduProject(), ...p }, site: { ...baseAduSite(), ...s }, candidateActiveRules: rules, zoningApplicability: zoning });
+function run(p: Partial<AduProjectDetails> = {}, s: Partial<AduSiteFacts> = {}, rules = ALL, zoning: ZoningContext | undefined = NR) {
+  return evaluateAdu({ project: { ...baseAduProject(), ...p }, site: { ...baseAduSite(), ...s }, candidateActiveRules: rules, zoningContext: zoning });
 }
 const by = (o: ReturnType<typeof run>, subject: string) => o.findings.find((f) => f.subject === subject);
 const oc = (f: { classification: string; complianceOutcome?: string } | undefined) => (f ? `${f.classification}${f.complianceOutcome ? "/" + f.complianceOutcome : ""}` : "none");
@@ -37,13 +38,15 @@ describe("headline", () => {
     expect(o.feasibility.blockers.join(" ")).toContain("1.5 ft from the existing house; 5 ft is required");
     expect(o.feasibility.blockers.join(" ")).toContain("1,800 sq ft is over the 1,000 sq ft limit by 800 sq ft".replace("1,800 sq ft is", "estimated floor area of 1,800 sq ft is"));
   });
-  it("a parcel verifiably not NR is CANNOT_TELL, names the zone, and produces no ADU zoning conclusion at all", () => {
-    const o = run({}, {}, ALL, { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays });
+  it("a Lowrise parcel with only Neighborhood Residential ADU rules is CANNOT_TELL, names the zone, and produces no ADU zoning conclusion at all", () => {
+    const o = run({}, {}, ALL, singleZoneContext("LR1 (M)"));
     expect(o.feasibility.headline).toBe("CANNOT_TELL");
-    expect(o.feasibility.summary).toContain("LR1 (M)");
     expect(o.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
     expect(o.findings.some((f) => f.subject.startsWith("ADU "))).toBe(false);
-    expect(o.uncoveredConstraintTypes.join()).toContain("not in a Neighborhood Residential zone");
+    expect(by(o, ZONING_SUBJECT)!.explanationBasis).toContain("LR1 (M)");
+    expect(o.feasibility.summary).toContain("LR1 (M)");
+    expect(o.feasibility.summary).toContain("ADU rules differ by zone");
+    expect(o.uncoveredConstraintTypes).toEqual(["ADU zoning limits (no active ADU rules for this zone yet)"]);
   });
   it("no placement -> CANNOT_TELL with the reason, other claims still made", () => {
     const o = run({ distanceToRearLotLineFt: undefined, distanceToSideLotLineFt: undefined, distanceToFrontLotLineFt: undefined, distanceToDwellingFt: undefined });
@@ -233,25 +236,27 @@ describe("lot coverage, amenity, design, ECA", () => {
     expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("steep slope");
   });
   it("overlay and unresolved-zoning findings are carried and added to the checklist", () => {
-    const o = run({}, {}, ALL, { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: { ...overlays, shorelineDistrict: true } });
+    const o = run({}, {}, ALL, singleZoneContext("NR", { overlays: { shorelineDistrict: true } }));
     expect(by(o, "Overlay districts (shoreline, historic, landmark)")?.classification).toBe("REQUIRES_VERIFICATION");
     expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("overlay");
-    const u = run({}, {}, ALL, { status: "UNRESOLVED", reason: "the parcel is split between zones (NR 60%, LR2 40%)" });
-    expect(u.feasibility.verifyBeforeDesign.join(" ")).toContain("could not be verified as Neighborhood Residential");
-    expect(by(u, "Zoning applicability (Neighborhood Residential zones)")!.explanationBasis).toContain("split between zones");
+    const u = run({}, {}, ALL, splitZoneContext([["NR", 0.6], ["LR2", 0.4]]));
+    expect(u.feasibility.verifyBeforeDesign.join(" ")).toContain("Confirm the parcel's zone");
+    expect(by(u, ZONING_SUBJECT)!.explanationBasis).toContain("more than one zone");
   });
   it.each([
-    ["a split between zones", { status: "UNRESOLVED", reason: "the parcel is split between zones (NR 60%, LR2 40%)" } as ZoningApplicability],
-    ["zoning data that was unavailable", { status: "UNRESOLVED", reason: "Seattle's zoning data was not available for this evaluation" } as ZoningApplicability],
-    ["zoning that was never checked", undefined],
-  ])("%s produces NO ADU conclusion (the ADU rules are NR rules): CANNOT_TELL, nothing passes or fails, the zone is on the checklist", (_name, zoning) => {
-    const o = evaluateAdu({ project: baseAduProject(), site: baseAduSite(), candidateActiveRules: ALL, zoningApplicability: zoning });
+    ["a split between zones with different ADU standards", splitZoneContext([["NR", 0.6], ["LR2", 0.4]]), "more than one zone"],
+    ["zoning data that was unavailable", unavailableZoneContext(), "could not apply"],
+  ])("%s produces NO ADU conclusion: CANNOT_TELL, nothing passes or fails, the zone is on the checklist", (_name, zoning, summaryText) => {
+    const o = evaluateAdu({ project: baseAduProject(), site: baseAduSite(), candidateActiveRules: ALL, zoningContext: zoning });
     expect(o.feasibility.headline).toBe("CANNOT_TELL");
     expect(o.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
-    expect(o.findings.some((f) => f.subject.startsWith("ADU "))).toBe(false);
-    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("could not be verified as Neighborhood Residential");
-    expect(o.uncoveredConstraintTypes.join()).toContain("could not be verified");
-    expect(o.feasibility.summary).toContain("could not verify");
+    // a claim the zones answer differently is a verification item, never a conclusion
+    expect(o.findings.filter((f) => f.subject.startsWith("ADU ")).every((f) => f.classification === "REQUIRES_VERIFICATION")).toBe(true);
+    expect(o.feasibility.verifyBeforeDesign.join(" ")).toContain("Confirm the parcel's zone");
+    expect(o.feasibility.summary).toContain(summaryText);
+  });
+  it("zoning that was never supplied evaluates the rules as given (direct evaluator use)", () => {
+    expect(evaluateAdu({ project: baseAduProject(), site: baseAduSite(), candidateActiveRules: ALL }).feasibility.headline).toBe("LOOKS_FEASIBLE");
   });
   it("a known failure stands as BLOCKED even when some rules are not ACTIVE, but partial coverage is never LOOKS_FEASIBLE", () => {
     const partial = without(AduRuleType.HEIGHT, AduRuleType.TREES);
@@ -397,7 +402,7 @@ describe("conversion of an existing accessory structure (Unit 11 Slice 4)", () =
   });
 
   it("zoning that is not verified NR suppresses a conversion exactly as it does a new ADU", () => {
-    const o = run(conv(), {}, ALL, { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays });
+    const o = run(conv(), {}, ALL, singleZoneContext("LR1 (M)"));
     expect(o.feasibility.headline).toBe("CANNOT_TELL");
     expect(o.findings.some((f) => f.complianceOutcome !== undefined || f.subject.startsWith("Conversion"))).toBe(false);
   });
@@ -516,7 +521,7 @@ describe("ADU inside or attached to the house (Unit 11 Slice 5)", () => {
   });
 
   it("zoning that is not verified NR suppresses an attached ADU exactly as it does the other kinds", () => {
-    const o = run(att(), {}, ALL, { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays });
+    const o = run(att(), {}, ALL, singleZoneContext("LR1 (M)"));
     expect(o.feasibility.headline).toBe("CANNOT_TELL");
     expect(o.findings.some((f) => f.complianceOutcome !== undefined || f.subject.startsWith("Setbacks, height"))).toBe(false);
   });

@@ -12,7 +12,9 @@
  * contains no SMC number as a literal. All inputs are USER-DECLARED and every explanation says so.
  */
 
-import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
+import { resolveApplicableRules, summarizeZoningResolution } from "../zoning/resolve.js";
+import type { ZoningContext } from "../zoning/context.js";
+import { ambiguousClaimFindings, zoningFindings } from "../zoning/findings.js";
 import { LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { MappedIntersectionResult } from "../spatial-analysis/types.js";
@@ -272,7 +274,8 @@ function evaluateOutsideLocation(project: FenceProjectDetails, rules: ActiveRule
   if (!rule) return { uncovered: `fence height (${label})` };
   const h = heights(project);
   const limit = rule.spec.generalStructureHeightLimitFt;
-  const base = `SMC 23.44.090.H.4 limits fence height only within required setbacks. For a fence outside every required setback, no fence-specific height limit was identified among the provisions evaluated; the general structure height limit identified is ${ft(limit)} ft.`;
+  const section = rule.rule.citation.smcSections[0] ?? "The fence provision";
+  const base = `${section} limits fence height only within required setbacks. For a fence outside every required setback, no fence-specific height limit was identified among the provisions evaluated; the general structure height limit identified is ${ft(limit)} ft.`;
   const supportingEvidence = [`declaredHeightFt=${ft(h.body)}`, `generalStructureHeightLimitFt=${ft(limit)}`, `location=${FenceLocation.OUTSIDE_REQUIRED_SETBACKS}`];
   if (h.top > limit) {
     return {
@@ -497,37 +500,67 @@ export interface EvaluateFenceInput {
   candidateActiveRules: RegulatoryRule[];
   /** Used only for disclosed flood-prone context - never to decide a criterion. */
   ecaFindings: CriticalAreaFinding[];
-  /** Unit 11 Slice 1. Undefined = zoning not retrieved (treated as unresolved: pre-existing behavior). */
-  zoningApplicability?: ZoningApplicability;
+  /** Citywide zoning coverage: the lot's zoning. The rules that govern each claim in that zone are resolved (zoning/resolve.ts); a claim whose standards
+   * differ between the zones on the lot is REQUIRES_VERIFICATION, and with no usable zoning no zone-specific fence limit is stated. Undefined (direct
+   * unit tests) evaluates every candidate rule as given. */
+  zoningContext?: ZoningContext;
 }
 
+const FENCE_CLAIM_LABEL = (ruleType: string, fallbackSubject: string): string => {
+  switch (ruleType) {
+    case FenceRuleType.HEIGHT_STANDARD:
+      return "Fence height (side or rear setback)";
+    case FenceRuleType.HEIGHT_FRONT_STREET_SIDE:
+      return "Fence height (front or street-side setback)";
+    case FenceRuleType.OUTSIDE_REQUIRED_SETBACKS:
+      return "Fence height (outside required setbacks)";
+    case FenceRuleType.RETAINING_WALL:
+      return "Fence and retaining wall or bulkhead";
+    default:
+      return fallbackSubject;
+  }
+};
+
 export function evaluateFence(input: EvaluateFenceInput): FenceEvaluationOutcome {
-  const rules = indexActiveRules(input.candidateActiveRules);
+  const resolution = input.zoningContext ? resolveApplicableRules({ zoning: input.zoningContext, candidateRules: input.candidateActiveRules }) : undefined;
+  const rules = indexActiveRules(resolution ? resolution.rules : input.candidateActiveRules);
   const { project } = input;
   const findings: Finding[] = [];
   const uncovered: string[] = [];
+  const ambiguous = new Set(resolution?.ambiguousClaims.map((c) => c.ruleType) ?? []);
+  const dependsOnAmbiguous = (types: readonly string[]): boolean => types.some((t) => ambiguous.has(t));
 
-  // A parcel verifiably not in a Neighborhood Residential zone: the NR fence limits are withheld (never
-  // produced); the building-permit determination and the general sight-distance note are zone-independent.
-  const notNr = input.zoningApplicability?.status === "NOT_NR";
-  if (notNr) {
-    uncovered.push("fence zoning limits (parcel is not in a Neighborhood Residential zone)");
+  // With no usable zoning the zone-specific fence limits are withheld (never produced); the building-permit determination and the
+  // general sight-distance note are zone-independent.
+  if (resolution?.status === "UNRESOLVED") {
+    uncovered.push("fence zoning limits (Seattle zoning could not be applied to this property)");
   } else {
     for (const location of LOCATION_ORDER) {
       if (!project.locations.includes(location)) continue;
+      const needs: string[] =
+        location === FenceLocation.OUTSIDE_REQUIRED_SETBACKS
+          ? [FenceRuleType.OUTSIDE_REQUIRED_SETBACKS]
+          : [location === FenceLocation.FRONT_SETBACK || location === FenceLocation.STREET_SIDE_SETBACK ? FenceRuleType.HEIGHT_FRONT_STREET_SIDE : FenceRuleType.HEIGHT_STANDARD, ...(onWall(project) ? [FenceRuleType.RETAINING_WALL] : [])];
+      if (dependsOnAmbiguous(needs)) continue; // reported below as a claim the zones involved answer differently
       const result = location === FenceLocation.OUTSIDE_REQUIRED_SETBACKS ? evaluateOutsideLocation(project, rules) : evaluateSetbackLocation(project, location, rules);
       if (result.finding) findings.push(result.finding);
       if (result.uncovered) uncovered.push(result.uncovered);
     }
 
-    const wall = evaluateWall(project, rules);
-    if (wall.finding) findings.push(wall.finding);
-    if (wall.uncovered) uncovered.push(wall.uncovered);
+    if (!dependsOnAmbiguous([FenceRuleType.RETAINING_WALL])) {
+      const wall = evaluateWall(project, rules);
+      if (wall.finding) findings.push(wall.finding);
+      if (wall.uncovered) uncovered.push(wall.uncovered);
+    }
   }
 
   const sight = sightDistanceFinding(project);
   if (sight) findings.push(sight);
-  findings.push(...zoningApplicabilityFindings(input.zoningApplicability, "fence rules"));
+  if (resolution) {
+    const anyFenceZoneRule = [FenceRuleType.HEIGHT_STANDARD, FenceRuleType.HEIGHT_FRONT_STREET_SIDE, FenceRuleType.OUTSIDE_REQUIRED_SETBACKS].some((t) => rules.find(t));
+    findings.push(...zoningFindings(resolution, { projectNoun: "fence", claimLabel: FENCE_CLAIM_LABEL, noRulesForZone: resolution.status === "RESOLVED" && !anyFenceZoneRule }));
+    findings.push(...ambiguousClaimFindings(resolution, { projectNoun: "fence", claimLabel: FENCE_CLAIM_LABEL }));
+  }
 
   const permit = evaluatePermit(project, rules, input.ecaFindings);
   if (permit.uncovered) uncovered.push(permit.uncovered);
@@ -537,5 +570,6 @@ export function evaluateFence(input: EvaluateFenceInput): FenceEvaluationOutcome
     ...(permit.permit ? { permitRequirement: permit.permit } : {}),
     declaredInputs: describeFenceDeclaredInputs(project),
     uncoveredConstraintTypes: [...new Set(uncovered)],
+    ...(resolution ? { zoningApplied: summarizeZoningResolution(resolution) } : {}),
   };
 }

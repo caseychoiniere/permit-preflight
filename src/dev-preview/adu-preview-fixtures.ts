@@ -9,7 +9,9 @@
 import { evaluateAdu } from "../regulatory-rules-engine/evaluate-adu.js";
 import { AduRuleType } from "../regulatory-rules-engine/adu-types.js";
 import type { AduProjectDetails, AduSiteFacts } from "../regulatory-rules-engine/adu-types.js";
-import type { ZoningApplicability } from "../regulatory-rules-engine/zoning-applicability.js";
+import { singleZoneContext } from "../zoning/context.js";
+import type { ZoningContext } from "../zoning/context.js";
+import { ZONING_SUBJECT } from "../zoning/findings.js";
 import { assembleAduEvidence } from "../report-generation-orchestrator/adu-evidence.js";
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
@@ -53,8 +55,7 @@ export const ADU_PREVIEW_RULE_SPECS: Record<string, Record<string, unknown>> = {
   },
 };
 
-const NO_OVERLAYS = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
-const NR: ZoningApplicability = { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: NO_OVERLAYS };
+const NR: ZoningContext = singleZoneContext("NR");
 
 const ECA = (steep: boolean): CriticalAreaFinding[] => [
   { hazardType: "steep_slope", mappedIntersectionResult: steep ? "INTERSECTS" : "NO_INTERSECTION", advisoryStatus: "ADVISORY_ONLY", toleranceBasis: "preview fixture" },
@@ -76,7 +77,7 @@ export interface AduPreviewScenarioDefinition {
   activeRuleTypes?: string[];
   project?: Partial<AduProjectDetails>;
   site?: Partial<AduSiteFacts>;
-  zoning?: ZoningApplicability;
+  zoning?: ZoningContext;
   steepSlopeMapped?: boolean;
   expected: { headline: string; subjects?: Record<string, string>; uncovered?: string[] };
 }
@@ -133,15 +134,15 @@ export const ADU_PREVIEW_SCENARIOS: AduPreviewScenarioDefinition[] = [
   {
     id: "adu-not-nr",
     group: "Unit 11 - ADUs",
-    title: "Parcel zoned LR1 (cannot tell - not Neighborhood Residential)",
-    zoning: { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays: NO_OVERLAYS },
-    expected: { headline: "CANNOT_TELL", subjects: { "Zoning applicability (Neighborhood Residential zones)": "REQUIRES_VERIFICATION" } },
+    title: "Parcel zoned LR1 (cannot tell - no active ADU rules for the zone yet)",
+    zoning: singleZoneContext("LR1 (M)"),
+    expected: { headline: "CANNOT_TELL", subjects: { [ZONING_SUBJECT]: "KNOWN" } },
   },
   {
     id: "adu-overlay-and-steep-slope",
     group: "Unit 11 - ADUs",
     title: "Shoreline district and mapped steep slope (verify first)",
-    zoning: { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: { ...NO_OVERLAYS, shorelineDistrict: true } },
+    zoning: singleZoneContext("NR", { overlays: { shorelineDistrict: true } }),
     steepSlopeMapped: true,
     expected: { headline: "LOOKS_FEASIBLE", subjects: { "Overlay districts (shoreline, historic, landmark)": "REQUIRES_VERIFICATION", "Environmentally critical areas": "REQUIRES_VERIFICATION" } },
   },
@@ -240,7 +241,7 @@ export function buildAduPreviewReport(scenario: AduPreviewScenarioDefinition): A
     isTestOnlyFixture: true,
     acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"],
   }));
-  const outcome = evaluateAdu({ project, site, candidateActiveRules: rules, zoningApplicability: scenario.zoning ?? NR });
+  const outcome = evaluateAdu({ project, site, candidateActiveRules: rules, zoningContext: scenario.zoning ?? NR });
   return {
     id: `preview-${scenario.id}`,
     findings: outcome.findings,

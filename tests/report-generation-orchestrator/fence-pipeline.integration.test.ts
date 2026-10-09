@@ -93,7 +93,7 @@ describe.skipIf(!hasDb)("Fence report generation pipeline - live end-to-end inte
       expect(bySubject("Fence height (side or rear setback)")).toMatchObject({ classification: "KNOWN", complianceOutcome: "PASS" });
       expect(bySubject("Sight-distance requirements (corner lot, driveway, alley)")?.classification).toBe("REQUIRES_VERIFICATION");
       // Real zoning retrieval: this parcel is verified plain NR, so zoning is stated as a KNOWN fact (Unit 11 Slice 1).
-      expect(bySubject("Zoning applicability (Neighborhood Residential zones)")?.classification).toBe("KNOWN");
+      expect(bySubject("Zoning applied to this screening")?.classification).toBe("KNOWN");
       expect(factTypesOf(artifact)).toEqual(expect.arrayContaining(["zoning", "landmark-designation"]));
 
       const evidence = artifact!.evidence as { factType: string; value: unknown }[];
@@ -133,14 +133,14 @@ describe.skipIf(!hasDb)("Fence report generation pipeline - live end-to-end inte
       const { job, artifact } = await generate({ heightFt: 9, locations: ["FRONT_SETBACK"], siteSlopes: false, wallRelation: "NONE", hasMasonryOrConcreteAbove6Ft: false }, "3298700485");
       expect(job?.state).toBe("COMPLETE");
       const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string }[];
-      expect(findings.some((f) => f.subject.startsWith("Fence height"))).toBe(false);
-      expect(findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
-      const z = findings.find((f) => f.subject === "Zoning applicability (Neighborhood Residential zones)")!;
-      expect(z.classification).toBe("REQUIRES_VERIFICATION");
+      // No Neighborhood Residential fence rule is applied to a Lowrise parcel, whatever Lowrise rows are or are not active.
+      expect(findings.some((f) => /23\.44/.test(f.explanationBasis))).toBe(false);
+      const z = findings.find((f) => f.subject === "Zoning applied to this screening")!;
       expect(z.explanationBasis).toContain("LR1");
+      expect(z.explanationBasis).not.toContain("Neighborhood Residential");
       const evidence = artifact!.evidence as { factType: string; value: unknown }[];
       expect((evidence.find((e) => e.factType === "fence-permit-requirement")!.value as { buildingPermit: string }).buildingPermit).toBe("REQUIRED");
-      expect(JSON.stringify(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value)).toContain("not in a Neighborhood Residential zone");
+      expect((evidence.find((e) => e.factType === "zoning-resolution")!.value as { governingFamily: string }).governingFamily).toBe("LR");
     },
     90_000
   );

@@ -13,7 +13,29 @@ import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
 import { EvidenceQuality, LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { InferencePolicy, RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { deriveEcaRegulatoryImplication } from "./eca-implication.js";
-import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
+import { NOT_A_SURVEY, againstMinimum, classifySpatialFinding, missingEvidenceFinding, roundToTenthFt } from "./evaluate-common.js";
+import type { MappingTolerance } from "./evaluate-common.js";
+import { resolveApplicableRules, summarizeZoningResolution } from "../zoning/resolve.js";
+import type { ZoningResolution } from "../zoning/resolve.js";
+import type { ZoningContext } from "../zoning/context.js";
+import { ZoneFamily } from "../zoning/designation.js";
+import { ambiguousClaimFindings, zoningFindings } from "../zoning/findings.js";
+import {
+  MF_AGGREGATE_ONLY_RULE_TYPES,
+  MultifamilyAccessoryRuleType,
+  evaluateMfAccessoryHeight,
+  evaluateMfAccessorySetbacks,
+  evaluateMfFloorAreaRatio,
+  evaluateMfGarageParkingAccess,
+  evaluateMfSeparation,
+} from "./evaluate-multifamily-accessory.js";
+import type {
+  MfAccessoryHeightSpec,
+  MfAccessorySeparationSpec,
+  MfAccessorySetbacksSpec,
+  MfFloorAreaRatioSpec,
+  MfGarageParkingAccessSpec,
+} from "./evaluate-multifamily-accessory.js";
 import { PARCEL_SPECIFIC_APPROVAL_DISCLOSURE, computeLotCoverageExclusionTolerance } from "./lot-coverage-tolerance.js";
 import {
   ComplianceOutcome,
@@ -42,13 +64,6 @@ import type {
   ShedLotCoverageResult,
 } from "./types.js";
 
-/**
- * Screening tolerance for distances measured from county parcel mapping (not a survey). Optional on a spec: when present, a
- * distance within this many feet of a threshold is REQUIRES_VERIFICATION and only a distance clearly beyond it is a definite
- * PASS or FAIL. Absent => the original exact comparison (the staging fixtures and their tests rely on that).
- */
-export type MappingTolerance = { mappingToleranceFt?: number };
-
 export interface RearSetbackRuleSpec extends MappingTolerance {
   ruleType: "REAR_SETBACK";
   minFt: number;
@@ -74,14 +89,6 @@ export interface SideFrontSetbackRuleSpec extends MappingTolerance {
   /** Optional: when present, a distance clearly short of a requirement is REQUIRES_VERIFICATION carrying this note (the code allows exceptions, for example garages and carports in a setback), never a definite FAIL. */
   exceptionNote?: string;
 }
-
-/** Where a mapped distance lies against a minimum, given a screening tolerance. */
-function againstMinimum(distanceFt: number, minimumFt: number, toleranceFt: number): "CLEARS" | "SHORT" | "NEAR" {
-  if (distanceFt >= minimumFt + toleranceFt) return "CLEARS";
-  if (distanceFt < minimumFt - toleranceFt) return "SHORT";
-  return "NEAR";
-}
-const NOT_A_SURVEY = "Distances are measured from county parcel mapping, which is not a survey.";
 
 /** Unit 4 - net-new ruleType (no lot-coverage evaluator existed for any project type before this
  * unit). No numeric threshold lives on the spec itself - the percentage/floor/denominator logic
@@ -253,18 +260,52 @@ export interface EvaluateProjectInput {
    * when the constituent rules are ACTIVE - shedLotCoverage simply stays undefined rather than
    * throwing. */
   shedLotCoverageFacts?: Omit<ShedLotCoverageFacts, "allowanceFacts">;
-  /** Unit 11 Slice 1. Provided by the pipeline for shed/garage evaluations. NOT_NR withholds every
-   * Neighborhood Residential zoning conclusion (setback, height, separation, lot coverage) while the
-   * zone-independent building-permit determination and mapped ECA context stand. Undefined (unit tests,
-   * callers that did not retrieve zoning) leaves the pre-existing behavior unchanged. */
-  zoningApplicability?: ZoningApplicability;
+  /**
+   * Citywide zoning coverage. The zoning of the lot (and of the proposed footprint, when one is placed), supplied by the
+   * pipeline. The engine resolves the rules that govern each claim in that zone (zoning/resolve.ts) and evaluates only those;
+   * a claim whose standards differ between the zones involved is REQUIRES_VERIFICATION, and with no usable zoning no
+   * zone-specific conclusion is made. Undefined (unit tests that exercise the evaluators directly) evaluates every candidate
+   * rule as given, exactly as before.
+   */
+  zoningContext?: ZoningContext;
 }
 
 /** BR-U4-2's exhaustiveness requirement, exercised at a real decision point (not decorative): the
  * constraint types a given project type is expected to have ACTIVE rule coverage for
  * (business-rules.md BR-U4-5). A future third ProjectType without an entry here is a compile-time
  * error via the `never` branch below. */
-function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"]): { constraintType: string; ruleTypes: string[] }[] {
+function expectedConstraintTypesFor(projectType: ProjectDetails["projectType"], family: ZoneFamily = ZoneFamily.NR): { constraintType: string; ruleTypes: string[] }[] {
+  if (family === ZoneFamily.LR || family === ZoneFamily.MR || family === ZoneFamily.HR) {
+    // Chapter 23.45: accessory-structure placement (SMC 23.45.518.H.1), height (23.45.514.C), floor area ratio (23.45.510; no lot-coverage limit).
+    const common = [
+      { constraintType: "setback", ruleTypes: [MultifamilyAccessoryRuleType.SETBACKS] },
+      { constraintType: "height", ruleTypes: [MultifamilyAccessoryRuleType.HEIGHT] },
+      { constraintType: "floor area ratio", ruleTypes: [MultifamilyAccessoryRuleType.FLOOR_AREA_RATIO] },
+    ];
+    switch (projectType) {
+      case "shed":
+        return [...common, { constraintType: "separation from the house", ruleTypes: [MultifamilyAccessoryRuleType.SEPARATION] }];
+      case "garage":
+        return [
+          ...common,
+          { constraintType: "garage access and driveway", ruleTypes: [MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS] },
+          // Same disclosure as the NR garage: the garage flow does not measure the house, so the separation is never silently skipped.
+          { constraintType: "separation from the house", ruleTypes: ["GARAGE_DWELLING_SEPARATION_NOT_GOVERNED"] },
+        ];
+      default: {
+        const exhaustiveCheck: never = projectType;
+        throw new Error(`Unhandled ProjectType "${String(exhaustiveCheck)}" in expectedConstraintTypesFor.`);
+      }
+    }
+  }
+  if (family !== ZoneFamily.NR) {
+    // A zone family whose accessory-structure rules have not been written yet: the claims a screening would make are listed as not yet screenable.
+    const unsupported = [
+      { constraintType: "setback", ruleTypes: [`${family}_ACCESSORY_SETBACKS`] },
+      { constraintType: "height", ruleTypes: [`${family}_ACCESSORY_HEIGHT`] },
+    ];
+    return projectType === "shed" ? [...unsupported, { constraintType: "separation from the house", ruleTypes: [`${family}_ACCESSORY_SEPARATION`] }] : unsupported;
+  }
   switch (projectType) {
     case "shed":
       // The shed's position-dependent claims each rest on a governed rule; when none is ACTIVE the report must say so
@@ -310,15 +351,52 @@ export function isCriticalAreaFinding(subject: string): boolean {
   return subject.startsWith(CRITICAL_AREA_FINDING_SUBJECT_PREFIX);
 }
 
-function computeUncoveredConstraintTypes(projectType: ProjectDetails["projectType"], activeRules: RegulatoryRule[]): string[] {
+/** Customer-facing claim label for a rule type, used when a claim cannot be settled across the zones involved. */
+const CLAIM_LABELS: Record<string, string> = {
+  REAR_SETBACK: "Setbacks",
+  SIDE_FRONT_SETBACK_STANDARD: "Setbacks",
+  [MultifamilyAccessoryRuleType.SETBACKS]: "Setbacks",
+  HEIGHT_LIMIT: "Height",
+  [ShedPermitRuleType.ACCESSORY_HEIGHT_LIMIT_IN_SETBACK]: "Accessory structure height limit",
+  [ShedPermitRuleType.ACCESSORY_HEIGHT_LIMIT_OUTSIDE_SETBACK]: "Accessory structure height limit",
+  [MultifamilyAccessoryRuleType.HEIGHT]: "Accessory structure height limit",
+  DWELLING_SEPARATION: "Separation from the house",
+  [MultifamilyAccessoryRuleType.SEPARATION]: "Separation from the house",
+  LOT_COVERAGE: "Lot coverage",
+  [ShedLotCoverageRuleType.BASE_MAXIMUM]: "Lot coverage",
+  [ShedLotCoverageRuleType.ECA_LOT_AREA_EXCLUSION]: "Lot coverage",
+  [ShedLotCoverageRuleType.TRANSIT_BONUS]: "Lot coverage",
+  [ShedLotCoverageRuleType.STACKED_BONUS]: "Lot coverage",
+  [ShedLotCoverageRuleType.MINIMUM_FLOOR]: "Lot coverage",
+  [ShedLotCoverageRuleType.DIRECTOR_ALTERNATIVE]: "Lot coverage",
+  [ShedLotCoverageRuleType.ESTIMATE_CAVEAT]: "Lot coverage",
+  [MultifamilyAccessoryRuleType.FLOOR_AREA_RATIO]: "Floor area ratio",
+  [MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS]: "Garage access and driveway",
+};
+export const claimLabelFor = (ruleType: string, fallbackSubject: string): string => CLAIM_LABELS[ruleType] ?? fallbackSubject;
+
+const PROJECT_NOUN: Record<ProjectDetails["projectType"], string> = { shed: "shed", garage: "detached garage" };
+
+/** Constraint types with no active rule for the zone(s) the structure stands in. A claim reported as zone-ambiguous is a verification item, not "not yet screenable". */
+function computeUncoveredConstraintTypes(projectType: ProjectDetails["projectType"], activeRules: RegulatoryRule[], resolution?: ZoningResolution): string[] {
   const activeRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
-  return expectedConstraintTypesFor(projectType)
-    .filter(({ ruleTypes }) => !ruleTypes.some((rt) => activeRuleTypes.has(rt)))
-    .map(({ constraintType }) => constraintType);
+  const ambiguousRuleTypes = new Set(resolution?.ambiguousClaims.map((c) => c.ruleType) ?? []);
+  const families: ZoneFamily[] = !resolution ? [ZoneFamily.NR] : resolution.locationFamilies.length > 0 ? resolution.locationFamilies : [...new Set(resolution.lotZones.map((z) => z.family))];
+  const expected = new Map<string, string[]>();
+  for (const family of families) {
+    for (const { constraintType, ruleTypes } of expectedConstraintTypesFor(projectType, family)) {
+      expected.set(constraintType, [...(expected.get(constraintType) ?? []), ...ruleTypes]);
+    }
+  }
+  return [...expected.entries()]
+    .filter(([, ruleTypes]) => !ruleTypes.some((rt) => activeRuleTypes.has(rt)) && !ruleTypes.some((rt) => ambiguousRuleTypes.has(rt)))
+    .map(([constraintType]) => constraintType);
 }
 
 export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome {
-  const activeRules = input.candidateActiveRules.filter((r) => r.lifecycleState === LifecycleState.ACTIVE);
+  // Citywide zoning coverage: with a zoning context, only the rules that govern each claim in the zone(s) the project touches are evaluated.
+  const resolution: ZoningResolution | undefined = input.zoningContext ? resolveApplicableRules({ zoning: input.zoningContext, candidateRules: input.candidateActiveRules }) : undefined;
+  const activeRules = resolution ? resolution.rules : input.candidateActiveRules.filter((r) => r.lifecycleState === LifecycleState.ACTIVE);
   const activePolicies = input.candidateActiveInferencePolicies.filter((p) => p.lifecycleState === LifecycleState.ACTIVE);
 
   // Indispensable-input check (BR-3.5 / Workflow 6): if the parcel geometry itself is
@@ -334,12 +412,10 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   }
 
   const findings: Finding[] = [];
-  const notNr = input.zoningApplicability?.status === "NOT_NR";
 
   for (const rule of activeRules) {
-    if (notNr) break; // verifiably not a Neighborhood Residential zone: no NR zoning conclusion is produced
     const ruleType = (rule.ruleSpecification as { ruleType?: string }).ruleType;
-    if (ruleType !== undefined && UNIT_6B_AGGREGATE_ONLY_RULE_TYPES.has(ruleType)) {
+    if (ruleType !== undefined && (UNIT_6B_AGGREGATE_ONLY_RULE_TYPES.has(ruleType) || MF_AGGREGATE_ONLY_RULE_TYPES.has(ruleType))) {
       // Consumed exclusively by the shed aggregate-computing functions below via
       // allRuleTypesActive against the full activeRules list, never by the generic per-rule
       // switch - see UNIT_6B_AGGREGATE_ONLY_RULE_TYPES's docstring.
@@ -362,24 +438,33 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
     }
   }
 
-  if (input.zoningApplicability) findings.push(...zoningApplicabilityFindings(input.zoningApplicability, `${input.project.projectType} rules`));
+  const projectNoun = PROJECT_NOUN[input.project.projectType];
+  if (resolution) {
+    const zoneRuleTypes = new Set(activeRules.map((r) => (r.ruleSpecification as { ruleType?: string }).ruleType));
+    const expectedHere = (resolution.locationFamilies.length > 0 ? resolution.locationFamilies : [ZoneFamily.NR]).flatMap((f) => expectedConstraintTypesFor(input.project.projectType, f));
+    const noRulesForZone = resolution.status === "RESOLVED" && expectedHere.every(({ ruleTypes }) => !ruleTypes.some((rt) => zoneRuleTypes.has(rt)));
+    findings.push(...zoningFindings(resolution, { projectNoun, claimLabel: claimLabelFor, noRulesForZone }));
+    findings.push(...ambiguousClaimFindings(resolution, { projectNoun, claimLabel: claimLabelFor }));
+  }
 
   const outcome: EvaluationOutcome = {
     status: EvaluationStatus.COMPLETE,
     findings,
-    uncoveredConstraintTypes: notNr
-      ? ["zoning limits - setback, height, lot coverage (parcel is not in a Neighborhood Residential zone)"]
-      : computeUncoveredConstraintTypes(input.project.projectType, activeRules),
+    uncoveredConstraintTypes:
+      resolution?.status === "UNRESOLVED"
+        ? ["zone-specific limits - setback, height, lot coverage or floor area (Seattle zoning could not be applied to this property)"]
+        : computeUncoveredConstraintTypes(input.project.projectType, activeRules, resolution),
+    ...(resolution ? { zoningApplied: summarizeZoningResolution(resolution) } : {}),
   };
 
   if (input.project.projectType === "shed") {
     const activeRuleTypes = activeRuleTypeSet(activeRules);
     const permitRequirement = evaluateShedPermitRequirementForActiveRules(input.project, input.ecaFindings, activeRuleTypes);
     if (permitRequirement) outcome.permitRequirement = permitRequirement;
-    if (!notNr && allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
+    if (allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
       outcome.accessoryHeightLimitFinding = evaluateAccessoryHeightLimit(input.project);
     }
-    if (!notNr && input.shedLotCoverageFacts && ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
+    if (input.shedLotCoverageFacts && ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_CONSTITUENT_RULE_TYPES)) {
       outcome.shedLotCoverage = evaluateShedLotCoverage(input.shedLotCoverageFacts, {
         directorAlternativeRuleActive: ruleTypesAllIn(activeRuleTypes, SHED_LOT_COVERAGE_DIRECTOR_ALTERNATIVE_RULE_TYPES),
       });
@@ -387,9 +472,13 @@ export function evaluateProject(input: EvaluateProjectInput): EvaluationOutcome 
   }
 
   // A detached garage shares the location-sensitive accessory height limit (12 ft in a required setback, 32 ft outside; SMC 23.44.070.A).
-  if (input.project.projectType === "garage" && !notNr && allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
+  if (input.project.projectType === "garage" && allRuleTypesActive(activeRules, ACCESSORY_HEIGHT_LIMIT_CONSTITUENT_RULE_TYPES)) {
     outcome.accessoryHeightLimitFinding = evaluateAccessoryHeightLimit(input.project);
   }
+
+  // Multifamily zones (SMC 23.45): the accessory height limit is its own rule row, evaluated with that row's own thresholds.
+  const mfHeight = activeRules.find((r) => (r.ruleSpecification as { ruleType?: string }).ruleType === MultifamilyAccessoryRuleType.HEIGHT);
+  if (mfHeight) outcome.accessoryHeightLimitFinding = evaluateMfAccessoryHeight(mfHeight, mfHeight.ruleSpecification as unknown as MfAccessoryHeightSpec, input.project);
 
   return outcome;
 }
@@ -425,6 +514,16 @@ function evaluateRule(rule: RegulatoryRule, project: ProjectDetails, activePolic
         return [missingEvidenceFinding(rule.subject, appliedRule, "LotCoverageFacts were not supplied for this evaluation.")];
       }
       return [evaluateLotCoverage(rule, appliedRule, spec as unknown as LotCoverageRuleSpec, project, lotCoverageFacts)];
+    case MultifamilyAccessoryRuleType.SETBACKS:
+      return evaluateMfAccessorySetbacks(rule, spec as unknown as MfAccessorySetbacksSpec, project, activePolicies);
+    case MultifamilyAccessoryRuleType.SEPARATION:
+      if (project.projectType !== "shed") return [missingEvidenceFinding(rule.subject, appliedRule, `${spec.ruleType} does not apply to project type "${project.projectType}".`)];
+      return [evaluateMfSeparation(rule, spec as unknown as MfAccessorySeparationSpec, project)];
+    case MultifamilyAccessoryRuleType.FLOOR_AREA_RATIO:
+      return [evaluateMfFloorAreaRatio(rule, spec as unknown as MfFloorAreaRatioSpec, project)];
+    case MultifamilyAccessoryRuleType.GARAGE_PARKING_ACCESS:
+      if (project.projectType !== "garage") return [missingEvidenceFinding(rule.subject, appliedRule, `${spec.ruleType} does not apply to project type "${project.projectType}".`)];
+      return [evaluateMfGarageParkingAccess(rule, spec as unknown as MfGarageParkingAccessSpec, project)];
     case "REQUIRES_INFERENCE_POLICY":
       return [
         evaluateWithInferencePolicy(rule, appliedRule, spec as unknown as RequiresInferencePolicyRuleSpec, activePolicies),
@@ -755,58 +854,6 @@ function evaluateLotCoverage(
  * rule silent on acceptedEvidenceQuality is treated as NOT accepting GENERAL_LOCATION_ONLY - the
  * safe default is REQUIRES_VERIFICATION, never KNOWN-by-omission.
  */
-function classifySpatialFinding(input: {
-  rule: RegulatoryRule;
-  appliedRule: Finding["appliedRule"];
-  subject: string;
-  pass: boolean;
-  spatialEvidenceQuality: ProjectDetails["spatialEvidenceQuality"];
-  activePolicies: InferencePolicy[];
-  supportingEvidence: string[];
-  explanationBasis: string;
-}): Finding {
-  const { rule, appliedRule, subject, pass, spatialEvidenceQuality, activePolicies, supportingEvidence, explanationBasis } = input;
-
-  const requiresGate = spatialEvidenceQuality !== undefined && spatialEvidenceQuality !== EvidenceQuality.AUTHORITATIVE;
-  const ruleAcceptsThisQuality = requiresGate && rule.acceptedEvidenceQuality.includes(spatialEvidenceQuality);
-
-  if (!requiresGate || ruleAcceptsThisQuality) {
-    return {
-      classification: FindingClassification.KNOWN,
-      subject,
-      complianceOutcome: pass ? ComplianceOutcome.PASS : ComplianceOutcome.FAIL,
-      appliedRule,
-      supportingEvidence,
-      explanationBasis,
-    };
-  }
-
-  const matchingPolicy = activePolicies.find((p) => p.subject === GENERAL_LOCATION_ONLY_SETBACK_POLICY_SUBJECT);
-  if (matchingPolicy) {
-    return {
-      classification: FindingClassification.INFERRED,
-      subject,
-      appliedRule,
-      appliedInferencePolicy: {
-        id: matchingPolicy.id,
-        subject: matchingPolicy.subject,
-        derivationMethod: matchingPolicy.derivationMethod,
-        version: matchingPolicy.version,
-      },
-      supportingEvidence: [...supportingEvidence, `InferencePolicy(${matchingPolicy.id})`],
-      explanationBasis: `${explanationBasis} Derived despite ${spatialEvidenceQuality} evidence quality via approved InferencePolicy "${matchingPolicy.subject}" (${matchingPolicy.derivationMethod}, v${matchingPolicy.version}).`,
-    };
-  }
-
-  return {
-    classification: FindingClassification.REQUIRES_VERIFICATION,
-    subject,
-    appliedRule,
-    supportingEvidence,
-    explanationBasis: `${explanationBasis} However, this rule has not been governance-approved to rely on ${spatialEvidenceQuality} evidence, and no approved InferencePolicy covers it - REQUIRES_VERIFICATION rather than an unsupported KNOWN determination.`,
-  };
-}
-
 /**
  * BR-4's governed-inference requirement: an INFERRED finding may only be produced when a
  * matching approved InferencePolicy exists. The Engine never invents a derivation method - if
@@ -843,26 +890,6 @@ function evaluateWithInferencePolicy(
     supportingEvidence: [`InferencePolicy(${matchingPolicy.id})`],
     explanationBasis: `Derived via approved InferencePolicy "${matchingPolicy.subject}" (${matchingPolicy.derivationMethod}, v${matchingPolicy.version}).`,
   };
-}
-
-function missingEvidenceFinding(subject: string, appliedRule: Finding["appliedRule"], reason: string): Finding {
-  return {
-    classification: FindingClassification.REQUIRES_VERIFICATION,
-    subject,
-    appliedRule,
-    supportingEvidence: [],
-    explanationBasis: `Cannot evaluate: ${reason}`,
-  };
-}
-
-/** Founder-caught presentation gap (2026-09-17) - PostGIS's ST_Distance returns full
- * floating-point precision (e.g. 43.60679091361771), which every setback/dwelling-separation
- * explanationBasis string below previously interpolated verbatim into customer-facing prose. The
- * underlying PASS/FAIL comparison (project.distanceToXFt >= spec.xFt) still uses the full-precision
- * value, unrounded - only the DISPLAYED text is rounded, to the nearest 0.1ft, never affecting the
- * actual compliance determination. */
-function roundToTenthFt(distanceFt: number): number {
-  return Math.round(distanceFt * 10) / 10;
 }
 
 // ---------------------------------------------------------------------------------------------

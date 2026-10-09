@@ -5,6 +5,7 @@
 
 import type { DeckAttachment, DeckBuildingRelation, DeckSetbackLocation } from "../screening-request/types.js";
 import type { Finding } from "./types.js";
+import type { ZoningAppliedSummary } from "../zoning/resolve.js";
 
 export interface DeckProjectDetails {
   projectType: "deck";
@@ -29,6 +30,8 @@ export const DeckRuleType = {
   STFI_ELIGIBILITY: "DECK_D4_STFI_ELIGIBILITY",
   ECA_CONDITION: "DECK_D5_ECA_CONDITION",
   EXEMPTION_NOT_ZONING_COMPLIANCE: "DECK_D6_EXEMPTION_NOT_ZONING_COMPLIANCE",
+  /** Multifamily zones (SMC Chapter 23.45) have no lot-coverage percentage limit; this row states that, in place of D2. */
+  NO_LOT_COVERAGE_LIMIT: "DECK_MF_NO_LOT_COVERAGE_LIMIT",
 } as const;
 export type DeckRuleType = (typeof DeckRuleType)[keyof typeof DeckRuleType];
 
@@ -36,8 +39,19 @@ export interface DeckSetbackHeightAllowanceRuleSpec {
   ruleType: typeof DeckRuleType.SETBACK_HEIGHT_ALLOWANCE;
   /** SMC 23.44.090.H.1 - structures up to this height above grade are allowed in any required setback. */
   allowedInSetbackMaxIn: number;
-  /** SMC 23.44.090.H.8 - the rear-setback allowance for unenclosed structures. */
-  rearSetbackAllowance: { minDistanceFromRearLotLineFt: number; maxHeightFt: number; minSeparationFromDwellingFt: number };
+  /** SMC 23.44.090.H.8 - the rear-setback allowance for unenclosed structures. Present only where the zone has such an allowance (Neighborhood Residential). */
+  rearSetbackAllowance?: { minDistanceFromRearLotLineFt: number; maxHeightFt: number; minSeparationFromDwellingFt: number };
+  /** Customer-facing citation text for the allowance above (default: the Neighborhood Residential section, "SMC 23.44.090.H.1"). */
+  allowanceCitation?: string;
+  /** Customer-facing statement of where such structures are limited (default: "SMC 23.44.090.H"). */
+  limitCitation?: string;
+  /** The further allowances a deck above the automatic height could use, in this zone, stated for the not-determined case (default: the Neighborhood Residential text). */
+  furtherAllowancesText?: string;
+}
+export interface DeckNoLotCoverageLimitRuleSpec {
+  ruleType: typeof DeckRuleType.NO_LOT_COVERAGE_LIMIT;
+  /** Customer-facing statement, with its citation, that the zone has no lot-coverage percentage limit and that a deck is not floor area. */
+  statement: string;
 }
 export interface DeckLotCoverageThresholdRuleSpec {
   ruleType: typeof DeckRuleType.LOT_COVERAGE_THRESHOLD;
@@ -104,4 +118,6 @@ export interface DeckEvaluationOutcome {
   permitRequirement?: DeckPermitRequirement;
   declaredInputs: DeckDeclaredInput[];
   uncoveredConstraintTypes: string[];
+  /** Citywide zoning coverage: the zoning this evaluation applied; absent when the caller supplied no zoning. */
+  zoningApplied?: ZoningAppliedSummary;
 }

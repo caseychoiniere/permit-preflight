@@ -4,6 +4,7 @@
  * ruleSpecification, so a declared case can never drift from what the rule actually does.
  */
 import { describe, expect, it } from "vitest";
+import { singleZoneContext } from "../../src/zoning/context.js";
 import { draft, triage } from "../../src/regulatory-rule-governance/lifecycle.js";
 import type { RegulatoryRule } from "../../src/regulatory-rule-governance/types.js";
 import { evaluateAdu } from "../../src/regulatory-rules-engine/evaluate-adu.js";
@@ -23,7 +24,7 @@ const activeRules: RegulatoryRule[] = realAduCandidates.map((c) => ({
 function run(input: AduTestInput) {
   const project = { ...baseAduProject(), ...(input.project ?? {}) } as AduProjectDetails;
   const site = { ...baseAduSite(), ...(input.site ?? {}) } as AduSiteFacts;
-  return evaluateAdu({ project, site, candidateActiveRules: activeRules, zoningApplicability: { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] } } });
+  return evaluateAdu({ project, site, candidateActiveRules: activeRules, zoningContext: singleZoneContext("NR") });
 }
 
 describe("real ADU candidates - structure", () => {

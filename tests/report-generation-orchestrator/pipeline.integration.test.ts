@@ -40,7 +40,6 @@ import type { ExistingPropertyScreeningRequestSnapshot, GarageProjectConfigurati
 import { createReportGenerationJob, claimQueuedJob } from "../../src/report-generation-job/repository.js";
 import { GenerationAuthorizationType, type GenerationAuthorization } from "../../src/screening-request/authorization.js";
 import { runReportGenerationPipeline } from "../../src/report-generation-orchestrator/pipeline.js";
-import { garageAccessoryCandidates } from "../fixtures/accessory-candidates.js";
 import { toNewRegulatoryRuleRow, STAGING_TEST_RULES } from "../../scripts/staging-test-rules.js";
 import { snapshotDataSourceHealth, restoreDataSourceHealth, type DataSourceHealthSnapshot } from "../fixtures/data-source-health-fixture.js";
 
@@ -92,12 +91,8 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
   beforeAll(async () => {
     db = getDb();
     dataSourceHealthSnapshot = await snapshotDataSourceHealth(db, AFFECTED_DATA_SOURCE_IDS);
-    const rows = STAGING_TEST_RULES.map((def) => {
-      const id = randomUUID();
-      ownRuleIds.push(id);
-      return toNewRegulatoryRuleRow({ ...def, id, subject: def.subject.replace("STAGING-TEST-ONLY:", "PIPELINE-INTEGRATION-TEST-ONLY:") });
-    });
-    await db.insert(regulatoryRules).values(rows);
+    // Citywide zoning coverage: this suite no longer inserts its own copies of the shed/garage rules. The real shed and garage rows are ACTIVE in the
+    // database, and a second ACTIVE row for the same claim in the same zone is an authoring defect the rule resolver deliberately refuses to evaluate.
   });
 
   afterAll(async () => {
@@ -112,7 +107,6 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
         await db.delete(reportGenerationJobs).where(eq(reportGenerationJobs.screeningRequestId, id));
         await db.delete(screeningRequests).where(eq(screeningRequests.id, id));
       }
-      await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, ownRuleIds));
     } finally {
       await restoreDataSourceHealth(db, dataSourceHealthSnapshot);
     }
@@ -156,7 +150,7 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
       // Item 9/10: the 4 STAGING-TEST-ONLY ACTIVE rules produce real findings (never zero, the
       // exact real regression this suite exists to catch).
       expect(findings.length).toBeGreaterThan(0);
-      const bySubject = (needle: string) => findings.find((f) => f.subject.toLowerCase().includes(needle));
+      const bySubject = (needle: string) => findings.find((f) => f.subject.toLowerCase().includes(needle === "dwelling" ? "separation from the dwelling" : needle));
       expect(bySubject("rear")).toBeDefined();
       expect(bySubject("height")).toBeDefined();
       expect(bySubject("dwelling")).toBeDefined();
@@ -184,7 +178,7 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
       const selected = displayStructures.find((s) => s.outlineId === REAL_OUTLINE_ID_MAIN_HOUSE);
       expect(selected?.classification).toBe("PRIMARY_DWELLING");
       // Unit 11 Slice 1: this parcel is verified plain NR, so zoning applicability is a KNOWN fact.
-      expect(findings.find((f) => f.subject.startsWith("Zoning applicability"))?.classification).toBe("KNOWN");
+      expect(findings.find((f) => f.subject.startsWith("Zoning applied"))?.classification).toBe("KNOWN");
       expect(evidence.map((e) => e.factType)).toEqual(expect.arrayContaining(["zoning", "landmark-designation"]));
     }
   );
@@ -195,11 +189,16 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
     const lr1Roles = { ...REAL_LOT_LINE_ROLES, frontEdgeRef: "edge-0", rearEdgeRef: "edge-2", sideEdgeRefs: ["edge-1", "edge-3"] };
     const snapshotDetails = shedProjectDetails({ proposedPlacement: lr1Placement, lotLineRoleAssignment: lr1Roles });
     const { artifact } = await generateRealShedReport(snapshotDetails, "3298700485");
-    const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string }[];
-    expect(findings.some((f) => /rear|side|front|height|dwelling/i.test(f.subject) && !f.subject.startsWith("Zoning") && !f.subject.startsWith("Critical area"))).toBe(false);
-    expect(findings.find((f) => f.subject.startsWith("Zoning applicability"))?.explanationBasis).toContain("LR1");
+    const findings = artifact!.findings as { subject: string; classification: string; complianceOutcome?: string; explanationBasis: string; appliedRule?: { citation: { smcSections: string[] } } }[];
+    // No Neighborhood Residential rule is applied to a Lowrise parcel: nothing cites SMC 23.44, whatever Lowrise rows are or are not active.
+    expect(findings.some((f) => (f.appliedRule?.citation.smcSections ?? []).some((c) => c.includes("23.44")))).toBe(false);
+    expect(findings.some((f) => /23\.44/.test(f.explanationBasis) && !f.subject.startsWith("Critical area"))).toBe(false);
+    const zoning = findings.find((f) => f.subject.startsWith("Zoning applied"))!;
+    expect(zoning.explanationBasis).toContain("LR1");
+    expect(zoning.explanationBasis).toContain("Lowrise");
+    expect(zoning.explanationBasis).not.toContain("Neighborhood Residential");
     const evidence = artifact!.evidence as { factType: string; value: unknown }[];
-    expect(JSON.stringify(evidence.find((e) => e.factType === "uncovered-constraint-types")!.value)).toContain("not in a Neighborhood Residential zone");
+    expect((evidence.find((e) => e.factType === "zoning-resolution")!.value as { governingFamily: string }).governingFamily).toBe("LR");
   }, 90_000);
 
   it("[footprint containment] a shed placed in the street or over a lot line is a mis-placement: no 0 ft setback FAIL, every position-dependent finding is REQUIRES_VERIFICATION with the reason, and the report still completes", async () => {
@@ -218,31 +217,7 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
   }, 90_000);
 
   it("[footprint containment, garage] a garage placed in the street is a mis-placement too: every setback finding is REQUIRES_VERIFICATION with the reason, the position-dependent height limit is not decided, no FAIL; a mid-yard garage still gets definite findings", async () => {
-    const garageRuleIds: string[] = [];
-    try {
-      // Test-only ACTIVE copies of the real garage candidates (random ids, removed in finally); nothing in the real database is activated.
-      await db.insert(regulatoryRules).values(
-        garageAccessoryCandidates.map((c) => {
-          const id = randomUUID();
-          garageRuleIds.push(id);
-          return {
-            id,
-            subject: `PIPELINE-INTEGRATION-TEST-ONLY: ${c.subject}`,
-            applicableProjectType: "garage",
-            applicableWorkflowType: "EXISTING_PROPERTY",
-            applicableZone: "NR",
-            ruleSpecification: c.ruleSpecification,
-            citation: c.citation,
-            lifecycleState: "ACTIVE",
-            tier: "TIER_1",
-            caveats: c.caveats,
-            testCases: c.testCases,
-            verificationHistory: [{ tier: "TIER_1", founderIdentity: "pipeline-integration-test@example.com", founderVerifiedAt: "2026-01-01T00:00:00.000Z" }],
-            isTestOnlyFixture: true,
-            acceptedEvidenceQuality: ["AUTHORITATIVE", "GENERAL_LOCATION_ONLY"],
-          };
-        }) as never
-      );
+    {
       const runGarage = async (placement: { anchor: { lat: number; lng: number }; orientationDeg: number }) => {
         const details: GarageProjectConfiguration = { widthFt: 12, depthFt: 20, heightFt: 10, alleyAdjacent: false, proposedPlacement: placement, lotLineRoleAssignment: REAL_LOT_LINE_ROLES, existingStructuresFootprintSqFt: 1200 };
         const snapshot: ExistingPropertyScreeningRequestSnapshot = { workflowType: "EXISTING_PROPERTY", confirmedParcelId: TEST_PARCEL_PIN, projectType: "garage", projectDetails: details };
@@ -273,8 +248,6 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
       const good = await runGarage(REAL_PLACEMENT);
       expect(good.job?.state).toBe("COMPLETE");
       expect(good.findings.some((f) => /rear/i.test(f.subject) && f.classification === "KNOWN")).toBe(true);
-    } finally {
-      if (garageRuleIds.length > 0) await db.delete(regulatoryRules).where(inArray(regulatoryRules.id, garageRuleIds));
     }
   }, 180_000);
 
@@ -282,18 +255,19 @@ describe.skipIf(!hasDb)("Report generation pipeline - live end-to-end integratio
     const { artifact } = await generateRealShedReport(shedProjectDetails()); // no primaryDwellingSelection field at all
     const findings = artifact!.findings as { subject: string; classification: string }[];
     expect(findings.length).toBeGreaterThan(0);
-    const dwellingFinding = findings.find((f) => f.subject.toLowerCase().includes("dwelling"));
+    const dwellingFinding = findings.find((f) => /separation from the dwelling/i.test(f.subject));
     expect(dwellingFinding?.classification).toBe("REQUIRES_VERIFICATION");
-    // Unaffected: rear/height still evaluable KNOWN findings, same as the matched-selection case.
+    // Unaffected: the rear setback is still a KNOWN finding, and the accessory height claim is still made (whether the shed stands in a required setback
+    // is unresolved by design, so the real rule states that rather than a definite result), same as the matched-selection case.
     expect(findings.some((f) => f.subject.toLowerCase().includes("rear") && f.classification !== "REQUIRES_VERIFICATION")).toBe(true);
-    expect(findings.some((f) => f.subject.toLowerCase().includes("height") && f.classification !== "REQUIRES_VERIFICATION")).toBe(true);
+    expect(findings.some((f) => f.subject.toLowerCase().includes("height"))).toBe(true);
   });
 
   it("[hard invariant, FAILURE BEHAVIOR] a selected outline that no longer exists at generation time resolves to UNKNOWN/REQUIRES_VERIFICATION - never guessed - and the report explains it, while other findings still complete", async () => {
     const { artifact } = await generateRealShedReport(shedProjectDetails({ primaryDwellingSelection: { status: "SELECTED", outlineId: NONEXISTENT_OUTLINE_ID, method: "USER_CONFIRMED" } }));
     const findings = artifact!.findings as { subject: string; classification: string }[];
     expect(findings.length).toBeGreaterThan(0); // report still completes
-    const dwellingFinding = findings.find((f) => f.subject.toLowerCase().includes("dwelling"));
+    const dwellingFinding = findings.find((f) => /separation from the dwelling/i.test(f.subject));
     expect(dwellingFinding?.classification).toBe("REQUIRES_VERIFICATION");
 
     const evidence = artifact!.evidence as { factType: string; value: unknown }[];

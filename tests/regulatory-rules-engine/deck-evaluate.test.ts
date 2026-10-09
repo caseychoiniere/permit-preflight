@@ -5,6 +5,7 @@
  * (never LIKELY_EXEMPT; a tall deck in a setback is never a FAIL; zoning scope always stated).
  */
 import { describe, expect, it } from "vitest";
+import { singleZoneContext, splitZoneContext, unavailableZoneContext } from "../../src/zoning/context.js";
 import { DECK_OUTCOME_DEPENDENCIES, evaluateDeck } from "../../src/regulatory-rules-engine/evaluate-deck.js";
 import { DeckRuleType } from "../../src/regulatory-rules-engine/deck-types.js";
 import type { DeckProjectDetails } from "../../src/regulatory-rules-engine/deck-types.js";
@@ -48,8 +49,8 @@ const deck = (over: Partial<DeckProjectDetails> = {}): DeckProjectDetails => ({
   setbackLocations: ["SIDE_SETBACK"],
   ...over,
 });
-const run = (over: Partial<DeckProjectDetails> = {}, rules = ALL) => evaluateDeck({ project: deck(over), candidateActiveRules: rules });
-const ZONING = "Zoning applicability (Neighborhood Residential zones)";
+const run = (over: Partial<DeckProjectDetails> = {}, rules = ALL) => evaluateDeck({ project: deck(over), candidateActiveRules: rules, zoningContext: singleZoneContext("NR") });
+const ZONING = "Zoning applied to this screening";
 const sub = (fs: Finding[], needle: string) => fs.find((f) => f.subject.includes(needle));
 const oc = (f: Finding | undefined) => (f ? `${f.classification}${f.complianceOutcome ? "/" + f.complianceOutcome : ""}` : "none");
 
@@ -252,11 +253,11 @@ describe("outcome-specific gating", () => {
   });
 });
 
-describe("every deck report states, as an unresolved item, that zoning was not verified", () => {
-  it.each([[ALL], [[]]])("with or without rules", (rules) => {
-    const z = sub(run({}, rules as RegulatoryRule[]).findings, "Zoning applicability");
+describe("every deck report states which zoning was applied, or that none could be", () => {
+  it.each([[ALL], [[]]])("an unavailable zoning is an unresolved item, with or without rules", (rules) => {
+    const z = sub(evaluateDeck({ project: deck(), candidateActiveRules: rules as RegulatoryRule[], zoningContext: unavailableZoneContext() }).findings, "Zoning applied");
     expect(z?.classification).toBe("REQUIRES_VERIFICATION");
-    expect(z?.explanationBasis).toContain("did not verify this parcel's zoning");
+    expect(z?.explanationBasis).toContain("could not apply this property's zoning");
   });
 });
 
@@ -276,23 +277,35 @@ describe("declared inputs are echoed", () => {
   });
 });
 
-describe("zoning applicability (Unit 11 Slice 1)", () => {
-  const overlays = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
-  const runZ = (z: Parameters<typeof evaluateDeck>[0]["zoningApplicability"], over: Partial<DeckProjectDetails> = {}) =>
-    evaluateDeck({ project: deck(over), candidateActiveRules: ALL, zoningApplicability: z });
+describe("zoning applicability (citywide zoning coverage)", () => {
+  const runZ = (z: Parameters<typeof evaluateDeck>[0]["zoningContext"], over: Partial<DeckProjectDetails> = {}) => evaluateDeck({ project: deck(over), candidateActiveRules: ALL, zoningContext: z });
 
   it("verified NR: NR findings kept, zoning stated as KNOWN, overlays flagged separately", () => {
-    const out = runZ({ status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays: { ...overlays, historicDistrict: true } }, { heightAboveGradeIn: 12 });
+    const out = runZ(singleZoneContext("NR", { overlays: { historicDistrict: true } }), { heightAboveGradeIn: 12 });
     expect(oc(out.findings[0])).toBe("KNOWN/PASS");
-    expect(sub(out.findings, "Zoning applicability")?.classification).toBe("KNOWN");
+    expect(sub(out.findings, "Zoning applied")?.classification).toBe("KNOWN");
     expect(sub(out.findings, "Overlay districts")?.classification).toBe("REQUIRES_VERIFICATION");
   });
 
-  it("verifiably not NR: setback and lot-coverage findings withheld, permit determination kept, zone named", () => {
-    const out = runZ({ status: "NOT_NR", zoningLabel: "LR1 (M)", overlays }, { heightAboveGradeIn: 40 });
+  it("a zone with no active deck rules: setback and lot-coverage findings withheld as not yet screenable, permit determination kept, zone named", () => {
+    const out = runZ(singleZoneContext("NC2P-55 (M1)"), { heightAboveGradeIn: 40 });
     expect(out.findings.some((f) => f.subject.startsWith("Deck setback") || f.subject === "Deck and lot coverage")).toBe(false);
-    expect(sub(out.findings, "Zoning applicability")?.explanationBasis).toContain("LR1 (M)");
+    expect(sub(out.findings, "Zoning applied")?.explanationBasis).toContain("NC2P-55 (M1)");
     expect(out.permitRequirement?.buildingPermit).toBe("REQUIRED");
-    expect(out.uncoveredConstraintTypes.join()).toContain("not in a Neighborhood Residential zone");
+    expect(out.uncoveredConstraintTypes).toContain("deck setback (side setback)");
+  });
+
+  it("an NR/LR split with different standards leaves the zone-dependent claims as verification items, never an NR answer", () => {
+    const out = runZ(splitZoneContext([["NR", 0.7], ["NC2-40", 0.3]]), { heightAboveGradeIn: 12 });
+    expect(out.findings.some((f) => f.complianceOutcome !== undefined && f.subject.startsWith("Deck setback"))).toBe(false);
+    expect(sub(out.findings, "Zoning applied")?.classification).toBe("REQUIRES_VERIFICATION");
+    expect(out.permitRequirement).toBeDefined();
+  });
+
+  it("unavailable zoning withholds the zone-specific statements and keeps the permit determination", () => {
+    const out = runZ(unavailableZoneContext(), { heightAboveGradeIn: 40 });
+    expect(out.findings.some((f) => f.subject.startsWith("Deck setback"))).toBe(false);
+    expect(out.uncoveredConstraintTypes.join()).toContain("could not be applied");
+    expect(out.permitRequirement?.buildingPermit).toBe("REQUIRED");
   });
 });

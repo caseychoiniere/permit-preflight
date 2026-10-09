@@ -12,7 +12,9 @@
  * REQUIRES_VERIFICATION naming the ones that could apply (functional-design.md §1 source-conflict note).
  */
 
-import { zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
+import { resolveApplicableRules, summarizeZoningResolution } from "../zoning/resolve.js";
+import type { ZoningContext } from "../zoning/context.js";
+import { ambiguousClaimFindings, zoningFindings } from "../zoning/findings.js";
 import { LifecycleState } from "../regulatory-rule-governance/types.js";
 import type { RegulatoryRule } from "../regulatory-rule-governance/types.js";
 import { DeckAttachment, DeckBuildingRelation, DeckSetbackLocation } from "../screening-request/types.js";
@@ -23,6 +25,7 @@ import type {
   DeckDeclaredInput,
   DeckEvaluationOutcome,
   DeckLotCoverageThresholdRuleSpec,
+  DeckNoLotCoverageLimitRuleSpec,
   DeckPermitCriterionResult,
   DeckPermitExemptionRuleSpec,
   DeckPermitRequirement,
@@ -83,7 +86,11 @@ function rearAllowanceOk(v: unknown): boolean {
 
 /** A malformed specification makes the rule unavailable (fail closed). */
 const SPEC_GUARDS: Record<string, (spec: Record<string, unknown>) => boolean> = {
-  [DeckRuleType.SETBACK_HEIGHT_ALLOWANCE]: (s) => positiveFinite(s["allowedInSetbackMaxIn"]) && rearAllowanceOk(s["rearSetbackAllowance"]),
+  // A row without the rear-setback allowance is valid only when it states, in `furtherAllowancesText`, the allowances that replace it (zones without that allowance).
+  [DeckRuleType.SETBACK_HEIGHT_ALLOWANCE]: (s) =>
+    positiveFinite(s["allowedInSetbackMaxIn"]) &&
+    (s["rearSetbackAllowance"] !== undefined ? rearAllowanceOk(s["rearSetbackAllowance"]) : typeof s["furtherAllowancesText"] === "string" && (s["furtherAllowancesText"] as string).length > 0),
+  [DeckRuleType.NO_LOT_COVERAGE_LIMIT]: (s) => typeof s["statement"] === "string" && (s["statement"] as string).length > 0,
   [DeckRuleType.LOT_COVERAGE_THRESHOLD]: (s) => positiveFinite(s["notCountedMaxHeightIn"]),
   [DeckRuleType.PERMIT_EXEMPTION]: (s) => positiveFinite(s["maxHeightIn"]),
   [DeckRuleType.STFI_ELIGIBILITY]: (s) => positiveFinite(s["maxHeightAboveGroundFt"]) && positiveFinite(s["beamLengthDisqualifyingFt"]) && positiveFinite(s["maxAreaSqFt"]),
@@ -152,7 +159,7 @@ type DeckProjectConfigurationLike = Omit<DeckProjectDetails, "projectType"> & { 
 // Zoning findings
 // ---------------------------------------------------------------------------------------------
 
-function rearAllowanceAssessment(project: DeckProjectDetails, spec: DeckSetbackHeightAllowanceRuleSpec["rearSetbackAllowance"]): string {
+function rearAllowanceAssessment(project: DeckProjectDetails, spec: NonNullable<DeckSetbackHeightAllowanceRuleSpec["rearSetbackAllowance"]>): string {
   const unmet: string[] = [];
   const unknown: string[] = [];
   const met: string[] = [];
@@ -182,6 +189,7 @@ function evaluateSetbackLocation(project: DeckProjectDetails, location: DeckSetb
   const rule = rules.find<DeckSetbackHeightAllowanceRuleSpec>(DeckRuleType.SETBACK_HEIGHT_ALLOWANCE);
   if (!rule) return { uncovered: `deck setback (${label})` };
   const limitIn = rule.spec.allowedInSetbackMaxIn;
+  const allowanceCitation = rule.spec.allowanceCitation ?? "SMC 23.44.090.H.1";
   const heightIn = project.heightAboveGradeIn;
   const supportingEvidence = [`declaredHeightIn=${num(heightIn)}`, `allowedInSetbackMaxIn=${num(limitIn)}`, `location=${location}`, `attachment=${project.attachment}`];
 
@@ -193,7 +201,7 @@ function evaluateSetbackLocation(project: DeckProjectDetails, location: DeckSetb
         complianceOutcome: ComplianceOutcome.PASS,
         appliedRule: appliedRule(rule.rule),
         supportingEvidence,
-        explanationBasis: `SMC 23.44.090.H limits unenclosed structures such as decks only within required setbacks. A deck declared outside every required setback is not subject to that limit; this does not mean it satisfies every other requirement. ${DECLARED_BASIS}`,
+        explanationBasis: `${rule.spec.limitCitation ?? "SMC 23.44.090.H"} limits unenclosed structures such as decks only within required setbacks. A deck declared outside every required setback is not subject to that limit; this does not mean it satisfies every other requirement. ${DECLARED_BASIS}`,
       },
     };
   }
@@ -205,14 +213,16 @@ function evaluateSetbackLocation(project: DeckProjectDetails, location: DeckSetb
         complianceOutcome: ComplianceOutcome.PASS,
         appliedRule: appliedRule(rule.rule),
         supportingEvidence,
-        explanationBasis: `In the ${label}, a deck not more than ${inches(limitIn)} above existing or finished grade is allowed (SMC 23.44.090.H.1); the declared height of ${inches(heightIn)} is within that. ${DECLARED_BASIS}`,
+        explanationBasis: `In the ${label}, a deck not more than ${inches(limitIn)} above existing or finished grade is allowed (${allowanceCitation}); the declared height of ${inches(heightIn)} is within that. ${DECLARED_BASIS}`,
       },
     };
   }
 
-  const lead = `In the ${label}, the automatic allowance for decks (SMC 23.44.090.H.1) covers only decks not more than ${inches(limitIn)} above grade; the declared height is ${inches(heightIn)}. ${SDCI_SETBACK_GUIDANCE}`;
+  const lead = `In the ${label}, the automatic allowance for decks (${allowanceCitation}) covers only decks not more than ${inches(limitIn)} above grade; the declared height is ${inches(heightIn)}. ${SDCI_SETBACK_GUIDANCE}`;
   let detail: string;
-  if (location === DeckSetbackLocation.REAR_SETBACK) {
+  if (rule.spec.furtherAllowancesText !== undefined) {
+    detail = `${rule.spec.furtherAllowancesText} Whether any allowance applies to this deck is for SDCI to determine.`;
+  } else if (location === DeckSetbackLocation.REAR_SETBACK && rule.spec.rearSetbackAllowance) {
     detail = `One further allowance lets certain unenclosed structures be in a rear setback (SMC 23.44.090.H.8). ${rearAllowanceAssessment(project, rule.spec.rearSetbackAllowance)} Whether any allowance applies to this deck is for SDCI to determine.`;
   } else {
     detail =
@@ -230,6 +240,18 @@ function evaluateSetbackLocation(project: DeckProjectDetails, location: DeckSetb
 }
 
 function evaluateLotCoverage(project: DeckProjectDetails, rules: ActiveRules): { finding?: Finding; uncovered?: string } {
+  const noLimit = rules.find<DeckNoLotCoverageLimitRuleSpec>(DeckRuleType.NO_LOT_COVERAGE_LIMIT);
+  if (noLimit) {
+    return {
+      finding: {
+        classification: FindingClassification.KNOWN,
+        subject: "Deck and lot coverage",
+        appliedRule: appliedRule(noLimit.rule),
+        supportingEvidence: ["lotCoverageLimit=none"],
+        explanationBasis: `${noLimit.spec.statement} ${DECLARED_BASIS}`,
+      },
+    };
+  }
   const rule = rules.find<DeckLotCoverageThresholdRuleSpec>(DeckRuleType.LOT_COVERAGE_THRESHOLD);
   if (!rule) return { uncovered: "deck lot coverage" };
   const thresholdIn = rule.spec.notCountedMaxHeightIn;
@@ -353,32 +375,55 @@ export interface EvaluateDeckInput {
   project: DeckProjectDetails;
   /** Re-filtered to ACTIVE defensively; callers pre-filter by applicableProjectType = "deck". */
   candidateActiveRules: RegulatoryRule[];
-  /** Unit 11 Slice 1. Undefined = zoning not retrieved (treated as unresolved: pre-existing behavior). */
-  zoningApplicability?: ZoningApplicability;
+  /** Citywide zoning coverage: the lot's zoning. The rules that govern each claim in that zone are resolved (zoning/resolve.ts); a claim whose standards
+   * differ between the zones on the lot is REQUIRES_VERIFICATION, and with no usable zoning no zone-specific deck limit is stated. Undefined (direct
+   * unit tests) evaluates every candidate rule as given. */
+  zoningContext?: ZoningContext;
 }
 
+const DECK_CLAIM_LABEL = (ruleType: string, fallbackSubject: string): string => {
+  switch (ruleType) {
+    case DeckRuleType.SETBACK_HEIGHT_ALLOWANCE:
+      return "Deck setback";
+    case DeckRuleType.LOT_COVERAGE_THRESHOLD:
+    case DeckRuleType.NO_LOT_COVERAGE_LIMIT:
+      return "Deck and lot coverage";
+    default:
+      return fallbackSubject;
+  }
+};
+
 export function evaluateDeck(input: EvaluateDeckInput): DeckEvaluationOutcome {
-  const rules = indexActiveRules(input.candidateActiveRules);
+  const resolution = input.zoningContext ? resolveApplicableRules({ zoning: input.zoningContext, candidateRules: input.candidateActiveRules }) : undefined;
+  const rules = indexActiveRules(resolution ? resolution.rules : input.candidateActiveRules);
   const { project } = input;
   const findings: Finding[] = [];
   const uncovered: string[] = [];
+  const ambiguous = new Set(resolution?.ambiguousClaims.map((c) => c.ruleType) ?? []);
 
-  // Verifiably not Neighborhood Residential: the NR setback and lot-coverage statements are withheld; the
-  // zone-independent building-permit determination stands.
-  if (input.zoningApplicability?.status === "NOT_NR") {
-    uncovered.push("deck zoning limits (parcel is not in a Neighborhood Residential zone)");
+  // With no usable zoning the zone-specific setback and lot-coverage statements are withheld; the zone-independent building-permit determination stands.
+  if (resolution?.status === "UNRESOLVED") {
+    uncovered.push("deck zoning limits (Seattle zoning could not be applied to this property)");
   } else {
-    for (const location of LOCATION_ORDER) {
-      if (!project.setbackLocations.includes(location)) continue;
-      const r = evaluateSetbackLocation(project, location, rules);
-      if (r.finding) findings.push(r.finding);
-      if (r.uncovered) uncovered.push(r.uncovered);
+    if (!ambiguous.has(DeckRuleType.SETBACK_HEIGHT_ALLOWANCE)) {
+      for (const location of LOCATION_ORDER) {
+        if (!project.setbackLocations.includes(location)) continue;
+        const r = evaluateSetbackLocation(project, location, rules);
+        if (r.finding) findings.push(r.finding);
+        if (r.uncovered) uncovered.push(r.uncovered);
+      }
     }
-    const coverage = evaluateLotCoverage(project, rules);
-    if (coverage.finding) findings.push(coverage.finding);
-    if (coverage.uncovered) uncovered.push(coverage.uncovered);
+    if (!ambiguous.has(DeckRuleType.LOT_COVERAGE_THRESHOLD) && !ambiguous.has(DeckRuleType.NO_LOT_COVERAGE_LIMIT)) {
+      const coverage = evaluateLotCoverage(project, rules);
+      if (coverage.finding) findings.push(coverage.finding);
+      if (coverage.uncovered) uncovered.push(coverage.uncovered);
+    }
   }
-  findings.push(...zoningApplicabilityFindings(input.zoningApplicability, "deck rules"));
+  if (resolution) {
+    const anyDeckZoneRule = rules.find(DeckRuleType.SETBACK_HEIGHT_ALLOWANCE) !== undefined;
+    findings.push(...zoningFindings(resolution, { projectNoun: "deck", claimLabel: DECK_CLAIM_LABEL, noRulesForZone: resolution.status === "RESOLVED" && !anyDeckZoneRule }));
+    findings.push(...ambiguousClaimFindings(resolution, { projectNoun: "deck", claimLabel: DECK_CLAIM_LABEL }));
+  }
 
   const permit = evaluatePermit(project, rules);
   if (permit.uncovered) uncovered.push(permit.uncovered);
@@ -388,5 +433,6 @@ export function evaluateDeck(input: EvaluateDeckInput): DeckEvaluationOutcome {
     ...(permit.permit ? { permitRequirement: permit.permit } : {}),
     declaredInputs: describeDeckDeclaredInputs(project),
     uncoveredConstraintTypes: [...new Set(uncovered)],
+    ...(resolution ? { zoningApplied: summarizeZoningResolution(resolution) } : {}),
   };
 }

@@ -5,6 +5,7 @@
  * its rule; sight distance never asserted as satisfied).
  */
 import { describe, expect, it } from "vitest";
+import { singleZoneContext, splitZoneContext, unavailableZoneContext } from "../../src/zoning/context.js";
 import { FENCE_OUTCOME_DEPENDENCIES, evaluateFence } from "../../src/regulatory-rules-engine/evaluate-fence.js";
 import { FenceRuleType } from "../../src/regulatory-rules-engine/fence-types.js";
 import type { FenceProjectDetails } from "../../src/regulatory-rules-engine/fence-types.js";
@@ -47,9 +48,9 @@ function fence(over: Partial<FenceProjectDetails> = {}): FenceProjectDetails {
   return { projectType: "fence", heightFt: 6, locations: [FenceLocation.OTHER_SIDE_OR_REAR_SETBACK], siteSlopes: false, wallRelation: FenceWallRelation.NONE, ...over };
 }
 function run(over: Partial<FenceProjectDetails> = {}, rules = ALL_RULES, eca: CriticalAreaFinding[] = []) {
-  return evaluateFence({ project: fence(over), candidateActiveRules: rules, ecaFindings: eca });
+  return evaluateFence({ project: fence(over), candidateActiveRules: rules, ecaFindings: eca, zoningContext: singleZoneContext("NR") });
 }
-const ZONING = "Zoning applicability (Neighborhood Residential zones)";
+const ZONING = "Zoning applied to this screening";
 const bySubject = (findings: Finding[], needle: string) => findings.find((f) => f.subject.includes(needle));
 const outcome = (f: Finding | undefined) => (f ? `${f.classification}${f.complianceOutcome ? "/" + f.complianceOutcome : ""}` : "none");
 
@@ -74,7 +75,7 @@ describe("height by location - inclusive limits", () => {
       "Fence height (side or rear setback)",
       "Fence height (outside required setbacks)",
       "Sight-distance requirements (corner lot, driveway, alley)",
-      "Zoning applicability (Neighborhood Residential zones)",
+      ZONING,
     ]);
     expect(outcome(findings[0])).toBe("KNOWN/FAIL"); // 5 ft in the 4-ft zone
     expect(outcome(findings[1])).toBe("KNOWN/PASS"); // 5 ft in the 6-ft zone
@@ -351,49 +352,52 @@ describe("review fixes (reviewer decision 333344f2-057f-4bab-a9f8-410fa8c1660c)"
     expect(JSON.stringify(noF8Required)).not.toContain("flood-prone");
   });
 
-  it("every fence report states, as an unresolved item, that the parcel's zoning was not verified - with or without any rule ACTIVE", () => {
+  it("an unavailable zoning is stated as an unresolved item - with or without any rule ACTIVE", () => {
     for (const rules of [ALL_RULES, []]) {
-      const z = bySubject(run({}, rules).findings, "Zoning applicability");
+      const z = bySubject(evaluateFence({ project: fence(), candidateActiveRules: rules, ecaFindings: [], zoningContext: unavailableZoneContext() }).findings, "Zoning applied");
       expect(z?.classification).toBe("REQUIRES_VERIFICATION");
-      expect(z?.explanationBasis).toContain("did not verify this parcel's zoning");
-      expect(z?.explanationBasis).toContain("cannot confirm they apply");
+      expect(z?.explanationBasis).toContain("could not apply this property's zoning");
     }
   });
 });
 
-describe("zoning applicability (Unit 11 Slice 1)", () => {
-  const overlays = { shorelineDistrict: false, historicDistrict: false, landmarkParcel: false, overlayLabels: [] as string[] };
-  const nr = { status: "NR_VERIFIED", nrFraction: 1, zoningLabel: "NR", overlays } as const;
-  const notNr = { status: "NOT_NR", zoningLabel: "LR1 (M)", overlays } as const;
-  const runZ = (z: Parameters<typeof evaluateFence>[0]["zoningApplicability"], over: Partial<FenceProjectDetails> = {}) =>
-    evaluateFence({ project: fence(over), candidateActiveRules: ALL_RULES, ecaFindings: [], zoningApplicability: z });
+describe("zoning applicability (citywide zoning coverage)", () => {
+  const runZ = (z: Parameters<typeof evaluateFence>[0]["zoningContext"], over: Partial<FenceProjectDetails> = {}) =>
+    evaluateFence({ project: fence(over), candidateActiveRules: ALL_RULES, ecaFindings: [], zoningContext: z });
 
   it("a verified NR parcel keeps every NR fence finding and states zoning as a KNOWN fact", () => {
-    const { findings } = runZ(nr);
+    const { findings } = runZ(singleZoneContext("NR"));
     expect(outcome(findings[0])).toBe("KNOWN/PASS");
-    expect(bySubject(findings, "Zoning applicability")?.classification).toBe("KNOWN");
+    expect(bySubject(findings, "Zoning applied")?.classification).toBe("KNOWN");
   });
 
-  it("a parcel verifiably not NR withholds the NR height findings (never a PASS/FAIL), names the zone, keeps the permit determination, and records the uncovered limits", () => {
-    const out = runZ(notNr, { heightFt: 8.5, locations: [FenceLocation.FRONT_SETBACK], hasMasonryOrConcreteAbove6Ft: false });
+  it("a zone with no active fence rules withholds the height findings (never a PASS/FAIL), names the zone, keeps the permit determination, and records the uncovered limits", () => {
+    const out = runZ(singleZoneContext("NC2P-55 (M1)"), { heightFt: 8.5, locations: [FenceLocation.FRONT_SETBACK], hasMasonryOrConcreteAbove6Ft: false });
     expect(out.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
     expect(out.findings.some((f) => f.subject.startsWith("Fence height"))).toBe(false);
-    const z = bySubject(out.findings, "Zoning applicability")!;
-    expect(z.classification).toBe("REQUIRES_VERIFICATION");
-    expect(z.explanationBasis).toContain("LR1 (M)");
+    const z = bySubject(out.findings, "Zoning applied")!;
+    expect(z.explanationBasis).toContain("NC2P-55 (M1)");
     expect(out.permitRequirement?.buildingPermit).toBe("REQUIRED");
-    expect(out.uncoveredConstraintTypes.join()).toContain("not in a Neighborhood Residential zone");
+    expect(out.uncoveredConstraintTypes).toContain("fence height (front setback)");
   });
 
   it("an overlay adds a REQUIRES_VERIFICATION overlay finding while NR findings stay", () => {
-    const out = runZ({ ...nr, overlays: { ...overlays, shorelineDistrict: true } });
+    const out = runZ(singleZoneContext("NR", { overlays: { shorelineDistrict: true } }));
     expect(bySubject(out.findings, "Overlay districts")?.classification).toBe("REQUIRES_VERIFICATION");
     expect(outcome(out.findings[0])).toBe("KNOWN/PASS");
   });
 
-  it("an UNRESOLVED zoning result keeps the NR findings and the 'not verified' statement", () => {
-    const out = runZ({ status: "UNRESOLVED", reason: "the parcel is split between zones (NR 60%, LR2 40%)" });
-    expect(outcome(out.findings[0])).toBe("KNOWN/PASS");
-    expect(bySubject(out.findings, "Zoning applicability")?.explanationBasis).toContain("split between zones");
+  it("a split between NR and another zone is ambiguous: the height claim is a verification item, never an NR answer", () => {
+    const out = runZ(splitZoneContext([["NR", 0.6], ["NC2-40", 0.4]]));
+    expect(out.findings.some((f) => f.complianceOutcome !== undefined && f.subject.startsWith("Fence height"))).toBe(false);
+    expect(bySubject(out.findings, "Zoning applied")?.explanationBasis).toContain("more than one zone");
+    expect(out.permitRequirement).toBeDefined();
+  });
+
+  it("unavailable zoning withholds the zone-specific fence limits and keeps the permit determination", () => {
+    const out = runZ(unavailableZoneContext(), { heightFt: 8.5, locations: [FenceLocation.FRONT_SETBACK], hasMasonryOrConcreteAbove6Ft: false });
+    expect(out.findings.some((f) => f.subject.startsWith("Fence height"))).toBe(false);
+    expect(out.uncoveredConstraintTypes.join()).toContain("could not be applied");
+    expect(out.permitRequirement?.buildingPermit).toBe("REQUIRED");
   });
 });

@@ -21,6 +21,8 @@ import { fetchLayerWithTimeout } from "./seattle-eca.js";
 import { EvidenceQuality, SourceRecordNotFoundError } from "./types.js";
 import type { FactRetriever } from "./assemble.js";
 import type { Polygon } from "../spatial-analysis/types.js";
+import { parseZoningDesignation } from "../zoning/designation.js";
+import type { ZoningDesignation } from "../zoning/designation.js";
 
 const ORG_BASE_URL = "https://services.arcgis.com/ZOyb2t4B0UYuYNYH/arcgis/rest/services";
 const ZONING_SERVICE = "Current_Land_Use_Zoning_Detail_2";
@@ -41,10 +43,18 @@ export interface ZoneCoverage {
   overlay?: string;
   /** Share of the parcel's area (0..1) lying in this zone, by grid sampling. */
   fractionOfParcel: number;
+  /**
+   * The designation read into its parts (family, zone code, MHA suffix, RC, height suffix...), parsed from `zoning` and
+   * cross-checked against the layer's own ZONELUT / CATEGORY / MHA attributes. Optional only because artifacts persisted
+   * before citywide zoning coverage carry just the raw strings; consumers re-parse those with `parseZoningDesignation`.
+   */
+  designation?: ZoningDesignation;
 }
 
 export interface ZoningFactValue {
   zones: ZoneCoverage[];
+  /** What was intersected: the whole parcel, or the placed project's footprint. Absent on pre-existing artifacts (the parcel). */
+  geometryBasis?: "PARCEL" | "PROJECT_FOOTPRINT";
   sampledPointCount: number;
   /** Sum of every zone's fractionOfParcel - below 1 means part of the parcel matched no zone polygon (data gap). */
   coveredFraction: number;
@@ -70,6 +80,12 @@ const ZoningFeatureSchema = z.object({
     SHORELINE: z.string().nullable().optional(),
     HISTORIC: z.string().nullable().optional(),
     OVERLAY: z.string().nullable().optional(),
+    ZONELUT: z.string().nullable().optional(),
+    CLASS_DESC: z.string().nullable().optional(),
+    CATEGORY_DESC: z.string().nullable().optional(),
+    CHAPTER: z.string().nullable().optional(),
+    MHA_VALUE: z.string().nullable().optional(),
+    MIO_NAME: z.string().nullable().optional(),
   }),
   geometry: z.object({ rings: z.array(RingSchema) }),
 });
@@ -102,7 +118,7 @@ function pointInRings(x: number, y: number, rings: Ring[]): boolean {
 }
 
 export interface ZonePolygon {
-  key: { zoning: string; baseZone: string; shorelineDistrict: boolean; historicDistrict: boolean; overlay?: string };
+  key: { zoning: string; baseZone: string; shorelineDistrict: boolean; historicDistrict: boolean; overlay?: string; designation?: ZoningDesignation };
   rings: Ring[];
 }
 
@@ -155,44 +171,65 @@ export function createSeattleZoningRetriever(timeoutMs: number = TIMEOUT_MS): Fa
     evidenceQuality: EvidenceQuality.AUTHORITATIVE,
     retrieve: async (parcel) => {
       const polygon = await fetchParcelBoundaryPolygon(parcel.parcelId);
-      const params = new URLSearchParams({
-        f: "json",
-        where: "1=1",
-        outFields: "ZONING,BASE_ZONE,SHORELINE,HISTORIC,OVERLAY",
-        returnGeometry: "true",
-        outSR: String(AUTHORITATIVE_PARCEL_SRID),
-        geometry: toEsriRingJson(polygon),
-        geometryType: "esriGeometryPolygon",
-        inSR: String(AUTHORITATIVE_PARCEL_SRID),
-        spatialRel: "esriSpatialRelIntersects",
-      });
-      // POST, not GET: a large or complex parcel polygon makes the query string too long for the service (a campus parcel returned 404 as a GET).
-      const response = await fetchLayerWithTimeout(`${ORG_BASE_URL}/${ZONING_SERVICE}/FeatureServer/0/query`, timeoutMs, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
-      });
-      if (!response.ok) throw new Error(`Seattle zoning request failed: ${response.status} ${response.statusText}`);
-      const parsed = ZoningResponseSchema.safeParse(await response.json());
-      if (!parsed.success || parsed.data.error) throw new Error("Seattle zoning response failed shape validation.");
-      const wkid = parsed.data.spatialReference?.latestWkid ?? parsed.data.spatialReference?.wkid;
-      if (wkid !== AUTHORITATIVE_PARCEL_SRID && parsed.data.features.length > 0) {
-        throw new Error(`Seattle zoning response declared SRID ${String(wkid)}, expected ${AUTHORITATIVE_PARCEL_SRID}; refusing to trust its coordinates.`);
-      }
-      if (parsed.data.features.length === 0) throw new SourceRecordNotFoundError("No Seattle zoning polygon intersects this parcel.");
-      const zonePolygons: ZonePolygon[] = parsed.data.features.map((f) => ({
-        key: {
-          zoning: nonBlank(f.attributes.ZONING) ?? "UNKNOWN",
-          baseZone: nonBlank(f.attributes.BASE_ZONE) ?? "UNKNOWN",
-          shorelineDistrict: nonBlank(f.attributes.SHORELINE) !== undefined,
-          historicDistrict: nonBlank(f.attributes.HISTORIC) !== undefined,
-          ...(nonBlank(f.attributes.OVERLAY) ? { overlay: nonBlank(f.attributes.OVERLAY)! } : {}),
-        },
-        rings: f.geometry.rings as Ring[],
-      }));
-      return computeZoneCoverage(polygon.points.map((p) => [p.x, p.y] as [number, number]), zonePolygons);
+      return queryZoningForPolygon(polygon, timeoutMs, "PARCEL");
     },
   };
+}
+
+/**
+ * Zones intersecting `polygon` (SRID 2926), with each zone's share of the polygon. Used for the parcel (the retriever above)
+ * and for the placed project's footprint (citywide zoning coverage): a structure is regulated by the zone it stands in, so
+ * the footprint's own zoning is a separate, smaller question than the lot's.
+ */
+export async function queryZoningForPolygon(polygon: Polygon, timeoutMs: number, basis: "PARCEL" | "PROJECT_FOOTPRINT"): Promise<ZoningFactValue> {
+  const params = new URLSearchParams({
+    f: "json",
+    where: "1=1",
+    outFields: "ZONING,BASE_ZONE,SHORELINE,HISTORIC,OVERLAY,ZONELUT,CLASS_DESC,CATEGORY_DESC,CHAPTER,MHA_VALUE,MIO_NAME",
+    returnGeometry: "true",
+    outSR: String(AUTHORITATIVE_PARCEL_SRID),
+    geometry: toEsriRingJson(polygon),
+    geometryType: "esriGeometryPolygon",
+    inSR: String(AUTHORITATIVE_PARCEL_SRID),
+    spatialRel: "esriSpatialRelIntersects",
+  });
+  // POST, not GET: a large or complex parcel polygon makes the query string too long for the service (a campus parcel returned 404 as a GET).
+  const response = await fetchLayerWithTimeout(`${ORG_BASE_URL}/${ZONING_SERVICE}/FeatureServer/0/query`, timeoutMs, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!response.ok) throw new Error(`Seattle zoning request failed: ${response.status} ${response.statusText}`);
+  const parsed = ZoningResponseSchema.safeParse(await response.json());
+  if (!parsed.success || parsed.data.error) throw new Error("Seattle zoning response failed shape validation.");
+  const wkid = parsed.data.spatialReference?.latestWkid ?? parsed.data.spatialReference?.wkid;
+  if (wkid !== AUTHORITATIVE_PARCEL_SRID && parsed.data.features.length > 0) {
+    throw new Error(`Seattle zoning response declared SRID ${String(wkid)}, expected ${AUTHORITATIVE_PARCEL_SRID}; refusing to trust its coordinates.`);
+  }
+  if (parsed.data.features.length === 0) throw new SourceRecordNotFoundError(basis === "PARCEL" ? "No Seattle zoning polygon intersects this parcel." : "No Seattle zoning polygon intersects the project footprint.");
+  const zonePolygons: ZonePolygon[] = parsed.data.features.map((f) => {
+    const zoning = nonBlank(f.attributes.ZONING) ?? "UNKNOWN";
+    return {
+      key: {
+        zoning,
+        baseZone: nonBlank(f.attributes.BASE_ZONE) ?? "UNKNOWN",
+        shorelineDistrict: nonBlank(f.attributes.SHORELINE) !== undefined,
+        historicDistrict: nonBlank(f.attributes.HISTORIC) !== undefined,
+        ...(nonBlank(f.attributes.OVERLAY) ? { overlay: nonBlank(f.attributes.OVERLAY)! } : {}),
+        designation: parseZoningDesignation(zoning, {
+          zonelut: f.attributes.ZONELUT,
+          baseZone: f.attributes.BASE_ZONE,
+          classDesc: f.attributes.CLASS_DESC,
+          categoryDesc: f.attributes.CATEGORY_DESC,
+          chapter: f.attributes.CHAPTER,
+          mhaValue: f.attributes.MHA_VALUE,
+          mioName: f.attributes.MIO_NAME,
+        }),
+      },
+      rings: f.geometry.rings as Ring[],
+    };
+  });
+  return { ...computeZoneCoverage(polygon.points.map((p) => [p.x, p.y] as [number, number]), zonePolygons), geometryBasis: basis };
 }
 
 async function pinMembershipQuery(service: string, pin: string, timeoutMs: number): Promise<boolean> {

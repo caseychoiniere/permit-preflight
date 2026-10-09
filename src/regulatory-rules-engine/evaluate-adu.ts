@@ -21,7 +21,10 @@ import { MappedIntersectionResult } from "../spatial-analysis/types.js";
 import { evaluateEcaLotAreaAdjustment, evaluateShedLotCoverage } from "./evaluate.js";
 import { ComplianceOutcome, FindingClassification } from "./types.js";
 import type { Finding } from "./types.js";
-import { ZONING_DATA_UNAVAILABLE_REASON, zoningApplicabilityFindings, type ZoningApplicability } from "./zoning-applicability.js";
+import { resolveApplicableRules, summarizeZoningResolution } from "../zoning/resolve.js";
+import type { ZoningResolution } from "../zoning/resolve.js";
+import type { ZoningContext } from "../zoning/context.js";
+import { ambiguousClaimFindings, zoningFindings } from "../zoning/findings.js";
 import { AduRuleType } from "./adu-types.js";
 import type {
   AduAmenitySpec,
@@ -960,7 +963,10 @@ const BASE_VERIFY_BEFORE_DESIGN: readonly string[] = [
 ];
 
 function buildFeasibility(input: {
-  zoning: ZoningApplicability | undefined;
+  /** The resolved zoning, or undefined when the caller supplied none. */
+  zoning: ZoningResolution | undefined;
+  /** Whether ADU rules for the zone(s) the lot is in were available to evaluate. */
+  zoneSupported: boolean;
   evaluated: Evaluated[];
   uncovered: string[];
   placementMissing: boolean;
@@ -975,12 +981,16 @@ function buildFeasibility(input: {
 
   let headline: AduFeasibilityHeadline;
   let summary: string;
-  if (zone?.status === "NOT_NR") {
+  if (!input.zoneSupported) {
     headline = "CANNOT_TELL";
-    summary = `Seattle's zoning data places this parcel in ${zone.zoningLabel}, not a Neighborhood Residential zone. Permit Preflight's ADU checks are for Neighborhood Residential zones, so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply.`;
-  } else if (zone?.status !== "NR_VERIFIED") {
-    headline = "CANNOT_TELL";
-    summary = `Permit Preflight could not verify that this parcel is in a Neighborhood Residential zone${zone && zone.status === "UNRESOLVED" && zone.reason !== ZONING_DATA_UNAVAILABLE_REASON ? ` (${zone.reason})` : zone ? "" : " (zoning was not checked)"}, and its ADU checks are for those zones, so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply.`;
+    summary =
+      zone === undefined
+        ? "Permit Preflight did not check this parcel's zoning, so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply."
+        : zone.status === "UNRESOLVED"
+          ? `Permit Preflight could not apply this parcel's zoning (${zone.reason ?? "the zoning could not be determined"}), so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply.`
+          : zone.status === "AMBIGUOUS"
+            ? `Seattle's zoning data places this property in more than one zone (${[...new Set([...zone.locationZones, ...zone.lotZones].map((z) => z.raw))].join(", ")}) whose ADU standards differ, so Permit Preflight cannot tell you whether an ADU is feasible here. SDCI can tell you which apply.`
+            : `Seattle's zoning data places this parcel in ${zone.locationZones.map((z) => z.raw).join(", ")}. Permit Preflight does not yet have active ADU rules for that zone, so it cannot tell you whether an ADU is feasible here. ADU rules differ by zone; SDCI can tell you which apply.`;
   } else if (blockers.length > 0) {
     headline = "BLOCKED";
     summary = `As entered, this ADU does not appear to be allowed: ${blockers.length === 1 ? "1 requirement is not met" : `${blockers.length} requirements are not met`}. Review the items below; changing the size, height or position may resolve them.`;
@@ -1005,7 +1015,7 @@ function buildFeasibility(input: {
   }
 
   const zoningVerify: string[] = [];
-  if (!zone || zone.status !== "NR_VERIFIED") zoningVerify.push("Confirm the parcel's zone with SDCI; it could not be verified as Neighborhood Residential.");
+  if (!input.zoneSupported) zoningVerify.push("Confirm the parcel's zone and its ADU standards with SDCI; Permit Preflight could not apply them.");
   if (zone && zone.status !== "UNRESOLVED" && (zone.overlays.shorelineDistrict || zone.overlays.historicDistrict || zone.overlays.landmarkParcel || zone.overlays.overlayLabels.length > 0)) {
     zoningVerify.push("Confirm the overlay (shoreline, historic or landmark) rules with SDCI; they can change or add requirements for an ADU.");
   }
@@ -1028,24 +1038,42 @@ export interface EvaluateAduInput {
   site: AduSiteFacts;
   /** Re-filtered to ACTIVE defensively; callers pre-filter by applicableProjectType = "adu". */
   candidateActiveRules: RegulatoryRule[];
-  zoningApplicability?: ZoningApplicability;
+  /** Citywide zoning coverage: the lot's zoning (and, for a placed ADU, its footprint's). The rules that govern each claim in that zone are resolved
+   * (zoning/resolve.ts). An ADU's feasibility is not meaningful without the zone, so with no usable zoning, or no active ADU rules for the zone, the
+   * read is "cannot tell". Undefined (direct unit tests) evaluates every candidate rule as given. */
+  zoningContext?: ZoningContext;
 }
 
+const ADU_CLAIM_LABEL = (_ruleType: string, fallbackSubject: string): string => fallbackSubject;
+
 export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
-  const rules = indexActiveRules(input.candidateActiveRules);
+  const resolution = input.zoningContext ? resolveApplicableRules({ zoning: input.zoningContext, candidateRules: input.candidateActiveRules }) : undefined;
+  const rules = indexActiveRules(resolution ? resolution.rules : input.candidateActiveRules);
   const { project, site } = input;
-  // The ADU rules are Neighborhood Residential rules, so any zoning result that does not verify plain NR (a
-  // different zone, a split between zones, a Major Institution Overlay, or zoning data that was unavailable)
-  // produces no ADU conclusion at all. (Other project types keep their conclusions on an unresolved result; an
-  // ADU's feasibility is not meaningful without the zone.)
-  const zoningStatus = input.zoningApplicability?.status;
-  const notNr = zoningStatus !== "NR_VERIFIED";
+  // An ADU needs the zone's own standards (density or floor area, setbacks, height, ...). The conclusion is made only when the zoning resolves
+  // and at least one zone-specific ADU rule governs it; anything else (an unresolved or split zoning, or a zone without active ADU rules yet)
+  // produces no ADU conclusion at all.
+  const aduZoneRuleTypes: string[] = [AduRuleType.COUNT_AND_DENSITY, AduRuleType.SETBACKS, AduRuleType.HEIGHT, AduRuleType.FLOOR_AREA_RATIO, AduRuleType.LOT_COVERAGE];
+  const ruleTypeOfRow = (r: RegulatoryRule): string => (r.ruleSpecification as { ruleType?: string }).ruleType ?? "";
+  // Rules exist for ADUs, but none of the zone-specific ones governs the zone this property is in: say so, rather than listing every claim as unscreened.
+  const zoneHasNoAduRules =
+    resolution?.status === "RESOLVED" &&
+    input.candidateActiveRules.some((r) => aduZoneRuleTypes.includes(ruleTypeOfRow(r))) &&
+    !resolution.rules.some((r) => aduZoneRuleTypes.includes(ruleTypeOfRow(r)));
+  const zoneSupported = resolution === undefined || (resolution.status === "RESOLVED" && !zoneHasNoAduRules);
+  const notNr = !zoneSupported;
   const findings: Finding[] = [];
   const uncovered: string[] = [];
   const evaluated: Evaluated[] = [];
 
   if (notNr) {
-    uncovered.push(zoningStatus === "NOT_NR" ? "ADU zoning limits (parcel is not in a Neighborhood Residential zone)" : "ADU zoning limits (the parcel's zone could not be verified as a Neighborhood Residential zone)");
+    uncovered.push(
+      resolution?.status === "UNRESOLVED"
+        ? "ADU zoning limits (Seattle zoning could not be applied to this property)"
+        : zoneHasNoAduRules
+          ? "ADU zoning limits (no active ADU rules for this zone yet)"
+          : "ADU zoning limits (the zones on this property have different ADU standards)"
+    );
   } else {
     if (isAttached(project)) {
       evaluated.push(
@@ -1110,10 +1138,14 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
 
   const eca = ecaSummaryFinding(site);
   findings.push(eca.finding);
-  findings.push(...zoningApplicabilityFindings(input.zoningApplicability, "ADU rules"));
+  if (resolution) {
+    findings.push(...zoningFindings(resolution, { projectNoun: "accessory dwelling unit", claimLabel: ADU_CLAIM_LABEL, noRulesForZone: zoneHasNoAduRules }));
+    findings.push(...ambiguousClaimFindings(resolution, { projectNoun: "accessory dwelling unit", claimLabel: ADU_CLAIM_LABEL }));
+  }
 
   const feasibility = buildFeasibility({
-    zoning: input.zoningApplicability,
+    zoning: resolution,
+    zoneSupported,
     evaluated,
     uncovered,
     placementMissing: !notNr && !isAttached(project) && (footprintOutsideParcel(project) || (isConversion(project) ? project.conversion?.structureAreaSqFt === undefined || (conversionAllowance(project) === "NO" && placementGap(project) !== undefined) : placementGap(project) !== undefined)),
@@ -1127,5 +1159,6 @@ export function evaluateAdu(input: EvaluateAduInput): AduEvaluationOutcome {
     feasibility,
     declaredInputs: describeAduDeclaredInputs(project),
     uncoveredConstraintTypes: [...new Set(uncovered)],
+    ...(resolution ? { zoningApplied: summarizeZoningResolution(resolution) } : {}),
   };
 }

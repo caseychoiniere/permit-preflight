@@ -6,6 +6,7 @@
  */
 
 import type { EvidenceQuality, RegulatoryRule } from "../regulatory-rule-governance/types.js";
+import type { ZoningAppliedSummary } from "../zoning/resolve.js";
 import type { InferencePolicy } from "../regulatory-rule-governance/types.js";
 import type {
   FoundationType,
@@ -151,6 +152,12 @@ export interface ShedProjectDetails {
    * isInRequiredSetback is undefined; empty/absent only when isInRequiredSetback is itself
    * defined. */
   requiredSetbackEvidenceGapReasons?: string[];
+  /** Citywide zoning coverage: the lot's area, for standards written as a ratio of the lot (floor area ratio). */
+  parcelAreaSqFt?: number;
+  /** Multifamily accessory-structure placement (SMC 23.45.518.H.1.b): the greatest distance from any part of the footprint to the rear lot line. */
+  farthestFromRearLotLineFt?: number;
+  /** Multifamily accessory-structure placement (SMC 23.45.518.H.1.a): whether the structure stands between the house and a side lot line. UNKNOWN when the house or the lot-line roles are not established. */
+  besideDwelling?: "BESIDE" | "NOT_BESIDE" | "UNKNOWN";
 }
 
 /** Unit 4 (domain-entities.md) - shares every setback/height field with ShedProjectDetails
@@ -187,6 +194,12 @@ export interface GarageProjectDetails {
   /** Same as ShedProjectDetails: whether the placement is inside a required setback (bounded-band derivation); undefined when unresolved. */
   isInRequiredSetback?: boolean;
   requiredSetbackEvidenceGapReasons?: string[];
+  /** Citywide zoning coverage: the lot's area, for standards written as a ratio of the lot (floor area ratio). */
+  parcelAreaSqFt?: number;
+  /** Multifamily accessory-structure placement (SMC 23.45.518.H.1.b): the greatest distance from any part of the footprint to the rear lot line. */
+  farthestFromRearLotLineFt?: number;
+  /** Multifamily accessory-structure placement (SMC 23.45.518.H.1.a): whether the structure stands between the house and a side lot line. UNKNOWN when the house or the lot-line roles are not established. */
+  besideDwelling?: "BESIDE" | "NOT_BESIDE" | "UNKNOWN";
 }
 
 export type ProjectDetails = ShedProjectDetails | GarageProjectDetails;
@@ -294,6 +307,9 @@ export interface EvaluationOutcome {
    * C1a/b/c/d/e-floor rules are ACTIVE. The discretionary C1e-director rule is NOT a prerequisite;
    * it gates only claims about a Director-approved alternative (2026-10-07). */
   shedLotCoverage?: ShedLotCoverageResult;
+  /** Citywide zoning coverage: the zoning this evaluation applied (which designations, which rules were settled, which claims were not).
+   * Absent when the caller supplied no zoning (unit tests exercising the evaluators directly). */
+  zoningApplied?: ZoningAppliedSummary;
 }
 
 // ---------------------------------------------------------------------------------------------

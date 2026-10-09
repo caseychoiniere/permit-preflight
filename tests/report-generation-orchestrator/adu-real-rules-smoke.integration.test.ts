@@ -96,12 +96,12 @@ describe.skipIf(!hasDb)("ADU real-rules smoke", () => {
     const mio = await run("2982800005", ATTACHED);
     expect(mio.feasibility.headline).toBe("CANNOT_TELL");
     expect(mio.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
-    expect(mio.findings.find((f) => f.subject.startsWith("Zoning applicability"))!.explanationBasis).toContain("Major Institution Overlay");
+    expect(mio.findings.find((f) => f.subject.startsWith("Zoning applied"))!.explanationBasis).toContain("Major Institution Overlay");
 
     const split = await run("0148000965", ATTACHED);
     expect(split.feasibility.headline).toBe("CANNOT_TELL");
     expect(split.findings.some((f) => f.complianceOutcome !== undefined)).toBe(false);
-    expect(split.findings.find((f) => f.subject.startsWith("Zoning applicability"))!.explanationBasis).toMatch(/split between zones|matched no zone/);
+    expect(split.findings.find((f) => f.subject.startsWith("Zoning applied"))!.explanationBasis).toMatch(/more than one zone|more than one zoning designation|matched no zone/);
   }, 240_000);
 
   it("a mis-placed footprint yields no position-dependent finding", async () => {

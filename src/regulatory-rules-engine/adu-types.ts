@@ -8,6 +8,7 @@
 import type { CriticalAreaFinding } from "../spatial-analysis/types.js";
 import type { EvidenceQuality } from "../regulatory-rule-governance/types.js";
 import type { Finding } from "./types.js";
+import type { ZoningAppliedSummary } from "../zoning/resolve.js";
 
 export const AduType = {
   DETACHED_NEW: "DETACHED_NEW",
@@ -234,4 +235,6 @@ export interface AduEvaluationOutcome {
   declaredInputs: AduDeclaredInput[];
   /** Claims that could not be made because a rule they depend on is not ACTIVE (or is malformed). */
   uncoveredConstraintTypes: string[];
+  /** Citywide zoning coverage: the zoning this evaluation applied; absent when the caller supplied no zoning. */
+  zoningApplied?: ZoningAppliedSummary;
 }

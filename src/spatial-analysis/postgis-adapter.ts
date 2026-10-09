@@ -249,6 +249,43 @@ async function distanceToEdge(db: Db, footprintWkt: string, edgeWkt: string, sri
   return Number(row.distance_ft);
 }
 
+async function maxDistanceToEdge(db: Db, footprintWkt: string, edgeWkt: string, srid: number): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT ST_MaxDistance(
+      ST_SetSRID(ST_GeomFromText(${footprintWkt}), ${srid}::int),
+      ST_SetSRID(ST_GeomFromText(${edgeWkt}), ${srid}::int)
+    ) AS distance_ft
+  `);
+  const row = result.rows[0] as { distance_ft: number | string } | undefined;
+  if (row === undefined) throw new Error("PostGIS max-distance query returned no rows.");
+  return Number(row.distance_ft);
+}
+
+/**
+ * Multifamily accessory-structure placement (SMC 23.45.518.H.1): where a structure stands along the lot's front-to-rear axis,
+ * measured as distance to the rear lot line (PostGIS, never local trigonometry). `structure` is the nearest and farthest
+ * distance from the proposed footprint; `dwellingNearestFt` is the nearest distance from the house's footprint. A footprint whose
+ * FARTHEST point is nearer the rear line than the house's nearest point lies wholly behind the house, so it cannot stand between
+ * the house and a side lot line.
+ */
+export async function computeRearAxisPositions(
+  db: Db,
+  boundaryPolygon: Polygon,
+  rearEdgeRef: string,
+  footprint: Polygon,
+  dwellingFootprint?: Polygon
+): Promise<{ structureNearestFt: number; structureFarthestFt: number; dwellingNearestFt?: number }> {
+  assertAuthoritativeSrid(boundaryPolygon);
+  assertAuthoritativeSrid(footprint);
+  const srid = boundaryPolygon.srid!;
+  const rear = edgeToWkt(boundaryPolygon, rearEdgeRef);
+  const footprintWkt = polygonToWkt(footprint);
+  const [structureNearestFt, structureFarthestFt] = await Promise.all([distanceToEdge(db, footprintWkt, rear, srid), maxDistanceToEdge(db, footprintWkt, rear, srid)]);
+  if (!dwellingFootprint) return { structureNearestFt, structureFarthestFt };
+  assertAuthoritativeSrid(dwellingFootprint);
+  return { structureNearestFt, structureFarthestFt, dwellingNearestFt: await distanceToEdge(db, polygonToWkt(dwellingFootprint), rear, srid) };
+}
+
 /**
  * Computes setback distances for a proposed structure placement against a parcel boundary.
  *

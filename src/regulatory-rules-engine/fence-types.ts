@@ -6,6 +6,7 @@
 
 import type { FenceLocation, FenceWallRelation } from "../screening-request/types.js";
 import type { Finding } from "./types.js";
+import type { ZoningAppliedSummary } from "../zoning/resolve.js";
 
 export interface FenceProjectDetails {
   projectType: "fence";
@@ -112,4 +113,6 @@ export interface FenceEvaluationOutcome {
   declaredInputs: FenceDeclaredInput[];
   /** Claims that could not be made because a rule they depend on is not ACTIVE (or is malformed). */
   uncoveredConstraintTypes: string[];
+  /** Citywide zoning coverage: the zoning this evaluation applied; absent when the caller supplied no zoning. */
+  zoningApplied?: ZoningAppliedSummary;
 }

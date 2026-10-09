@@ -101,8 +101,12 @@ describe.skipIf(!hasDb)("ADU across zone families - real parcels", () => {
     expect(by("Amenity area")?.explanationBasis).toMatch(/5% of the total gross floor area/);
     expect(by("Zoning applied to this screening")?.explanationBasis).toContain("Midrise");
     for (const x of f) expect(x.explanationBasis, x.subject).not.toMatch(/23\.44\.|Neighborhood Residential|Lowrise/);
-    const ids = new Set(Object.values(ADU_MR_HR_FIXED_ROW_IDS));
-    for (const r of z.appliedRules) expect(ids.has(r.id) || true).toBe(true);
+    // The rules applied are Midrise/Highrise rows (never a Lowrise, NR or commercial row), and the set includes this zone's setback, height and FAR rows.
+    const applied = new Set(z.appliedRules.map((r) => r.id));
+    const mrhr = new Set(Object.values(ADU_MR_HR_FIXED_ROW_IDS));
+    expect(z.appliedRules.length).toBeGreaterThan(5);
+    for (const id of applied) expect(mrhr.has(id), `applied rule ${id} is a Midrise/Highrise row`).toBe(true);
+    for (const wanted of ["adu-mrhr-setbacks-2026", "adu-mr-separation-2026", "adu-mrhr-height-mr-mha-2026", "adu-mrhr-far-mr-mha-2026"]) expect(applied.has(ADU_MR_HR_FIXED_ROW_IDS[wanted]!), wanted).toBe(true);
   }, 240_000);
 
   it("Highrise (HR M): completes with Highrise standards - the separation claim is answered (no separation requirement in Highrise), 440 ft height, base FAR 7 - and nothing uncovered", async () => {

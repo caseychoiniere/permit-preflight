@@ -1,6 +1,8 @@
 /**
- * Activation of an APPROVED citywide-zoning rule set (prepared 2026-10-09; NOT RUN - activation is a founder-authorized decision per CLAUDE.md, and no
- * authorization for these sets has been given). Normal lifecycle mechanism only (`activateRule`). Pre-checks: every row of the set exists and is APPROVED (or
+ * Activation of an APPROVED citywide-zoning rule set (prepared 2026-10-09). Activation is a founder-authorized decision per CLAUDE.md: each set is run only against an
+ * explicit authorization recorded in ACTIVATION_AUTHORIZATION (and in every RULE_ACTIVATED audit entry). Authorized and run so far, in chat: lowrise, commercial,
+ * lowrise-adu (2026-10-09, "ACTIVATE THE APPROVED CITYWIDE-ZONING RULE SETS"); garage-separation and the two Highrise rows of lowrise (garage coverage directive);
+ * midrise-highrise-adu and commercial-adu ("CONTINUE BUILDING" directive, priority 3: lifecycle progression to ACTIVE without a further routine approval). Normal lifecycle mechanism only (`activateRule`). Pre-checks: every row of the set exists and is APPROVED (or
  * already ACTIVE); snapshots every other row's lifecycle state and verifies it is unchanged afterwards; post-checks: all rows ACTIVE with a RULE_ACTIVATED audit
  * entry each. Re-runnable.
  *

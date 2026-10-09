@@ -164,6 +164,29 @@ describe("fetchSeattleEcaFindings - fan-out isolation (mocked, deterministic)", 
     expect(wetland.mappedIntersectionResult).toBe("INDETERMINATE");
   });
 
+  it("every persisted finding records the services and layer ids actually queried, and whether they answered (auditable provenance)", async () => {
+    stubParcelBoundaryFetch();
+    const fetchLayer = vi.fn(async (url: string) => {
+      if (url.includes("/Environmentally_Critical_Areas_Wetlands/")) throw new Error("down");
+      return intersectsResponse(false);
+    });
+    const findings = await fetchSeattleEcaFindings("4088801470", fetchLayer);
+    const by = (h: string) => findings.find((f) => f.hazardType === h)!;
+    expect(by("priority_habitat").sourceLayers).toEqual({
+      individual: { service: "ECA_Fish_and_Wildlife_Habitat_Conservation_Area", layerIds: [11], answered: true },
+      combined: { service: "Environmentally_Critical_Areas_ECA", layerIds: [11], answered: true },
+    });
+    expect(by("peat_settlement").sourceLayers!.individual).toEqual({ service: "ECA_Peat_Settlement_Prone_Areas", layerIds: [6], answered: true });
+    expect(by("known_slides").sourceLayers!.individual.layerIds).toEqual([1, 2, 3]);
+    // The wetland layer failed: recorded as not answered, and its combined layer (10) is the only source of its result.
+    expect(by("wetland").sourceLayers).toEqual({
+      individual: { service: "Environmentally_Critical_Areas_Wetlands", layerIds: [10], answered: false },
+      combined: { service: "Environmentally_Critical_Areas_ECA", layerIds: [10], answered: true },
+    });
+    expect(by("wetland").individualLayerResult).toBeUndefined();
+    expect(by("wetland").mappedIntersectionResult).toBe("INDETERMINATE");
+  });
+
   it("a hazard with several layers (known slides) intersects when any one does, is clear only when all answered no, and is unavailable if one failed and none hit", async () => {
     stubParcelBoundaryFetch();
     const run = async (behaviour: (id: number) => Response | Error) => {
@@ -195,12 +218,11 @@ describe("fetchSeattleEcaFindings - fan-out isolation (mocked, deterministic)", 
     const findings = await fetchSeattleEcaFindings("4088801470", fetchLayer);
     expect(findings).toHaveLength(10);
     const wetland = findings.find((f) => f.hazardType === "wetland")!;
-    // Its individual layer never resolved - the direct proof of isolation. resolveCriticalAreaFinding
-    // (existing, unmodified) still derives a real classification from the combined-layer fallback
-    // (BR-5.1: individualLayerResult undefined + combinedLayerResult false -> NO_INTERSECTION) -
-    // it is not thrown away or left blank.
+    // Its individual layer never resolved - the direct proof of isolation. Corrected 2026-10-08: the result is INDETERMINATE (the combined service's
+    // "no" is kept as supporting evidence only), never a clean NO_INTERSECTION for a hazard whose own layer did not answer.
     expect(wetland.individualLayerResult).toBeUndefined();
-    expect(wetland.mappedIntersectionResult).toBe("NO_INTERSECTION");
+    expect(wetland.combinedLayerResult).toBe(false);
+    expect(wetland.mappedIntersectionResult).toBe("INDETERMINATE");
     // every other hazard is unaffected
     const others = findings.filter((f) => f.hazardType !== "wetland");
     expect(others.every((f) => f.individualLayerResult === false && f.mappedIntersectionResult === "NO_INTERSECTION")).toBe(true);

@@ -173,6 +173,10 @@ export async function fetchSeattleEcaFindings(parcelId: string, fetchLayer: Fetc
       individualLayerResult: individual.status === "fulfilled" ? individual.value : undefined,
       combinedLayerResult: combined.status === "fulfilled" ? combined.value : undefined,
       layerVintageNote: layer.layerVintageNote,
+      sourceLayers: {
+        individual: { service: layer.serviceName, layerIds: layer.layerIds, answered: individual.status === "fulfilled" },
+        combined: { service: COMBINED_SERVICE_NAME, layerIds: layer.combinedLayerIds, answered: combined.status === "fulfilled" },
+      },
     };
   });
 

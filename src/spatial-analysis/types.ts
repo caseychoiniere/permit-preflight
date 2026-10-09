@@ -104,8 +104,18 @@ export const AdvisoryStatus = {
 } as const;
 export type AdvisoryStatus = (typeof AdvisoryStatus)[keyof typeof AdvisoryStatus];
 
+/** Which feature service and layer ids were queried for one ECA result, and whether they all answered (persisted so the provenance of a mapped result is auditable). */
+export interface QueriedLayers {
+  service: string;
+  layerIds: number[];
+  /** False when any of the layers failed or timed out: the result then rests on the other source or is INDETERMINATE, never a guessed "clean". */
+  answered: boolean;
+}
+
 export interface CriticalAreaFinding {
   hazardType: string;
+  /** Absent only on findings persisted before 2026-10-08 (the ECA retriever then queried wrong layer ids for eight hazards; see aidlc-docs/operations/2026-10-08-pre-eca-fix-artifact-audit.md). */
+  sourceLayers?: { individual: QueriedLayers; combined: QueriedLayers };
   individualLayerResult?: boolean;
   combinedLayerResult?: boolean;
   mappedIntersectionResult: MappedIntersectionResult;

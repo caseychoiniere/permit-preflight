@@ -17,6 +17,15 @@ describe("Critical-Area source precedence - BR-5/BR-5a", () => {
     expect(finding.mappedIntersectionResult).toBe("INDETERMINATE");
   });
 
+  it("[hard invariant, 2026-10-08] an unavailable individual layer is INDETERMINATE even when the combined layer says no - never a clean result for an unchecked hazard", () => {
+    for (const hazardType of ["wetland", "priority_habitat", "peat_settlement", "steep_slope"]) {
+      const finding = resolveCriticalAreaFinding({ hazardType, individualLayerResult: undefined, combinedLayerResult: false });
+      expect(finding.mappedIntersectionResult, hazardType).toBe("INDETERMINATE");
+      expect(finding.combinedLayerResult).toBe(false); // retained as supporting evidence
+    }
+    expect(resolveCriticalAreaFinding({ hazardType: "wetland" }).mappedIntersectionResult).toBe("INDETERMINATE");
+  });
+
   it("reports NO_INTERSECTION when the individual authoritative layer clearly says no", () => {
     const finding = resolveCriticalAreaFinding({
       hazardType: "steep_slope",

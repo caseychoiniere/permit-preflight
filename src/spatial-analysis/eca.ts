@@ -6,7 +6,7 @@
  */
 
 import { AdvisoryStatus, MappedIntersectionResult } from "./types.js";
-import type { CriticalAreaFinding } from "./types.js";
+import type { CriticalAreaFinding, QueriedLayers } from "./types.js";
 
 /** SDCI names exactly these two hazard types as map-dispositive; every other hazard type is
  * advisory-only, per Unit 0B Track 4's verified finding. */
@@ -25,6 +25,8 @@ export interface LayerQueryResult {
    * computable - used for BR-5.3's proximity check. undefined when not computable. */
   distanceToIndividualLayerEdgeFt?: number;
   layerVintageNote?: string;
+  /** Provenance: the services and layer ids actually queried, carried through to the persisted finding unchanged. */
+  sourceLayers?: { individual: QueriedLayers; combined: QueriedLayers };
 }
 
 export interface ToleranceBasis {
@@ -62,6 +64,7 @@ export function resolveCriticalAreaFinding(query: LayerQueryResult): CriticalAre
 
   return {
     hazardType: query.hazardType,
+    ...(query.sourceLayers ? { sourceLayers: query.sourceLayers } : {}),
     individualLayerResult: query.individualLayerResult,
     combinedLayerResult: query.combinedLayerResult,
     mappedIntersectionResult,
@@ -74,11 +77,11 @@ export function resolveCriticalAreaFinding(query: LayerQueryResult): CriticalAre
 function decideMappedIntersection(query: LayerQueryResult, tolerance: ToleranceBasis | undefined): MappedIntersectionResult {
   // BR-5.1: individual authoritative layer always takes precedence; a combined-layer-only hit
   // never produces INTERSECTS.
+  // Corrected 2026-10-08: an unavailable individual layer is always INDETERMINATE. The combined service is a generalized copy of the same data (Unit 0B
+  // measured a 49-66 ft discrepancy for steep slope), so its "no" is not a trustworthy substitute for the authoritative layer's answer; it stays on the
+  // finding as supporting evidence. (Before this, a combined "false" produced NO_INTERSECTION - a clean result for a hazard whose own layer never answered.)
   if (query.individualLayerResult === undefined) {
-    if (query.combinedLayerResult === true) {
-      return MappedIntersectionResult.INDETERMINATE; // combined-only hit, no corroborating individual-layer result
-    }
-    return query.combinedLayerResult === false ? MappedIntersectionResult.NO_INTERSECTION : MappedIntersectionResult.INDETERMINATE;
+    return MappedIntersectionResult.INDETERMINATE;
   }
 
   // BR-5.3: proximity to the individual layer's edge, within the source-specific tolerance,

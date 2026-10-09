@@ -27,6 +27,7 @@ import { Container } from "../../components/ui/Container.js";
 import { Card } from "../../components/ui/Card.js";
 import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
 import { ReportView, type Report } from "../../components/ReportView.js";
+import { ReportGenerationProgress } from "../../components/ReportGenerationProgress.js";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -172,6 +173,11 @@ export default function CheckoutStatusPage() {
   const emailStatusCopy = loadedReport ? EMAIL_STATUS_COPY[loadedReport.emailDeliveryStatus ?? "UNKNOWN"] : null;
   const orderReference = loadedReport && "orderReference" in loadedReport ? loadedReport.orderReference : undefined;
 
+  // The report is being built: show the generation experience from payment received until the report itself has loaded. (Failure is its own state below: the
+  // animation stops and the order's existing refund recovery is explained - the customer is never asked to pay again.)
+  const generating = status === "PAYMENT_CONFIRMED" || (status === "REPORT_READY" && !loadedReport && report !== "NOT_FOUND");
+  const failedAndRefunding = status === "REFUND_PENDING" || status === "REFUNDED" || status === "REFUND_REQUIRES_SUPPORT";
+
   return (
     <Container>
       <Card>
@@ -182,11 +188,25 @@ export default function CheckoutStatusPage() {
             {status === "LOADING" ? "Loading..." : loadedReport ? "Report ready." : STATUS_COPY[status]}
           </p>
         </div>
+        {generating && (
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <ReportGenerationProgress done={status === "REPORT_READY"} />
+            {status === "REPORT_READY" && <p className="mt-1 text-center text-sm text-slate-500">Loading your report...</p>}
+          </div>
+        )}
+        {failedAndRefunding && (
+          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">We weren&apos;t able to build your report.</p>
+            <p className="mt-1">
+              {status === "REFUND_REQUIRES_SUPPORT"
+                ? "Your order is saved, but the automatic refund needs a manual review. Please contact support and quote this order; you do not need to pay again."
+                : status === "REFUNDED"
+                  ? "Your payment has been refunded. You do not need to pay again, and you can start a new screening whenever you like."
+                  : "Your payment is being refunded automatically. You do not need to pay again, and nothing further is due."}
+            </p>
+          </div>
+        )}
       </Card>
-
-      {status === "REPORT_READY" && (report === "LOADING" || report === "IDLE") && (
-        <p className="mt-4 text-sm text-slate-500">Loading your report...</p>
-      )}
 
       {status === "REPORT_READY" && report === "NOT_FOUND" && (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">

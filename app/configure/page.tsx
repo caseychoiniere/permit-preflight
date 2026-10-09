@@ -21,6 +21,8 @@
  */
 
 import { useEffect, useState } from "react";
+import { ButtonSpinner, LookupLoading } from "../components/LookupLoading.js";
+import type { LookupStage } from "../components/loading-copy.js";
 import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection, type ExistingStructureDisplay, type DwellingSelection } from "../components/ParcelPlacementMap.js";
 import { checkPlacementCompleteness, isFootprintInsideParcel, toPersistedLotLineRoleAssignment } from "../components/parcel-placement-helpers.js";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
@@ -132,6 +134,10 @@ export default function ConfigurePage() {
 
   // Citywide zoning coverage - the early, lot-level advisory for the TYPE step: the zone Seattle's data shows and which project types Permit Preflight can
   // screen for it. Advisory only; the authoritative per-property purchase gate runs at checkout. Unknown (not yet fetched, or the fetch failed) never blocks.
+  // The parcel lookup in flight (address -> parcel, then the parcel's boundary and nearby buildings). Null when idle; blocks a duplicate submission.
+  const [lookupStage, setLookupStage] = useState<LookupStage | null>(null);
+  // The early zoning advisory is optional: when it cannot be read the "Checking zoning…" line is dropped (checkout still enforces the per-property gate).
+  const [zoningCheckFailed, setZoningCheckFailed] = useState(false);
   const [zoningAdvisory, setZoningAdvisory] = useState<{ zoneLabels: string[]; byProjectType: Record<string, { eligible: boolean; message?: string }> } | null>(null);
   const [screeningRequestId, setScreeningRequestId] = useState<string | null>(null);
   const [projectType, setProjectType] = useState<SelectedProjectType>(null);
@@ -253,9 +259,18 @@ export default function ConfigurePage() {
    * parcel, honestly labeled at the resolution layer (identityProvenance). */
   async function proceedWithParcel(parcelId: string) {
     setParcelId(parcelId);
-    const boundaryRes = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}/boundary`);
-    const boundaryResult = await boundaryRes.json();
+    setLookupStage("LOADING_PARCEL");
+    let boundaryResult;
+    try {
+      const boundaryRes = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}/boundary`);
+      boundaryResult = await boundaryRes.json();
+    } catch {
+      setLookupStage(null);
+      setAddressError("We couldn't load the parcel details right now. Please try again in a moment.");
+      return;
+    }
     if (boundaryResult.error) {
+      setLookupStage(null);
       setAddressError(boundaryResult.error);
       return;
     }
@@ -264,27 +279,45 @@ export default function ConfigurePage() {
     setQualityCaveat(boundaryResult.qualityCaveat);
     setExistingStructures(Array.isArray(boundaryResult.existingStructures) ? boundaryResult.existingStructures : []);
     setZoningAdvisory(null);
+    setZoningCheckFailed(false);
+    setLookupStage(null);
     setStep("TYPE");
     fetch(`/api/parcels/${encodeURIComponent(parcelId)}/zoning-eligibility`)
       .then((res) => (res.ok ? res.json() : null))
       .then((advisory) => {
         if (advisory && advisory.byProjectType) setZoningAdvisory(advisory);
+        else setZoningCheckFailed(true);
       })
       .catch(() => {
         /* the advisory is optional; checkout still enforces the per-property gate */
+        setZoningCheckFailed(true);
       });
   }
 
   async function submitAddress() {
+    if (lookupStage !== null) return; // a lookup is already running: never start a duplicate
     setAddressError(null);
     setPendingClarification(null);
-    const res = await fetch("/api/parcels/resolve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address }) });
-    const result = await res.json();
-
-    if (result.status === ParcelResolutionStatus.CONFIRMED) {
-      await proceedWithParcel(result.confirmedParcel.parcelId);
+    if (address.trim() === "") {
+      setAddressError("Enter a property address to look up.");
       return;
     }
+    setLookupStage("RESOLVING");
+    let result;
+    try {
+      const res = await fetch("/api/parcels/resolve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address }) });
+      result = await res.json();
+    } catch {
+      setLookupStage(null);
+      setAddressError("We couldn't reach the parcel data source right now. Please try again in a moment.");
+      return;
+    }
+
+    if (result.status === ParcelResolutionStatus.CONFIRMED) {
+      await proceedWithParcel(result.confirmedParcel.parcelId); // keeps the loading state through the parcel/boundary load, and clears it
+      return;
+    }
+    setLookupStage(null);
 
     if (result.status === ParcelResolutionStatus.CLARIFICATION_REQUIRED && result.candidates?.length > 0) {
       // A real, identifiable candidate (or candidates) exists - ask the user to confirm rather
@@ -509,23 +542,32 @@ export default function ConfigurePage() {
         <Card>
           <h1 className="text-lg font-semibold text-slate-900">Where is the project?</h1>
           <p className="mt-1 text-sm text-slate-500">Enter the property address to look up its parcel.</p>
-          <label className="mt-4 block text-sm font-medium text-slate-700">
-            Property address
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              aria-label="Property address"
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-          </label>
-          <Button variant="primary" className="mt-4" onClick={submitAddress}>
-            Find parcel
-          </Button>
-          {addressError && (
-            <p role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-              {addressError}
-            </p>
-          )}
+          <form
+            aria-busy={lookupStage !== null}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitAddress();
+            }}
+          >
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Property address
+              <input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                readOnly={lookupStage !== null}
+                aria-label="Property address"
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 read-only:bg-slate-50 read-only:text-slate-600"
+              />
+            </label>
+            <Button variant="primary" type="submit" className="mt-4" disabled={lookupStage !== null}>
+              {lookupStage !== null && <ButtonSpinner />}
+              {lookupStage !== null ? "Searching…" : "Find parcel"}
+            </Button>
+          </form>
+          {/* One region, always the same height: the lookup status or the error, so starting/finishing a lookup never moves the page. */}
+          <div className="mt-4">
+            <LookupLoading stage={lookupStage} error={addressError} />
+          </div>
 
           {pendingClarification && (
             <div role="alert" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -539,7 +581,7 @@ export default function ConfigurePage() {
                   </p>
                   <p className="mt-2 text-sm text-amber-900">Is this the property you want to evaluate?</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="primary" onClick={() => confirmParcelCandidate(pendingClarification.candidates[0]!)}>
+                    <Button variant="primary" disabled={lookupStage !== null} onClick={() => confirmParcelCandidate(pendingClarification.candidates[0]!)}>
                       Yes, this is the property
                     </Button>
                     <Button variant="secondary" onClick={() => setPendingClarification(null)}>
@@ -552,7 +594,7 @@ export default function ConfigurePage() {
                   <p className="text-sm text-amber-900">We found more than one possible match. Which one is the property you want to evaluate?</p>
                   <div className="mt-3 flex flex-col items-start gap-2">
                     {pendingClarification.candidates.map((c) => (
-                      <Button key={c.parcelId} variant="secondary" onClick={() => confirmParcelCandidate(c)}>
+                      <Button key={c.parcelId} variant="secondary" disabled={lookupStage !== null} onClick={() => confirmParcelCandidate(c)}>
                         {c.canonicalAddress ?? `Parcel ${c.parcelId}`}
                       </Button>
                     ))}
@@ -572,11 +614,22 @@ export default function ConfigurePage() {
           <p className="text-sm text-slate-500">
             Parcel confirmed: <span className="font-medium text-slate-900">{parcelId}</span>
           </p>
-          {zoningAdvisory && zoningAdvisory.zoneLabels.length > 0 && (
-            <p className="mt-1 text-sm text-slate-500">
-              Seattle zoning data maps this property as <span className="font-medium text-slate-900">{zoningAdvisory.zoneLabels.join(" and ")}</span>.
-            </p>
-          )}
+          {/* A fixed-height line: "Checking zoning…" while the advisory loads, then the zone, so the buttons below never shift. */}
+          <p role="status" aria-live="polite" className="mt-1 grid text-sm text-slate-500">
+            <span className="col-start-1 row-start-1">
+              {zoningAdvisory === null ? (
+                zoningCheckFailed ? null : "Checking zoning…"
+              ) : zoningAdvisory.zoneLabels.length > 0 ? (
+                <>
+                  Seattle zoning data maps this property as <span className="font-medium text-slate-900">{zoningAdvisory.zoneLabels.join(" and ")}</span>.
+                </>
+              ) : null}
+            </span>
+            {/* Reserves the height of the zone sentence (which can wrap on a narrow screen) while it loads, so the buttons below do not move. */}
+            <span aria-hidden="true" className="invisible col-start-1 row-start-1">
+              Seattle zoning data maps this property as LR1 (M).
+            </span>
+          </p>
           <h1 className="mt-2 text-lg font-semibold text-slate-900">What are you planning to build?</h1>
           {(() => {
             // One plain-language explanation of the zoning situation, shown once (the buttons below only say which types are not yet available).

@@ -3,7 +3,7 @@
  *
  * Honesty rules (product decision, 2026-10-09): no percentage, no step "done" claims, no wording that implies approval, legal or professional review, or
  * SDCI confirmation - this is automated screening. The backend exposes only coarse order states (payment confirmed, report ready, refund), no durable
- * generation stages, so the generation messages are an indeterminate sequence of what the system is doing, advanced by elapsed time and then held.
+ * generation stages, so the generation messages are an indeterminate cycle of what the system is doing, rotated by elapsed time.
  */
 
 export type LookupStage = "RESOLVING" | "LOADING_PARCEL";
@@ -22,7 +22,8 @@ export const GENERATION_MESSAGES = [
   "Building your screening report…",
 ] as const;
 
-/** How long each message stays before the next one. The last message is held, never looped back to the first (a loop would suggest repeated work). */
+/** How long each message stays before the next one. The messages CYCLE: they describe what the system is doing, not a pipeline that advances, so there is no "last step"
+ * to reach and no ordering that could read as measured progress (the backend exposes no durable generation stages). */
 export const MESSAGE_DWELL_MS = 5000;
 /** After this long the copy acknowledges the wait. */
 export const LONG_RUN_AFTER_MS = 45_000;
@@ -45,13 +46,13 @@ export function generationCopy(elapsedMs: number): GenerationCopy {
     return {
       phase: "VERY_LONG",
       message: "Still working — this is taking longer than usual.",
-      detail: "Your payment has been received and your order is saved. You can keep this page open, and we will also email you a secure link when your report is ready.",
+      detail: "Your payment has been received and your order is saved. You can keep this page open, and we will also try to email you a secure link when your report is ready.",
     };
   }
   if (elapsed >= LONG_RUN_AFTER_MS) {
     return { phase: "LONG", message: "Still working — some property checks can take a little longer.", detail: "Your payment has been received. Your report will appear here when it is ready." };
   }
-  const index = Math.min(Math.floor(elapsed / MESSAGE_DWELL_MS), GENERATION_MESSAGES.length - 1);
+  const index = Math.floor(elapsed / MESSAGE_DWELL_MS) % GENERATION_MESSAGES.length;
   return { phase: "WORKING", message: GENERATION_MESSAGES[index]! };
 }
 

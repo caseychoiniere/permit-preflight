@@ -1,5 +1,5 @@
 import { getDb } from "../../../../src/db/client.js";
-import { getGuestStatus } from "../../../../src/checkout-fulfillment/index.js";
+import { getGuestStatusView } from "../../../../src/checkout-fulfillment/index.js";
 import { GuestOrderStatus } from "../../../../src/order-payment/types.js";
 import { CHECKOUT_SESSION_COOKIE, readCookie } from "../../../../src/shared/cookies.js";
 
@@ -13,6 +13,6 @@ import { CHECKOUT_SESSION_COOKIE, readCookie } from "../../../../src/shared/cook
  */
 export async function GET(request: Request) {
   const sessionId = readCookie(request, CHECKOUT_SESSION_COOKIE);
-  const status = sessionId ? await getGuestStatus(getDb(), sessionId) : GuestOrderStatus.NOT_FOUND;
-  return Response.json({ status }, { status: 200, headers: { "Cache-Control": "no-store" } });
+  const view = sessionId ? await getGuestStatusView(getDb(), sessionId) : { status: GuestOrderStatus.NOT_FOUND };
+  return Response.json(view, { status: 200, headers: { "Cache-Control": "no-store" } });
 }

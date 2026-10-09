@@ -159,6 +159,18 @@ export async function getGuestStatus(db: Db, stripeCheckoutSessionId: string): P
   }
 }
 
+/**
+ * The status read plus, for a failed order that is being or has been refunded, the customer-facing Order reference (the Order's own id - the same value the
+ * report page and the "Claim a purchase" form already use). It lets the customer quote the order to support when generation failed and no report (which is
+ * where the reference normally appears) exists. Returned only to the holder of the checkout-session cookie and only in the refund states; never for any other state.
+ */
+export async function getGuestStatusView(db: Db, stripeCheckoutSessionId: string): Promise<{ status: GuestOrderStatus; orderReference?: string }> {
+  const status = await getGuestStatus(db, stripeCheckoutSessionId);
+  if (status !== GuestOrderStatus.REFUND_PENDING && status !== GuestOrderStatus.REFUNDED && status !== GuestOrderStatus.REFUND_REQUIRES_SUPPORT) return { status };
+  const order = await getOrderByCheckoutSessionId(db, stripeCheckoutSessionId);
+  return order ? { status, orderReference: order.id } : { status };
+}
+
 export interface GuestReportView {
   artifact: EvidenceReportArtifactRow;
   /** Undefined until deliverGuestReportAccess has run at least once for this report (a brief

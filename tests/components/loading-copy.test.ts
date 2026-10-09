@@ -20,10 +20,10 @@ describe("generation copy", () => {
     expect(generationCopy(MESSAGE_DWELL_MS).message).toBe(GENERATION_MESSAGES[1]);
     expect(generationCopy(MESSAGE_DWELL_MS * 2).message).toBe(GENERATION_MESSAGES[2]);
   });
-  it("holds the last message instead of looping back (a loop would suggest repeated work)", () => {
-    const last = GENERATION_MESSAGES[GENERATION_MESSAGES.length - 1];
-    expect(generationCopy(MESSAGE_DWELL_MS * GENERATION_MESSAGES.length).message).toBe(last);
-    expect(generationCopy(LONG_RUN_AFTER_MS - 1).message).toBe(last);
+  it("cycles through the messages instead of advancing to an end (no last step to reach, so no apparent progress)", () => {
+    const n = GENERATION_MESSAGES.length;
+    expect(generationCopy(MESSAGE_DWELL_MS * n).message).toBe(GENERATION_MESSAGES[0]);
+    expect(generationCopy(MESSAGE_DWELL_MS * (n + 1)).message).toBe(GENERATION_MESSAGES[1]);
     expect(generationCopy(LONG_RUN_AFTER_MS - 1).phase).toBe("WORKING");
   });
   it("acknowledges a long wait, then reassures without asking for a refresh or a second payment", () => {
@@ -33,7 +33,8 @@ describe("generation copy", () => {
     const veryLong = generationCopy(VERY_LONG_RUN_AFTER_MS);
     expect(veryLong.phase).toBe("VERY_LONG");
     expect(veryLong.detail).toMatch(/order is saved/i);
-    expect(veryLong.detail).toMatch(/email/i);
+    expect(veryLong.detail).toMatch(/try to email/i);
+    expect(veryLong.detail).not.toMatch(/will (also )?email/i); // email delivery can fail (EMAIL_FAILED): never guaranteed
     for (const t of [long, veryLong]) expect(`${t.message} ${t.detail ?? ""}`).not.toMatch(/refresh|reload|pay again|try again/i);
   });
   it("tolerates bad input", () => {

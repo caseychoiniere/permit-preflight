@@ -27,6 +27,7 @@ import { CHECKOUT_SESSION_COOKIE } from "../../src/shared/cookies.js";
 // was not enough to catch a bug that only manifested in the actual HTTP round trip's consuming
 // client, not the repository layer - this exercises the exact same code path a real browser hits.
 import { GET as getCheckoutReport } from "../../app/api/checkout/report/route.js";
+import { GET as getCheckoutStatus } from "../../app/api/checkout/status/route.js";
 
 const hasDb = Boolean(process.env["DATABASE_URL"]);
 
@@ -57,7 +58,7 @@ describe.skipIf(!hasDb)("Guest post-checkout report access (2026-08-28 correctio
   /** Creates a fresh screeningRequest + Order in the given state, with a unique
    * stripeCheckoutSessionId this test can then look the order up by - exactly the identity
    * GET /api/checkout/report resolves through in production. */
-  async function createOrderFixture(state: "PENDING" | "PAID"): Promise<{ screeningRequestId: string; orderId: string; checkoutSessionId: string }> {
+  async function createOrderFixture(state: "PENDING" | "PAID" | "REFUND_PENDING" | "REFUNDED" | "REFUND_FAILED"): Promise<{ screeningRequestId: string; orderId: string; checkoutSessionId: string }> {
     const [screeningRequest] = await db
       .insert(screeningRequests)
       .values({ workflowType: "EXISTING_PROPERTY", projectType: "SHED", projectDetails: {}, confirmedParcelId: `TEST-PIN-${crypto.randomUUID()}` })
@@ -73,7 +74,7 @@ describe.skipIf(!hasDb)("Guest post-checkout report access (2026-08-28 correctio
         currency: "usd",
         checkoutCreationIdempotencyKey: crypto.randomUUID(),
         stripeCheckoutSessionId: checkoutSessionId,
-        ...(state === "PAID" ? { paidAt: new Date(), stripePaymentIntentId: `pi_test_${crypto.randomUUID()}` } : {}),
+        ...(state !== "PENDING" ? { paidAt: new Date(), stripePaymentIntentId: `pi_test_${crypto.randomUUID()}` } : {}),
       })
       .returning({ id: orders.id });
     return { screeningRequestId: screeningRequest!.id, orderId: order!.id, checkoutSessionId };
@@ -199,6 +200,36 @@ describe.skipIf(!hasDb)("Guest post-checkout report access (2026-08-28 correctio
       const { checkoutSessionId } = await createOrderFixture("PAID");
       const response = await getCheckoutReport(requestWithCheckoutSession(checkoutSessionId));
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe("GET /api/checkout/status - the order reference for a failed order (so the customer can quote it to support)", () => {
+    const statusRequest = (checkoutSessionId: string) => new Request("http://localhost/api/checkout/status", { headers: { cookie: `${CHECKOUT_SESSION_COOKIE}=${checkoutSessionId}` } });
+
+    it("returns the order reference in every refund state (a failed order has no report to carry it) and in no other state", async () => {
+      const cases: [Parameters<typeof createOrderFixture>[0], string, boolean][] = [
+        ["REFUND_PENDING", "REFUND_PENDING", true],
+        ["REFUNDED", "REFUNDED", true],
+        ["REFUND_FAILED", "REFUND_REQUIRES_SUPPORT", true],
+        ["PENDING", "PENDING", false],
+        ["PAID", "PAYMENT_CONFIRMED", false],
+      ];
+      for (const [state, expectedStatus, hasReference] of cases) {
+        const { orderId, checkoutSessionId } = await createOrderFixture(state);
+        const response = await getCheckoutStatus(statusRequest(checkoutSessionId));
+        const body = (await response.json()) as { status: string; orderReference?: string };
+        expect(body.status, state).toBe(expectedStatus);
+        if (hasReference) expect(body.orderReference, state).toBe(orderId);
+        else expect(body, state).not.toHaveProperty("orderReference");
+        expect(response.headers.get("Cache-Control")).toBe("no-store");
+      }
+    });
+
+    it("an unknown or missing checkout session reveals nothing", async () => {
+      const unknown = await (await getCheckoutStatus(statusRequest("cs_test_unknown"))).json();
+      expect(unknown).toEqual({ status: "NOT_FOUND" });
+      const missing = await (await getCheckoutStatus(new Request("http://localhost/api/checkout/status"))).json();
+      expect(missing).toEqual({ status: "NOT_FOUND" });
     });
   });
 });

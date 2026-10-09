@@ -27,7 +27,7 @@ import { Container } from "../../components/ui/Container.js";
 import { Card } from "../../components/ui/Card.js";
 import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
 import { ReportView, type Report } from "../../components/ReportView.js";
-import { ReportGenerationProgress } from "../../components/ReportGenerationProgress.js";
+import { GenerationPanel, RefundPanel } from "../../components/OrderStatusPanels.js";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -91,6 +91,8 @@ function isReportPayload(value: unknown): value is Report & { emailDeliveryStatu
 
 export default function CheckoutStatusPage() {
   const [status, setStatus] = useState<Status | "LOADING">("LOADING");
+  // The order reference the status API returns only for a failed (refund) order - the report page normally carries it, but a failed order has no report.
+  const [orderRef, setOrderRef] = useState<string | undefined>(undefined);
   const [report, setReport] = useState<ReportFetchState>("IDLE");
   // Whether the report fetch has already been kicked off - a ref, not the `report` state itself,
   // deliberately: see the bug this fixed (2026-08-28) below.
@@ -101,8 +103,11 @@ export default function CheckoutStatusPage() {
     async function poll() {
       try {
         const res = await fetch("/api/checkout/status", { cache: "no-store" });
-        const result = (await res.json()) as { status: Status };
-        if (!cancelled) setStatus(result.status);
+        const result = (await res.json()) as { status: Status; orderReference?: string };
+        if (!cancelled) {
+          setStatus(result.status);
+          setOrderRef(typeof result.orderReference === "string" ? result.orderReference : undefined);
+        }
       } catch {
         // Transient network error - the next poll tick retries; never surfaces a raw error here.
       }
@@ -188,24 +193,8 @@ export default function CheckoutStatusPage() {
             {status === "LOADING" ? "Loading..." : loadedReport ? "Report ready." : STATUS_COPY[status]}
           </p>
         </div>
-        {generating && (
-          <div className="mt-6 border-t border-slate-100 pt-6">
-            <ReportGenerationProgress done={status === "REPORT_READY"} />
-            {status === "REPORT_READY" && <p className="mt-1 text-center text-sm text-slate-500">Loading your report...</p>}
-          </div>
-        )}
-        {failedAndRefunding && (
-          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-semibold">We weren&apos;t able to build your report.</p>
-            <p className="mt-1">
-              {status === "REFUND_REQUIRES_SUPPORT"
-                ? "Your order is saved, but the automatic refund needs a manual review. Please contact support and quote this order; you do not need to pay again."
-                : status === "REFUNDED"
-                  ? "Your payment has been refunded. You do not need to pay again, and you can start a new screening whenever you like."
-                  : "Your payment is being refunded automatically. You do not need to pay again, and nothing further is due."}
-            </p>
-          </div>
-        )}
+        {generating && <GenerationPanel ready={status === "REPORT_READY"} />}
+        {failedAndRefunding && <RefundPanel status={status as "REFUND_PENDING" | "REFUNDED" | "REFUND_REQUIRES_SUPPORT"} orderReference={orderRef} supportEmail={process.env["NEXT_PUBLIC_SUPPORT_EMAIL"]} />}
       </Card>
 
       {status === "REPORT_READY" && report === "NOT_FOUND" && (

@@ -23,6 +23,7 @@
 import { useEffect, useState } from "react";
 import { ButtonSpinner, LookupLoading } from "../components/LookupLoading.js";
 import type { LookupStage } from "../components/loading-copy.js";
+import { LOOKUP_ERROR_COPY, interpretBoundaryResponse, interpretResolveResponse, type BoundaryOutcome, type ResolveOutcome } from "./lookup-helpers.js";
 import { ParcelPlacementMap, type PlacementSelection, type LotLineSelection, type ExistingStructureDisplay, type DwellingSelection } from "../components/ParcelPlacementMap.js";
 import { checkPlacementCompleteness, isFootprintInsideParcel, toPersistedLotLineRoleAssignment } from "../components/parcel-placement-helpers.js";
 import type { GeographicPoint, Polygon } from "../../src/spatial-analysis/types.js";
@@ -260,24 +261,23 @@ export default function ConfigurePage() {
   async function proceedWithParcel(parcelId: string) {
     setParcelId(parcelId);
     setLookupStage("LOADING_PARCEL");
-    let boundaryResult;
+    let outcome: BoundaryOutcome;
     try {
       const boundaryRes = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}/boundary`);
-      boundaryResult = await boundaryRes.json();
+      outcome = interpretBoundaryResponse(boundaryRes.ok, await boundaryRes.json().catch(() => null));
     } catch {
+      outcome = { kind: "ERROR", message: LOOKUP_ERROR_COPY.BOUNDARY };
+    }
+    if (outcome.kind === "ERROR") {
       setLookupStage(null);
-      setAddressError("We couldn't load the parcel details right now. Please try again in a moment.");
+      setAddressError(outcome.message);
       return;
     }
-    if (boundaryResult.error) {
-      setLookupStage(null);
-      setAddressError(boundaryResult.error);
-      return;
-    }
-    setBoundaryPolygon(boundaryResult.boundaryPolygon);
-    setBoundaryPolygonWgs84(boundaryResult.boundaryPolygonWgs84);
-    setQualityCaveat(boundaryResult.qualityCaveat);
-    setExistingStructures(Array.isArray(boundaryResult.existingStructures) ? boundaryResult.existingStructures : []);
+    const data = outcome.data;
+    setBoundaryPolygon(data.boundaryPolygon as typeof boundaryPolygon);
+    setBoundaryPolygonWgs84(data.boundaryPolygonWgs84 as typeof boundaryPolygonWgs84);
+    setQualityCaveat(data.qualityCaveat as typeof qualityCaveat);
+    setExistingStructures(data.existingStructures as ExistingStructureDisplay[]);
     setZoningAdvisory(null);
     setZoningCheckFailed(false);
     setLookupStage(null);
@@ -299,42 +299,29 @@ export default function ConfigurePage() {
     setAddressError(null);
     setPendingClarification(null);
     if (address.trim() === "") {
-      setAddressError("Enter a property address to look up.");
+      setAddressError(LOOKUP_ERROR_COPY.EMPTY);
       return;
     }
     setLookupStage("RESOLVING");
-    let result;
+    let outcome: ResolveOutcome;
     try {
       const res = await fetch("/api/parcels/resolve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address }) });
-      result = await res.json();
+      outcome = interpretResolveResponse(res.ok, await res.json().catch(() => null));
     } catch {
-      setLookupStage(null);
-      setAddressError("We couldn't reach the parcel data source right now. Please try again in a moment.");
-      return;
+      outcome = { kind: "ERROR", message: LOOKUP_ERROR_COPY.UNAVAILABLE };
     }
-
-    if (result.status === ParcelResolutionStatus.CONFIRMED) {
-      await proceedWithParcel(result.confirmedParcel.parcelId); // keeps the loading state through the parcel/boundary load, and clears it
+    if (outcome.kind === "CONFIRMED") {
+      await proceedWithParcel(outcome.parcelId); // keeps the loading state through the parcel/boundary load, and clears it
       return;
     }
     setLookupStage(null);
-
-    if (result.status === ParcelResolutionStatus.CLARIFICATION_REQUIRED && result.candidates?.length > 0) {
-      // A real, identifiable candidate (or candidates) exists - ask the user to confirm rather
-      // than dead-ending the flow (the founder's own reported 26/26 real-address regression).
-      setPendingClarification({ candidates: result.candidates, reason: result.clarificationReason });
+    if (outcome.kind === "CLARIFY") {
+      // A real, identifiable candidate (or candidates) exists - ask the user to confirm rather than dead-ending the flow (the founder's own reported 26/26
+      // real-address regression).
+      setPendingClarification({ candidates: outcome.candidates, reason: outcome.reason });
       return;
     }
-
-    if (result.status === ParcelResolutionStatus.RESOLUTION_UNAVAILABLE) {
-      // A genuine infrastructure/runtime failure - a legitimate hard stop.
-      setAddressError("We couldn't reach the parcel data source right now. Please try again in a moment.");
-      return;
-    }
-
-    // NO_MATCH, or CLARIFICATION_REQUIRED with zero candidates - no parcel to confirm; the
-    // property genuinely could not be identified from this input.
-    setAddressError("We couldn't find a parcel for this address. Please check it and try again.");
+    setAddressError(outcome.message);
   }
 
   function confirmParcelCandidate(chosen: CandidateParcel) {

@@ -49,6 +49,15 @@
   36%, 88% { opacity: 1; transform: translateY(0); }
   96%, 100% { opacity: 0; transform: translateY(0); }
 }
+@keyframes pp-scan {
+  0% { opacity: 0; transform: translateY(0); }
+  12%, 88% { opacity: 0.55; }
+  100% { opacity: 0; transform: translateY(66px); }
+}
+@keyframes pp-check-once {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
 @keyframes pp-ripple {
   0% { opacity: 0.55; transform: scale(0.4); }
   100% { opacity: 0; transform: scale(1.6); }
@@ -60,18 +69,23 @@
 }
 .pp-scene .pp-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: pp-draw 7s ease-in-out infinite; }
 .pp-scene .pp-measure { stroke-dasharray: 1; stroke-dashoffset: 1; animation: pp-measure 7s ease-in-out infinite; }
-.pp-scene .pp-check { stroke-dasharray: 1; stroke-dashoffset: 1; animation: pp-measure 7s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.45s); }
+.pp-scene .pp-scan { opacity: 0; animation: pp-scan 3.2s ease-in-out infinite; }
 .pp-scene .pp-pop, .pp-scene .pp-pin, .pp-scene .pp-page { transform-box: fill-box; transform-origin: center; opacity: 0; }
 .pp-scene .pp-pop { animation: pp-pop 7s ease-out infinite; }
 .pp-scene .pp-pin { animation: pp-pin 7s ease-out infinite; }
 .pp-scene .pp-page { animation: pp-page 7s ease-out infinite; animation-delay: calc(var(--i, 0) * 0.3s); }
 .pp-scene .pp-ripple { transform-box: fill-box; transform-origin: center; animation: pp-ripple 1.8s ease-out infinite; }
 /* The finished state (report ready): everything drawn, nothing moving. */
-.pp-scene[data-state="done"] .pp-draw, .pp-scene[data-state="done"] .pp-measure, .pp-scene[data-state="done"] .pp-check { animation: none; stroke-dashoffset: 0; opacity: 1; }
+.pp-scene[data-state="done"] .pp-draw, .pp-scene[data-state="done"] .pp-measure { animation: none; stroke-dashoffset: 0; opacity: 1; }
+/* The checkmarks exist only in the finished state (the report really is ready): drawn once, never looped. */
+.pp-scene .pp-check { stroke-dasharray: 1; stroke-dashoffset: 0; animation: pp-check-once 0.5s ease-out both; animation-delay: calc(var(--i, 0) * 0.12s); }
+.pp-scene[data-state="done"] .pp-scan { animation: none; opacity: 0; }
 .pp-scene[data-state="done"] .pp-pop, .pp-scene[data-state="done"] .pp-pin, .pp-scene[data-state="done"] .pp-page { animation: none; opacity: 1; transform: none; }
 .pp-scene[data-state="done"] .pp-ripple { animation: none; opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .pp-scene .pp-draw, .pp-scene .pp-measure, .pp-scene .pp-check { animation: none; stroke-dashoffset: 0; opacity: 1; }
+  .pp-scene .pp-draw, .pp-scene .pp-measure { animation: none; stroke-dashoffset: 0; opacity: 1; }
+  .pp-scene .pp-check { animation: none; stroke-dashoffset: 0; }
+  .pp-scene .pp-scan { animation: none; opacity: 0; }
   .pp-scene .pp-pop, .pp-scene .pp-pin, .pp-scene .pp-page { animation: none; opacity: 1; transform: none; }
   .pp-scene .pp-ripple { animation: none; opacity: 0.25; transform: none; }
 }

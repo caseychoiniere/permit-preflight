@@ -5,7 +5,7 @@ import { GENERATION_MESSAGES, LONG_RUN_AFTER_MS, VERY_LONG_RUN_AFTER_MS, generat
 
 /** Every variant the copy block can show; all are laid out together so the block never changes height. */
 const COPY_VARIANTS = [
-  { key: "WORKING", message: GENERATION_MESSAGES[GENERATION_MESSAGES.length - 1]!, detail: undefined as string | undefined },
+  { key: "WORKING", message: GENERATION_MESSAGES.reduce((a, b) => (b.length > a.length ? b : a)), detail: undefined as string | undefined },
   { key: "LONG", ...generationCopy(LONG_RUN_AFTER_MS) },
   { key: "VERY_LONG", ...generationCopy(VERY_LONG_RUN_AFTER_MS) },
   { key: "READY", message: "Your report is ready.", detail: undefined as string | undefined },
@@ -13,9 +13,9 @@ const COPY_VARIANTS = [
 
 /**
  * The report-generation waiting experience: a parcel outline draws, measurement lines extend from the proposed structure, a checklist fills in and the report
- * pages settle - looping while the report is built, then resting on the finished state (`done`). Indeterminate by design: there is NO percentage and no line that says a
- * step finished, because the backend exposes no durable generation stages (only "payment received" and "ready"). The headline rotates through what the system
- * is doing, then holds; after a while it acknowledges the wait. Screen readers hear only the long-wait and ready changes (not every rotating line).
+ * pages settle - looping while the report is built, then resting on the finished state (`done`), the only state with checkmarks. Indeterminate by design: there is NO percentage and no line that says a
+ * step finished, because the backend exposes no durable generation stages (only "payment received" and "ready"). The headline cycles through what the system
+ * is doing (it never reaches an "end": a cycle cannot imply progress); after a while it acknowledges the wait. Screen readers hear only the long-wait and ready changes (not every rotating line).
  * The frame has a fixed height so nothing jumps when the copy changes or the scene finishes.
  */
 export function ReportGenerationProgress({ done = false, initialElapsedMs = 0 }: { done?: boolean; /** Dev preview only: start the wait clock part-way through. */ initialElapsedMs?: number }) {
@@ -64,10 +64,13 @@ export function ReportGenerationProgress({ done = false, initialElapsedMs = 0 }:
             {[0, 1, 2, 3].map((i) => (
               <g key={i}>
                 <rect x="208" y={56 + i * 22} width="10" height="10" rx="2" fill="none" stroke="#cbd5e1" />
-                <path d={`M210 ${61 + i * 22} l3 3 l5 -6`} pathLength={1} className="pp-check" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ ["--i" as string]: i }} />
+                {/* Checkmarks appear ONLY once the report really is ready. While it is being built the rows stay neutral. */}
+                {done && <path d={`M210 ${61 + i * 22} l3 3 l5 -6`} pathLength={1} className="pp-check" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ ["--i" as string]: i }} />}
                 <rect x="224" y={58 + i * 22} width={48 - (i % 2) * 12} height="4" rx="2" fill="#e2e8f0" />
               </g>
             ))}
+            {/* A soft highlight sweeping down the rows: ongoing work, with no implication that any row is finished. */}
+            <rect x="204" y="52" width="74" height="16" rx="4" className="pp-scan" fill="#c7d2fe" />
           </g>
         </svg>
       </div>
@@ -89,8 +92,8 @@ export function ReportGenerationProgress({ done = false, initialElapsedMs = 0 }:
         })}
       </div>
       <p role="status" aria-live="polite" className="sr-only">
-        {/* The page announces "payment received / generating" itself; this region speaks only when the wait gets long (or the report is ready). */}
-        {done ? "Your report is ready." : copy.phase === "WORKING" ? "" : generationAnnouncement(copy.phase)}
+        {/* The page announces "payment received / generating" and "report ready" itself; this region speaks only when the wait gets long. */}
+        {done || copy.phase === "WORKING" ? "" : generationAnnouncement(copy.phase)}
       </p>
     </div>
   );

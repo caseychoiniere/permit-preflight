@@ -573,6 +573,11 @@ export default function ConfigurePage() {
             </p>
           )}
           <h1 className="mt-2 text-lg font-semibold text-slate-900">What are you planning to build?</h1>
+          {(() => {
+            // One plain-language explanation of the zoning situation, shown once (the buttons below only say which types are not yet available).
+            const first = Object.values(zoningAdvisory?.byProjectType ?? {}).find((e) => e.eligible === false);
+            return first?.message ? <p className="mt-2 max-w-xl text-sm text-slate-600">{first.message}</p> : null;
+          })()}
           <div className="mt-4 flex flex-col items-start gap-2">
             {(
               [
@@ -586,30 +591,28 @@ export default function ConfigurePage() {
               .map(([type, key, label]) => {
                 const blocked = zoningAdvisory?.byProjectType[key]?.eligible === false;
                 return (
-                  <div key={type}>
-                    <Button variant="primary" disabled={blocked} onClick={() => selectProjectType(type)}>
-                      {label}
-                    </Button>
-                    {blocked && <p className="mt-1 max-w-xl text-sm text-slate-600">{zoningAdvisory?.byProjectType[key]?.message}</p>}
-                  </div>
+                  <Button key={type} variant="primary" disabled={blocked} onClick={() => selectProjectType(type)}>
+                    {label}
+                    {blocked ? " - not yet available for this zone" : ""}
+                  </Button>
                 );
               })}
-            {availableProjectTypes.includes(ProjectType.ADU) && (
-              <>
-                {(
-                  [
-                    ["NEW", "Screen a new detached ADU (backyard cottage)"],
-                    ["CONVERSION", "Screen converting an existing garage or shed into an ADU"],
-                    ["ATTACHED", "Screen an ADU inside or attached to my house (basement, attic, garage, addition)"],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <Button key={mode} variant="primary" disabled={zoningAdvisory?.byProjectType["adu"]?.eligible === false} onClick={() => selectProjectType(ProjectType.ADU, mode)}>
+            {availableProjectTypes.includes(ProjectType.ADU) &&
+              (
+                [
+                  ["NEW", "Screen a new detached ADU (backyard cottage)"],
+                  ["CONVERSION", "Screen converting an existing garage or shed into an ADU"],
+                  ["ATTACHED", "Screen an ADU inside or attached to my house (basement, attic, garage, addition)"],
+                ] as const
+              ).map(([mode, label]) => {
+                const blocked = zoningAdvisory?.byProjectType["adu"]?.eligible === false;
+                return (
+                  <Button key={mode} variant="primary" disabled={blocked} onClick={() => selectProjectType(ProjectType.ADU, mode)}>
                     {label}
+                    {blocked ? " - not yet available for this zone" : ""}
                   </Button>
-                ))}
-                {zoningAdvisory?.byProjectType["adu"]?.eligible === false && <p className="max-w-xl text-sm text-slate-600">{zoningAdvisory.byProjectType["adu"]?.message}</p>}
-              </>
-            )}
+                );
+              })}
           </div>
           <Button variant="secondary" className="mt-4" onClick={goToPreviousStep}>
             &larr; Previous

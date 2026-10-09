@@ -89,11 +89,11 @@ export function evaluatePurchaseEligibility(input: { projectType: CoreProjectTyp
   const blocking = input.requireAllZones === false ? (missingByZone.length === zones.length ? missingByZone : []) : missingByZone;
   if (blocking.length > 0) {
     const first = blocking[0]!;
-    const named = blocking.map((m) => `${m.zone.raw} (${zoneName(m.zone)})`).join(" and ");
+    const named = blocking.map((m) => `${m.zone.raw}, a ${zoneName(m.zone)} zone`).join(" and ");
     return {
       eligible: false,
       code: "ZONE_NOT_YET_SUPPORTED",
-      message: `Seattle zoning data maps this property as ${named}. Permit Preflight cannot yet screen ${plural} against the ${zoneName(first.zone)} zone standards (${first.missing.join(", ")}), so a report for this property would mostly say that. Nothing was charged.`,
+      message: `Seattle zoning data maps this property as ${named}. Permit Preflight cannot yet screen ${plural} against ${blocking.length > 1 ? "those zones'" : "that zone's"} standards (${first.missing.join(", ")}), so a report for this property would mostly say it cannot evaluate them. Nothing was charged.`,
       zoneLabels: zones.map((z) => z.raw),
       missingClaims: [...new Set(blocking.flatMap((m) => m.missing))],
       retryable: false,

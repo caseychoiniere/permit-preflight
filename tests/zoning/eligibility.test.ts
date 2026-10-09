@@ -34,7 +34,7 @@ describe("purchase eligibility - the minimum useful report contract", () => {
     expect(before.eligible).toBe(false);
     if (!before.eligible) {
       expect(before.code).toBe("ZONE_NOT_YET_SUPPORTED");
-      expect(before.message).toContain("LR1 (M)");
+      expect(before.message).toContain("LR1 (M), a Lowrise (LR1) zone");
       expect(before.message).toContain("Nothing was charged");
       expect(before.retryable).toBe(false);
     }

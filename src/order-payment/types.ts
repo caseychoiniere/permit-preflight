@@ -6,8 +6,11 @@
 
 /**
  * OrderState transitions fall into two kinds (BR-U2B-2):
- * - EXTERNALLY-CONFIRMED (require a signature-verified Stripe webhook, and only that):
- *   PENDING->PAID, PENDING->EXPIRED, REFUND_PENDING->REFUNDED, REFUND_PENDING->REFUND_FAILED.
+ * - EXTERNALLY-CONFIRMED (require Stripe-authenticated evidence, never a browser redirect or client-supplied status): either a
+ *   signature-verified Stripe webhook, or - for PENDING->PAID and PENDING->EXPIRED only - an authenticated retrieval of the Order's OWN Checkout Session from Stripe's API
+ *   (reconcileOrderWithStripe: status read, cron check 6, checkout resumption). For PENDING->PAID that retrieval runs the same shared transaction a webhook runs
+ *   (handleVerifiedWebhook, with a synthetic ledger id), and the paid Checkout Session must be the one stored on the Order. PENDING->EXPIRED from a retrieval is a separate
+ *   conditional update (WHERE state = PENDING; it records no ledger entry). REFUND_PENDING->REFUNDED and REFUND_PENDING->REFUND_FAILED remain webhook-only.
  * - LOCAL COMMAND (server-initiated, never by a browser redirect or client-supplied status):
  *   (creation)->PENDING, PAID->REFUND_PENDING, REFUND_FAILED->REFUND_PENDING (modeled, not
  *   exercised by any Unit 2B code path - see BR-U2B-5's manual-resolution-only scope decision).
@@ -58,7 +61,10 @@ export interface ProcessedStripeEvent {
  * (NFR Design Pattern 4). Possession of the Stripe Checkout Session ID that resolves to this
  * status permits READS ONLY - never a PAID transition, generation, refund, or report access. */
 export const GuestOrderStatus = {
-  PENDING: "PENDING",
+  /** Stripe says the Checkout Session is still open and unpaid: the customer reached the status page without completing payment. Never described as "confirming". */
+  AWAITING_PAYMENT: "AWAITING_PAYMENT",
+  /** Stripe reports the payment (or could not be asked yet) but the Order is not yet PAID locally: the webhook is delayed or the live check failed. */
+  CONFIRMING_PAYMENT: "CONFIRMING_PAYMENT",
   PAYMENT_CONFIRMED: "PAYMENT_CONFIRMED",
   REPORT_READY: "REPORT_READY",
   REFUND_PENDING: "REFUND_PENDING",

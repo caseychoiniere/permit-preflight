@@ -1,6 +1,7 @@
 import { getDb } from "../../../src/db/client.js";
 import { createStripeClient } from "../../../src/order-payment/stripe-client.js";
 import { initiateCheckout } from "../../../src/checkout-fulfillment/index.js";
+import { startFollowUpWorkflow } from "../../../src/checkout-fulfillment/follow-up";
 import { resolveAppBaseUrl } from "../../../src/shared/app-url.js";
 import { CHECKOUT_SESSION_COOKIE, buildSetCookieHeader } from "../../../src/shared/cookies.js";
 
@@ -39,6 +40,8 @@ export async function POST(request: Request) {
     case "RECONCILING":
       return Response.json({ error: "Payment status is still being confirmed - try again shortly." }, { status: 409 });
     case "ALREADY_PAID":
+      // When resuming checkout found Stripe had already taken the payment, THIS call confirmed it - start the fulfillment it queued (a lost start is repaired by cron check 1).
+      if (result.startWorkflow) await startFollowUpWorkflow(result.startWorkflow).catch(() => undefined);
       return Response.json({ orderId: result.orderId, alreadyPaid: true }, { status: 200 });
     case "CHECKOUT_URL": {
       const setCookie = buildSetCookieHeader(request, CHECKOUT_SESSION_COOKIE, result.stripeCheckoutSessionId, {

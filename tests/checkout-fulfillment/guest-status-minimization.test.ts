@@ -27,9 +27,9 @@ describe("Guest status-read minimization", () => {
     expect(source).toContain("no-store");
   });
 
-  it("GuestOrderStatus is exactly the 9 minimized values from Pattern 4 - never grows an internal field", () => {
+  it("GuestOrderStatus is exactly the 10 minimized values from Pattern 4 - never grows an internal field", () => {
     expect(Object.values(GuestOrderStatus).sort()).toEqual(
-      ["PENDING", "PAYMENT_CONFIRMED", "REPORT_READY", "REFUND_PENDING", "REFUNDED", "REFUND_REQUIRES_SUPPORT", "EXPIRED", "RECONCILING", "NOT_FOUND"].sort()
+      ["AWAITING_PAYMENT", "CONFIRMING_PAYMENT", "PAYMENT_CONFIRMED", "REPORT_READY", "REFUND_PENDING", "REFUNDED", "REFUND_REQUIRES_SUPPORT", "EXPIRED", "RECONCILING", "NOT_FOUND"].sort()
     );
   });
 });

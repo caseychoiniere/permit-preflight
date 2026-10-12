@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { eq, and, or, ne, isNull, isNotNull, sql as drizzleSql } from "drizzle-orm";
+import { eq, and, or, ne, isNull, isNotNull, asc, sql as drizzleSql } from "drizzle-orm";
 import type Stripe from "stripe";
 import type { Db, TransactionalDb } from "../db/client.js";
 import { withFulfillmentTransaction } from "../db/client.js";
@@ -55,6 +55,9 @@ function rowToOrder(row: OrderRow): Order {
  * REFUND_PENDING/DUPLICATE_PAYMENT branch, meaning that fail-safe had never actually functioned
  * against Postgres before this was caught. Now walks the full `.cause` chain.
  */
+/** Thrown inside the PAID-claim savepoint when a concurrent transaction (the webhook, a live Stripe check or the cron backstop) already moved this Order out of PENDING. */
+class OrderNoLongerPendingError extends Error {}
+
 function isUniqueViolation(err: unknown): boolean {
   let current: unknown = err;
   while (typeof current === "object" && current !== null) {
@@ -111,10 +114,12 @@ export type CreateCheckoutSessionResult =
    * directly in a platform-visible request path/query string (NFR Design Pattern 4's hardening,
    * corrected). */
   | { outcome: "CHECKOUT_URL"; checkoutUrl: string; orderId: string; stripeCheckoutSessionId: string }
-  | { outcome: "ALREADY_PAID"; orderId: string }
+  /** `startWorkflow` is set only when this call is the one that confirmed the payment from Stripe's own record (the caller starts it after commit). */
+  | { outcome: "ALREADY_PAID"; orderId: string; startWorkflow?: WebhookFollowUpWorkflow }
   /** Stripe reports a newer state (paid or expired) than this Order's local PENDING - the
-   * webhook that would reconcile it hasn't been processed yet. Never locally forged - only a
-   * verified webhook may actually transition the Order (BR-U2B-2). */
+   * webhook that would reconcile it hasn't been processed yet, and Stripe's own record could not be applied (Stripe unreachable, or the payment is still
+   * processing). Never locally forged: an Order transitions only from a verified webhook or an authenticated retrieval of its own Checkout Session
+   * (reconcileOrderWithStripe), never from a browser redirect or client-supplied status (BR-U2B-2). */
   | { outcome: "RECONCILING" };
 
 /**
@@ -188,16 +193,26 @@ async function resumeOrReusePendingOrder(
   }
 
   // A session already exists - never blindly reuse a locally-cached "usable" assumption. Read
-  // Stripe's own current state for this DISPLAY/ROUTING decision only; it never locally mutates
-  // Order.state (that remains exclusively a verified-webhook transition, BR-U2B-2).
+  // Stripe's own current state. An open session is only DISPLAY/ROUTING (no mutation). A paid or expired one is applied through reconcileOrderWithStripe below (paid: the same
+  // transaction a verified webhook runs; expired: a separate conditional update), driven by an authenticated retrieval of this Order's own session, never by anything the browser supplies (BR-U2B-2).
   const session = await stripeClient.retrieveCheckoutSession(order.stripeCheckoutSessionId);
   if (session.status === "open") {
     if (!session.url) throw new Error(`Stripe Checkout Session ${session.id} has no url.`);
     return { outcome: "CHECKOUT_URL", checkoutUrl: session.url, orderId: order.id, stripeCheckoutSessionId: session.id };
   }
-  // session.status is "complete" (payment succeeded, our webhook hasn't processed it yet) or
-  // "expired" (our expiry webhook hasn't processed it yet, so the local Order is still PENDING) -
-  // both are RECONCILING: never reuse, never locally forge PENDING -> PAID/EXPIRED.
+  // session.status is "complete" (payment succeeded, our webhook hasn't processed it yet) or "expired" (our expiry webhook hasn't processed it yet, so the local Order is
+  // still PENDING). Never reuse the session. Waiting for the webhook alone would strand the customer if it never arrives (an expired session blocks every retry, a paid one
+  // never reaches PAID), so Stripe's own record is applied (reconcileOrderWithStripe): a paid session confirms the order through the transaction the webhook uses, an
+  // expired one closes it by a conditional update so a fresh checkout can start. Anything else (Stripe unreachable, payment still processing) stays RECONCILING.
+  const reconciled = await reconcileOrderWithStripe(db, stripeClient, order);
+  if (reconciled.outcome === "CONFIRMED") return { outcome: "ALREADY_PAID", orderId: order.id, ...(reconciled.startWorkflow ? { startWorkflow: reconciled.startWorkflow } : {}) };
+  if (reconciled.outcome === "ALREADY_SETTLED") {
+    const settled = await getOrderById(db, order.id);
+    if (settled && settled.state === OrderState.PAID) return { outcome: "ALREADY_PAID", orderId: order.id };
+    if (settled && settled.state === OrderState.EXPIRED) return createCheckoutSession(db, stripeClient, { screeningRequestId: order.screeningRequestId, priceCents: order.priceCents, currency: order.currency, successUrl, cancelUrl });
+    return { outcome: "RECONCILING" };
+  }
+  if (reconciled.outcome === "EXPIRED") return createCheckoutSession(db, stripeClient, { screeningRequestId: order.screeningRequestId, priceCents: order.priceCents, currency: order.currency, successUrl, cancelUrl });
   return { outcome: "RECONCILING" };
 }
 
@@ -289,6 +304,15 @@ async function handlePaymentConfirmed(
     return recordProcessed(tx, event, session.id, { handled: true });
   }
 
+  // A signature-valid paid event only proves Stripe emitted it. It confirms THIS order only if it is the order's own Checkout Session, i.e. the id stored when the session was
+  // created. Fail closed otherwise - including an order with no stored session id (a crash between insert and persist, BR-U2B-14): the idempotent checkout resumption persists
+  // the id, after which Stripe's own record confirms the payment (reconcileOrderWithStripe) or a matching event does. Not recorded in the ledger, so a later matching
+  // redelivery of the same event is still processed.
+  if (current.stripeCheckoutSessionId !== session.id) {
+    logger.error("PAYMENT_SESSION_ORDER_MISMATCH", { orderId, eventSessionId: session.id, orderHasStoredSession: current.stripeCheckoutSessionId !== undefined });
+    return { handled: false };
+  }
+
   const customerEmail = session.customer_details?.email ?? undefined;
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
   if (!paymentIntentId) return recordProcessed(tx, event, session.id, { handled: false });
@@ -305,10 +329,12 @@ async function handlePaymentConfirmed(
         .set({ state: OrderState.PAID, paidAt: drizzleSql`now()`, stripePaymentIntentId: paymentIntentId, customerEmail, updatedAt: drizzleSql`now()` })
         .where(and(eq(orders.id, orderId), eq(orders.state, OrderState.PENDING)))
         .returning();
-      if (!claimed) throw new Error(`Order ${orderId} was no longer PENDING at update time.`);
+      if (!claimed) throw new OrderNoLongerPendingError(`Order ${orderId} was no longer PENDING at update time.`);
     });
     paidHere = true;
   } catch (err) {
+    // Lost a benign race for this same Order (another confirmation path committed first): nothing left to do, and nothing to start - the winner starts the workflow.
+    if (err instanceof OrderNoLongerPendingError || (err instanceof Error && err.cause instanceof OrderNoLongerPendingError)) return recordProcessed(tx, event, session.id, { handled: true });
     if (!isUniqueViolation(err)) throw err;
   }
 
@@ -484,4 +510,95 @@ export async function listOrdersNeedingRefundResubmission(db: Db, staleThreshold
     .from(orders)
     .where(and(eq(orders.state, OrderState.REFUND_PENDING), isNull(orders.stripeRefundId)));
   return rows.filter((r) => r.updatedAt <= cutoff).map(rowToOrder);
+}
+
+/**
+ * The webhook is the normal way an Order leaves PENDING, but it is not the only truth: Stripe is. If the webhook is delayed, misrouted, rejected or never
+ * forwarded (a local listener that is not running, an endpoint outage), a PAID Checkout Session would otherwise leave its Order PENDING forever, and an unpaid
+ * or expired one would be indistinguishable from "payment still being confirmed". This asks Stripe directly about the Order's own Checkout Session and, when it
+ * is paid, applies the SAME transaction the webhook applies (handleVerifiedWebhook), keyed by a deterministic ledger id per session so a later real webhook for
+ * the same payment finds the Order already PAID and does nothing - fulfillment starts exactly once whichever path wins.
+ */
+export type PaymentReconciliation =
+  /** Stripe says paid and this call (or a concurrent one) moved the Order out of PENDING. `startWorkflow` is set only when THIS call created the follow-up work. */
+  | { outcome: "CONFIRMED"; startWorkflow?: WebhookFollowUpWorkflow }
+  /** The Order was already past PENDING when asked (webhook won the race). */
+  | { outcome: "ALREADY_SETTLED" }
+  /** Stripe says the Checkout Session expired unpaid; the Order is now EXPIRED. */
+  | { outcome: "EXPIRED" }
+  /** Stripe says the session is open and unpaid. `checkoutUrl` is the same session's own hosted URL, so resuming never creates a second charge. */
+  | { outcome: "AWAITING_PAYMENT"; checkoutUrl?: string }
+  /** Stripe has the session complete but payment not yet settled (asynchronous payment method). */
+  | { outcome: "PROCESSING" }
+  /** Stripe could not be asked, or its answer did not match this Order. The Order stays PENDING; callers show "confirming", never a payment request. */
+  | { outcome: "UNKNOWN"; reason: string };
+
+export function reconciliationEventId(stripeCheckoutSessionId: string): string {
+  return `reconcile:${stripeCheckoutSessionId}`;
+}
+
+export async function reconcileOrderWithStripe(db: Db, stripeClient: Pick<StripeClient, "retrieveCheckoutSession">, order: Order): Promise<PaymentReconciliation> {
+  if (order.state !== OrderState.PENDING) return { outcome: "ALREADY_SETTLED" };
+  if (!order.stripeCheckoutSessionId) return { outcome: "UNKNOWN", reason: "The order has no Checkout Session." };
+
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripeClient.retrieveCheckoutSession(order.stripeCheckoutSessionId);
+  } catch (err) {
+    logger.error("PAYMENT_RECONCILIATION_STRIPE_UNAVAILABLE", { orderId: order.id, reason: err instanceof Error ? err.message : "Unknown error." });
+    return { outcome: "UNKNOWN", reason: "Stripe could not be reached." };
+  }
+  if (session.id !== order.stripeCheckoutSessionId || (session.client_reference_id ?? session.metadata?.["orderId"]) !== order.id) {
+    logger.error("PAYMENT_RECONCILIATION_SESSION_MISMATCH", { orderId: order.id, sessionId: session.id });
+    return { outcome: "UNKNOWN", reason: "Stripe's session does not match this order." };
+  }
+
+  if (session.payment_status === "paid") {
+    const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+    // A paid session always carries a PaymentIntent; without one the transition cannot be recorded faithfully, and recording the ledger entry anyway would block a retry.
+    if (!paymentIntentId) return { outcome: "UNKNOWN", reason: "Stripe reports the session paid but returned no payment." };
+    const syntheticEvent = { id: reconciliationEventId(session.id), type: "checkout.session.completed", data: { object: session } } as unknown as Stripe.Event;
+    try {
+      const result = await handleVerifiedWebhook(syntheticEvent);
+      return { outcome: "CONFIRMED", startWorkflow: result.startWorkflow };
+    } catch (err) {
+      logger.error("PAYMENT_RECONCILIATION_TRANSITION_FAILED", { orderId: order.id, reason: err instanceof Error ? err.message : "Unknown error." });
+      const refreshed = await getOrderById(db, order.id);
+      if (refreshed && refreshed.state !== OrderState.PENDING) return { outcome: "ALREADY_SETTLED" };
+      return { outcome: "UNKNOWN", reason: "The payment could not be recorded yet." };
+    }
+  }
+
+  if (session.status === "expired") {
+    const [closed] = await db
+      .update(orders)
+      .set({ state: OrderState.EXPIRED, updatedAt: drizzleSql`now()` })
+      .where(and(eq(orders.id, order.id), eq(orders.state, OrderState.PENDING)))
+      .returning({ id: orders.id });
+    // Lost the race (a payment confirmation committed first): report what is actually true, never a terminal EXPIRED that was not committed.
+    if (!closed) return { outcome: "ALREADY_SETTLED" };
+    return { outcome: "EXPIRED" };
+  }
+  if (session.status === "complete") return { outcome: "PROCESSING" };
+  return { outcome: "AWAITING_PAYMENT", checkoutUrl: session.url ?? undefined };
+}
+
+/**
+ * PENDING Orders old enough that the webhook should long since have arrived, least-recently-checked first (`updated_at` doubles as the last-checked stamp for a
+ * PENDING order - see markPendingOrderChecked), so a batch limit can never starve later rows. There is deliberately no maximum age: a paid session is recoverable
+ * however old it is, and the set drains by itself - paid becomes PAID, an expired session becomes EXPIRED.
+ */
+export async function listStalePendingOrders(db: Db, minAgeMs: number, limit: number): Promise<Order[]> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.state, OrderState.PENDING), isNotNull(orders.stripeCheckoutSessionId), drizzleSql`${orders.createdAt} <= ${new Date(Date.now() - minAgeMs)}`))
+    .orderBy(asc(orders.updatedAt), asc(orders.id))
+    .limit(limit);
+  return rows.map(rowToOrder);
+}
+
+/** Moves a still-PENDING order to the back of the cron queue after it was checked and left unresolved. A no-op once the order has left PENDING. */
+export async function markPendingOrderChecked(db: Db, orderId: string): Promise<void> {
+  await db.update(orders).set({ updatedAt: drizzleSql`now()` }).where(and(eq(orders.id, orderId), eq(orders.state, OrderState.PENDING)));
 }

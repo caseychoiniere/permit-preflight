@@ -13,6 +13,14 @@ export type LogEvent =
   | "RULE_LIFECYCLE_TRANSITION"
   | "EVALUATION_FAILURE"
   | "EVALUATION_DEFERRED"
+  // Payment-confirmation recovery (2026-10-12): the live Stripe check on the status read and the cron backstop.
+  | "PAYMENT_RECONCILIATION_STRIPE_UNAVAILABLE"
+  | "PAYMENT_RECONCILIATION_SESSION_MISMATCH"
+  | "PAYMENT_RECONCILIATION_TRANSITION_FAILED"
+  | "PAYMENT_RECONCILIATION_WORKFLOW_START_FAILED"
+  | "PAYMENT_RECONCILIATION_ORDER_CONFIRMED"
+  | "PAYMENT_SESSION_ORDER_MISMATCH"
+  | "CHECKOUT_STATUS_READ_FAILED"
   // Unit 2 additions (NFR Design Pattern 4 / Infrastructure Design's required event list). Never
   // include a raw access token, tokenHash, or any credential value in `detail` for these events.
   | "STAGE_TIMING"

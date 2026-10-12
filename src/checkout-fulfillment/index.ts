@@ -28,7 +28,8 @@ import {
   type GenerationAuthorization,
 } from "../screening-request/authorization.js";
 import { ReportGenerationJobState } from "../report-generation-job/repository.js";
-import { createCheckoutSession, getOrderByCheckoutSessionId, getOrderById, type CreateCheckoutSessionResult } from "../order-payment/repository.js";
+import { createCheckoutSession, getOrderByCheckoutSessionId, getOrderById, reconcileOrderWithStripe, type CreateCheckoutSessionResult, type WebhookFollowUpWorkflow } from "../order-payment/repository.js";
+import { logger } from "../shared/logger.js";
 import { OrderState, GuestOrderStatus, RefundReason } from "../order-payment/types.js";
 import type { StripeClient } from "../order-payment/stripe-client.js";
 import type { ResendClient } from "../email-delivery/resend-client.js";
@@ -135,7 +136,9 @@ export async function initiateCheckout(
  * Pattern 4: derives the minimized GuestOrderStatus purely from server-side Order/
  * ReportGenerationJob state - no live Stripe call, no side effects. `RECONCILING` is never
  * produced here (that is Pattern 1's createCheckoutSession-retry-only signal); an Order that is
- * still locally PENDING always reads back as PENDING from this pure DB-state read.
+ * still locally PENDING reads back as CONFIRMING_PAYMENT from this pure DB-state read. The status
+ * API (getGuestStatusView) refines that by asking Stripe, so the customer is told whether the
+ * payment was never made, is being confirmed, or has been confirmed.
  */
 export async function getGuestStatus(db: Db, stripeCheckoutSessionId: string): Promise<GuestOrderStatus> {
   const order = await getOrderByCheckoutSessionId(db, stripeCheckoutSessionId);
@@ -143,7 +146,7 @@ export async function getGuestStatus(db: Db, stripeCheckoutSessionId: string): P
 
   switch (order.state) {
     case OrderState.PENDING:
-      return GuestOrderStatus.PENDING;
+      return GuestOrderStatus.CONFIRMING_PAYMENT;
     case OrderState.REFUND_PENDING:
       return GuestOrderStatus.REFUND_PENDING;
     case OrderState.REFUNDED:
@@ -159,16 +162,83 @@ export async function getGuestStatus(db: Db, stripeCheckoutSessionId: string): P
   }
 }
 
+export interface GuestStatusView {
+  status: GuestOrderStatus;
+  /** The customer-facing Order reference. Returned only to the holder of the checkout-session cookie, and only where the customer needs it to talk to support: while a payment is being confirmed and in the refund states. */
+  orderReference?: string;
+  /** AWAITING_PAYMENT only: the SAME Stripe Checkout Session's own hosted URL, so resuming never creates a second charge. */
+  checkoutUrl?: string;
+}
+
+export interface GuestStatusDeps {
+  /** When present, an Order still locally PENDING is checked against Stripe (see reconcileOrderWithStripe). Absent: the pure DB read. */
+  stripeClient?: Pick<StripeClient, "retrieveCheckoutSession">;
+  /** Starts the follow-up work when the live check is the path that confirmed the payment. A failure to start is repaired by cron reconciliation check 1. */
+  startWorkflow?: (work: WebhookFollowUpWorkflow) => Promise<void>;
+  /** Minimum time between live Stripe checks of one Checkout Session (a customer polls every few seconds, possibly from several tabs). Default 2000 ms. */
+  minCheckIntervalMs?: number;
+  now?: () => number;
+}
+
+const recentStripeChecks = new Map<string, { at: number; view: GuestStatusView }>();
+
 /**
- * The status read plus, for a failed order that is being or has been refunded, the customer-facing Order reference (the Order's own id - the same value the
- * report page and the "Claim a purchase" form already use). It lets the customer quote the order to support when generation failed and no report (which is
- * where the reference normally appears) exists. Returned only to the holder of the checkout-session cookie and only in the refund states; never for any other state.
+ * The status read the customer's browser polls. For an Order that is locally settled it is the pure DB read. For one still PENDING it asks Stripe about that
+ * Order's own Checkout Session, so a missed or delayed webhook can never strand a paid customer, and an unpaid or expired session is reported as such instead
+ * of "confirming your payment". If Stripe cannot be asked the answer stays CONFIRMING_PAYMENT. A failed order that is being or has been refunded also gets its
+ * Order reference (the report normally carries it, but a failed order has no report).
  */
-export async function getGuestStatusView(db: Db, stripeCheckoutSessionId: string): Promise<{ status: GuestOrderStatus; orderReference?: string }> {
+export async function getGuestStatusView(db: Db, stripeCheckoutSessionId: string, deps: GuestStatusDeps = {}): Promise<GuestStatusView> {
   const status = await getGuestStatus(db, stripeCheckoutSessionId);
-  if (status !== GuestOrderStatus.REFUND_PENDING && status !== GuestOrderStatus.REFUNDED && status !== GuestOrderStatus.REFUND_REQUIRES_SUPPORT) return { status };
+  const withReference = async (view: GuestStatusView): Promise<GuestStatusView> => {
+    const order = await getOrderByCheckoutSessionId(db, stripeCheckoutSessionId);
+    return order ? { ...view, orderReference: order.id } : view;
+  };
+
+  if (status === GuestOrderStatus.REFUND_PENDING || status === GuestOrderStatus.REFUNDED || status === GuestOrderStatus.REFUND_REQUIRES_SUPPORT) return withReference({ status });
+  if (status !== GuestOrderStatus.CONFIRMING_PAYMENT) return { status };
+  if (!deps.stripeClient) return withReference({ status });
+
+  const now = (deps.now ?? Date.now)();
+  const minInterval = deps.minCheckIntervalMs ?? 2000;
+  const recent = recentStripeChecks.get(stripeCheckoutSessionId);
+  if (recent && now - recent.at < minInterval) return recent.view;
+
   const order = await getOrderByCheckoutSessionId(db, stripeCheckoutSessionId);
-  return order ? { status, orderReference: order.id } : { status };
+  if (!order) return { status: GuestOrderStatus.NOT_FOUND };
+  const reconciliation = await reconcileOrderWithStripe(db, deps.stripeClient, order);
+
+  let view: GuestStatusView;
+  switch (reconciliation.outcome) {
+    case "CONFIRMED":
+      if (reconciliation.startWorkflow && deps.startWorkflow) {
+        try {
+          await deps.startWorkflow(reconciliation.startWorkflow);
+        } catch (err) {
+          logger.error("PAYMENT_RECONCILIATION_WORKFLOW_START_FAILED", { orderId: order.id, reason: err instanceof Error ? err.message : "Unknown error." });
+        }
+      }
+      return { status: await getGuestStatus(db, stripeCheckoutSessionId) };
+    case "ALREADY_SETTLED":
+      return { status: await getGuestStatus(db, stripeCheckoutSessionId) };
+    case "EXPIRED":
+      return { status: GuestOrderStatus.EXPIRED };
+    case "AWAITING_PAYMENT":
+      view = { status: GuestOrderStatus.AWAITING_PAYMENT, orderReference: order.id, ...(reconciliation.checkoutUrl ? { checkoutUrl: reconciliation.checkoutUrl } : {}) };
+      break;
+    case "PROCESSING":
+    case "UNKNOWN":
+      view = { status: GuestOrderStatus.CONFIRMING_PAYMENT, orderReference: order.id };
+      break;
+  }
+  if (recentStripeChecks.size > 500) recentStripeChecks.clear();
+  recentStripeChecks.set(stripeCheckoutSessionId, { at: now, view });
+  return view;
+}
+
+/** Test seam: forget the per-session throttle between cases. */
+export function clearGuestStatusThrottle(): void {
+  recentStripeChecks.clear();
 }
 
 export interface GuestReportView {

@@ -206,12 +206,12 @@ describe.skipIf(!hasDb)("Guest post-checkout report access (2026-08-28 correctio
   describe("GET /api/checkout/status - the order reference for a failed order (so the customer can quote it to support)", () => {
     const statusRequest = (checkoutSessionId: string) => new Request("http://localhost/api/checkout/status", { headers: { cookie: `${CHECKOUT_SESSION_COOKIE}=${checkoutSessionId}` } });
 
-    it("returns the order reference in every refund state (a failed order has no report to carry it) and in no other state", async () => {
+    it("returns the order reference in every refund state (a failed order has no report to carry it) and while a payment is being confirmed, and in no other state", async () => {
       const cases: [Parameters<typeof createOrderFixture>[0], string, boolean][] = [
         ["REFUND_PENDING", "REFUND_PENDING", true],
         ["REFUNDED", "REFUNDED", true],
         ["REFUND_FAILED", "REFUND_REQUIRES_SUPPORT", true],
-        ["PENDING", "PENDING", false],
+        ["PENDING", "CONFIRMING_PAYMENT", true],
         ["PAID", "PAYMENT_CONFIRMED", false],
       ];
       for (const [state, expectedStatus, hasReference] of cases) {

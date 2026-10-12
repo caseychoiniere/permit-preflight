@@ -56,6 +56,12 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
     }
   });
 
+  /** A paid-session event for the order, carrying the order's OWN stored Checkout Session id (a paid event only confirms the order whose session it is). */
+  async function completedEventFor(params: Parameters<typeof makeCheckoutSessionCompletedEvent>[0]) {
+    const [row] = await db.select({ sessionId: orders.stripeCheckoutSessionId }).from(orders).where(eq(orders.id, params.orderId));
+    return makeCheckoutSessionCompletedEvent({ ...params, sessionId: row?.sessionId ?? undefined });
+  }
+
   async function makeScreeningRequest(): Promise<string> {
     const [row] = await db
       .insert(screeningRequests)
@@ -128,7 +134,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       const [order] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!order) throw new Error("setup failed");
 
-      const event = makeCheckoutSessionCompletedEvent({ orderId: order.id });
+      const event = await completedEventFor({ orderId: order.id });
       const result = await handleVerifiedWebhook(event);
 
       expect(result.handled).toBe(true);
@@ -150,7 +156,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       const [order] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!order) throw new Error("setup failed");
 
-      const event = makeCheckoutSessionCompletedEvent({ orderId: order.id, eventId: `evt_dedup_test_${RUN_ID}` });
+      const event = await completedEventFor({ orderId: order.id, eventId: `evt_dedup_test_${RUN_ID}` });
       await handleVerifiedWebhook(event);
       const secondResult = await handleVerifiedWebhook(event);
 
@@ -180,7 +186,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       await createCheckoutSession(db, stripeClient, { screeningRequestId, priceCents: 999, currency: "usd", successUrl: "https://x/success", cancelUrl: "https://x/cancel" });
       const [orderA] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!orderA) throw new Error("setup failed");
-      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderA.id, eventId: `evt_orderA_${RUN_ID}` }));
+      await handleVerifiedWebhook(await completedEventFor({ orderId: orderA.id, eventId: `evt_orderA_${RUN_ID}` }));
       const paidA = await getOrderById(db, orderA.id);
       expect(paidA?.state).toBe(OrderState.PAID);
 
@@ -189,11 +195,11 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       // simulating the abnormal race BR-U2B-1 point 4 anticipates).
       const [orderB] = await db
         .insert(orders)
-        .values({ screeningRequestId, state: OrderState.PENDING, priceCents: 999, currency: "usd", checkoutCreationIdempotencyKey: crypto.randomUUID() })
+        .values({ screeningRequestId, state: OrderState.PENDING, priceCents: 999, currency: "usd", checkoutCreationIdempotencyKey: crypto.randomUUID(), stripeCheckoutSessionId: `cs_test_dup_${crypto.randomUUID()}` })
         .returning();
       if (!orderB) throw new Error("setup failed");
 
-      const result = await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderB.id, eventId: `evt_orderB_duplicate_${RUN_ID}`, paymentIntentId: `pi_test_orderB_${RUN_ID}` }));
+      const result = await handleVerifiedWebhook(await completedEventFor({ orderId: orderB.id, eventId: `evt_orderB_duplicate_${RUN_ID}`, paymentIntentId: `pi_test_orderB_${RUN_ID}` }));
 
       expect(result.duplicateAnomaly).toBe(true);
       expect(result.startWorkflow).toEqual({ kind: "REFUND", orderId: orderB.id, reason: RefundReason.DUPLICATE_PAYMENT });
@@ -220,7 +226,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       await createCheckoutSession(db, stripeClient, { screeningRequestId, priceCents: 999, currency: "usd", successUrl: "https://x/success", cancelUrl: "https://x/cancel" });
       const [orderA] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!orderA) throw new Error("setup failed");
-      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderA.id, eventId: `evt_orderA_2_${RUN_ID}` }));
+      await handleVerifiedWebhook(await completedEventFor({ orderId: orderA.id, eventId: `evt_orderA_2_${RUN_ID}` }));
 
       // Order A (the canonical order) is later refunded for an ordinary reason (not a duplicate).
       await processRefund(db, stripeClient, orderA.id, RefundReason.GENERATION_FAILURE);
@@ -232,11 +238,11 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       // duplicate - Order A's own refund does not free up the canonical slot for a new payer.
       const [orderC] = await db
         .insert(orders)
-        .values({ screeningRequestId, state: OrderState.PENDING, priceCents: 999, currency: "usd", checkoutCreationIdempotencyKey: crypto.randomUUID() })
+        .values({ screeningRequestId, state: OrderState.PENDING, priceCents: 999, currency: "usd", checkoutCreationIdempotencyKey: crypto.randomUUID(), stripeCheckoutSessionId: `cs_test_dup_${crypto.randomUUID()}` })
         .returning();
       if (!orderC) throw new Error("setup failed");
 
-      const result = await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: orderC.id, eventId: `evt_orderC_duplicate_${RUN_ID}`, paymentIntentId: `pi_test_orderC_${RUN_ID}` }));
+      const result = await handleVerifiedWebhook(await completedEventFor({ orderId: orderC.id, eventId: `evt_orderC_duplicate_${RUN_ID}`, paymentIntentId: `pi_test_orderC_${RUN_ID}` }));
       expect(result.duplicateAnomaly).toBe(true);
 
       const reloadedC = await getOrderById(db, orderC.id);
@@ -255,7 +261,7 @@ describe.skipIf(!hasDb)("Unit 2B Order & Payment - live Neon integration", () =>
       await createCheckoutSession(db, stripeClient, { screeningRequestId, priceCents: 999, currency: "usd", successUrl: "https://x/success", cancelUrl: "https://x/cancel" });
       const [order] = await db.select().from(orders).where(eq(orders.screeningRequestId, screeningRequestId));
       if (!order) throw new Error("setup failed");
-      await handleVerifiedWebhook(makeCheckoutSessionCompletedEvent({ orderId: order.id }));
+      await handleVerifiedWebhook(await completedEventFor({ orderId: order.id }));
       return { orderId: order.id, screeningRequestId };
     }
 

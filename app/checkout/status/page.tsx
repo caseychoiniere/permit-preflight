@@ -27,9 +27,8 @@ import { Container } from "../../components/ui/Container.js";
 import { Card } from "../../components/ui/Card.js";
 import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
 import { ReportView, type Report } from "../../components/ReportView.js";
-import { GenerationPanel, RefundPanel } from "../../components/OrderStatusPanels.js";
-
-const POLL_INTERVAL_MS = 3000;
+import { GenerationPanel, PaymentWaitingPanel, RefundPanel } from "../../components/OrderStatusPanels.js";
+import { CONNECTION_TROUBLE_COPY, CONFIRMING_COPY, POLL_FAILURES_BEFORE_NOTICE, confirmingPhase, interpretStatusResponse, isTerminalStatus, pollIntervalMs, type CheckoutStatus } from "./status-helpers.js";
 
 type EmailDeliveryStatus = "EMAIL_PENDING" | "EMAIL_SENT" | "EMAIL_FAILED";
 
@@ -40,19 +39,12 @@ const EMAIL_STATUS_COPY: Record<EmailDeliveryStatus | "UNKNOWN", { text: string;
   EMAIL_FAILED: { text: "We generated your report successfully, but weren't able to email you a copy. Bookmark this page or download the PDF below to keep access to it.", tone: "warning" },
 };
 
-type Status =
-  | "PENDING"
-  | "PAYMENT_CONFIRMED"
-  | "REPORT_READY"
-  | "REFUND_PENDING"
-  | "REFUNDED"
-  | "REFUND_REQUIRES_SUPPORT"
-  | "EXPIRED"
-  | "RECONCILING"
-  | "NOT_FOUND";
+type Status = CheckoutStatus;
 
 const STATUS_COPY: Record<Status, string> = {
-  PENDING: "Confirming your payment...",
+  AWAITING_PAYMENT: "Waiting for your payment.",
+  // The wording of this state changes with how long it has lasted - see confirmingPhase; this is the first-seconds text.
+  CONFIRMING_PAYMENT: CONFIRMING_COPY.CONFIRMING,
   PAYMENT_CONFIRMED: "Payment received. Your report is being generated.",
   // Shown only as a brief fallback while the report itself is being fetched, or in the rare case
   // it can't be loaded here - the report content below is the primary REPORT_READY experience now.
@@ -61,12 +53,13 @@ const STATUS_COPY: Record<Status, string> = {
   REFUNDED: "Your refund has been completed.",
   REFUND_REQUIRES_SUPPORT: "Your refund needs manual review - please contact support.",
   EXPIRED: "This checkout session has expired.",
-  RECONCILING: "Confirming your payment...",
+  RECONCILING: CONFIRMING_COPY.CONFIRMING,
   NOT_FOUND: "We couldn't find your checkout - please start checkout again.",
 };
 
 const STATUS_TONE: Record<Status, BadgeTone> = {
-  PENDING: "info",
+  AWAITING_PAYMENT: "warning",
+  CONFIRMING_PAYMENT: "info",
   PAYMENT_CONFIRMED: "info",
   REPORT_READY: "success",
   REFUND_PENDING: "warning",
@@ -93,31 +86,72 @@ export default function CheckoutStatusPage() {
   const [status, setStatus] = useState<Status | "LOADING">("LOADING");
   // The order reference the status API returns only for a failed (refund) order - the report page normally carries it, but a failed order has no report.
   const [orderRef, setOrderRef] = useState<string | undefined>(undefined);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | undefined>(undefined);
+  // How long the order has been waiting on a payment (not yet confirmed), and how many polls in a row have failed.
+  const [waitingMs, setWaitingMs] = useState(0);
+  const [pollFailures, setPollFailures] = useState(0);
   const [report, setReport] = useState<ReportFetchState>("IDLE");
   // Whether the report fetch has already been kicked off - a ref, not the `report` state itself,
   // deliberately: see the bug this fixed (2026-08-28) below.
   const hasFetchedReportRef = useRef(false);
 
+  // The status poll: a chain of timeouts (never overlapping requests), gentler the longer a non-terminal wait lasts, stopping at a terminal status. A failed poll
+  // (network error, non-2xx, malformed body) is counted and retried, never treated as a status; after a few in a row the page says it is having trouble.
+  const pollNowRef = useRef<() => void>(() => undefined);
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight = false;
+    const startedAt = Date.now();
+    let waitingSince: number | null = null;
+
     async function poll() {
+      if (inFlight || cancelled) return;
+      inFlight = true;
+      let outcome: ReturnType<typeof interpretStatusResponse> = { kind: "FAILURE" };
       try {
         const res = await fetch("/api/checkout/status", { cache: "no-store" });
-        const result = (await res.json()) as { status: Status; orderReference?: string };
-        if (!cancelled) {
-          setStatus(result.status);
-          setOrderRef(typeof result.orderReference === "string" ? result.orderReference : undefined);
+        let body: unknown = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
         }
+        outcome = interpretStatusResponse(res.ok, body);
       } catch {
-        // Transient network error - the next poll tick retries; never surfaces a raw error here.
+        outcome = { kind: "FAILURE" };
       }
+      inFlight = false;
+      if (cancelled) return;
+      if (outcome.kind === "FAILURE") {
+        setPollFailures((n) => n + 1);
+      } else {
+        const { view } = outcome;
+        setPollFailures(0);
+        setStatus(view.status);
+        setOrderRef(view.orderReference);
+        setCheckoutUrl(view.checkoutUrl);
+        const waiting = view.status === "CONFIRMING_PAYMENT" || view.status === "RECONCILING" || view.status === "AWAITING_PAYMENT";
+        if (waiting) {
+          waitingSince ??= Date.now();
+          setWaitingMs(Date.now() - waitingSince);
+        } else {
+          waitingSince = null;
+          setWaitingMs(0);
+        }
+        if (isTerminalStatus(view.status)) return;
+      }
+      timer = setTimeout(() => void poll(), pollIntervalMs(Date.now() - startedAt));
     }
 
+    pollNowRef.current = () => {
+      if (timer) clearTimeout(timer);
+      void poll();
+    };
     void poll();
-    const interval = setInterval(() => void poll(), POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
@@ -181,6 +215,8 @@ export default function CheckoutStatusPage() {
   // The report is being built: show the generation experience from payment received until the report itself has loaded. (Failure is its own state below: the
   // animation stops and the order's existing refund recovery is explained - the customer is never asked to pay again.)
   const generating = status === "PAYMENT_CONFIRMED" || (status === "REPORT_READY" && !loadedReport && report !== "NOT_FOUND");
+  // Payment not yet recorded: the report-generation animation must not appear until the payment is actually confirmed (it stays tied to PAYMENT_CONFIRMED).
+  const confirming = status === "CONFIRMING_PAYMENT" || status === "RECONCILING";
   const failedAndRefunding = status === "REFUND_PENDING" || status === "REFUNDED" || status === "REFUND_REQUIRES_SUPPORT";
 
   return (
@@ -190,9 +226,24 @@ export default function CheckoutStatusPage() {
         <div className="mt-4 flex items-center gap-3">
           {status !== "LOADING" && <Badge tone={STATUS_TONE[status]}>{status.replace(/_/g, " ")}</Badge>}
           <p role="status" className="text-sm text-slate-600">
-            {status === "LOADING" ? "Loading..." : loadedReport ? "Report ready." : STATUS_COPY[status]}
+            {status === "LOADING" ? "Loading..." : loadedReport ? "Report ready." : confirming ? CONFIRMING_COPY[confirmingPhase(waitingMs)] : STATUS_COPY[status]}
           </p>
         </div>
+        {(confirming || status === "AWAITING_PAYMENT") && (
+          <PaymentWaitingPanel
+            kind={status === "AWAITING_PAYMENT" ? "AWAITING_PAYMENT" : "CONFIRMING_PAYMENT"}
+            takingLonger={confirming && confirmingPhase(waitingMs) === "TAKING_LONGER"}
+            orderReference={orderRef}
+            checkoutUrl={checkoutUrl}
+            supportEmail={process.env["NEXT_PUBLIC_SUPPORT_EMAIL"]}
+            onRecheck={() => pollNowRef.current()}
+          />
+        )}
+        {pollFailures >= POLL_FAILURES_BEFORE_NOTICE && (
+          <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {CONNECTION_TROUBLE_COPY}
+          </p>
+        )}
         {generating && <GenerationPanel ready={status === "REPORT_READY"} />}
         {failedAndRefunding && <RefundPanel status={status as "REFUND_PENDING" | "REFUNDED" | "REFUND_REQUIRES_SUPPORT"} orderReference={orderRef} supportEmail={process.env["NEXT_PUBLIC_SUPPORT_EMAIL"]} />}
       </Card>

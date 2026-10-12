@@ -1988,3 +1988,16 @@ Reviewer QA (decision 1d07201b-2fbf-48c3-8f4b-d1ead1bbd235): ESCALATE / RESERVED
 **Context**: Next: paid-path certification when the founder's test payments arrive; continue manual-QA feedback loop.
 
 ---
+
+## Launch-Blocking Checkout Defect: Paid Orders Stuck at "Confirming your payment…"
+**Timestamp**: 2026-10-12T19:10:00Z
+**User Input**: "LAUNCH-BLOCKING BUG - ALL PROJECT TYPES STUCK AT: PENDING \"Confirming your payment…\" ... Treat this as a shared checkout/payment-status defect, not a project-type issue. Do NOT continue zoning expansion until this is fixed. ... 1. REPRODUCE AND TRACE ONE ORDER END TO END ... 10. CHECKPOINT ... Continue until the real browser flow works."
+**AI Response**:
+- **Trace (order ac0676ee-87aa-4e52-9d05-2d6b9e455220, shed):** Stripe session `cs_test_a1CZQ3Bc…` is `complete/paid`, PaymentIntent `pi_3UPoMdGVwmYH0si808C1ZKvT`, event `evt_1UPoMhGVwmYH0si861fFgkKM` created 11:54:26 PDT; success URL `/checkout/status` (cookie-based); app: order `PENDING`, `paidAt` null, no `processed_stripe_events` row, and no `stripe listen` process running. First divergence: Stripe -> webhook delivery. Signing secret matched the CLI's current secret (not the cause). The older LR1 garage session `cs_test_a1s90c7P…` was `expired/unpaid` (24 h), also shown as "confirming".
+- **Code defects:** status was a pure DB read with no Stripe check and no cron backstop for `PENDING` orders; one ambiguous `PENDING` guest status.
+- **Fix:** `reconcileOrderWithStripe` (applies the webhook's own transaction via deterministic ledger id `reconcile:<session>`), called from the status read (throttled) and cron check 6; guest statuses `AWAITING_PAYMENT` and `CONFIRMING_PAYMENT` replace `PENDING`; benign concurrent-confirmation race no longer a 500; shared `startFollowUpWorkflow`; status page rewritten (strict response interpretation, bounded recovery wording, Check again, connection-trouble notice, no animation before payment confirmed); `npm run stripe:listen` (verifies secret match, test keys only). Documented in `aidlc-docs/operations/checkout-payment-state-machine.md`.
+- **Live recovery:** the four stranded paid orders (shed, deck, 2 ADU) were confirmed through the real status API with their checkout cookies; shed and deck reports COMPLETE with report route 200, PDF 200, email sent.
+- **Tests:** unit 1735; new live-Neon integration (18) for unpaid/expired, missing webhook, duplicate/late/raced webhooks, outage, throttle, all five project types.
+**Context**: No pricing, payment-amount, refund-policy or credential change. Fresh real-browser retest needs a new Stripe test payment from the founder.
+
+---

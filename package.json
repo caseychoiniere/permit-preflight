@@ -13,6 +13,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
+    "stripe:listen": "bash scripts/stripe-listen.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:enforce-vacant-land": "tsx scripts/enforce-vacant-land-migration.ts",

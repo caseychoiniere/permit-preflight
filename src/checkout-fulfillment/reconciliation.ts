@@ -21,7 +21,8 @@ import {
   DEFAULT_STALE_IN_PROGRESS_RECLAIM_THRESHOLD_MS,
   ReportGenerationJobState,
 } from "../report-generation-job/repository.js";
-import { listOrdersNeedingRefundResubmission } from "../order-payment/repository.js";
+import { listOrdersNeedingRefundResubmission, listStalePendingOrders, markPendingOrderChecked, reconcileOrderWithStripe, type WebhookFollowUpWorkflow } from "../order-payment/repository.js";
+import { createStripeClient, type StripeClient } from "../order-payment/stripe-client.js";
 import { listStaleGuestDeliveries, deliverGuestReportAccess } from "../report-access/repository.js";
 import { createResendClient } from "../email-delivery/resend-client.js";
 import { OrderState, RefundReason } from "../order-payment/types.js";
@@ -33,6 +34,7 @@ import { OrderState, RefundReason } from "../order-payment/types.js";
 // workflows and every step were discovered correctly (see the Code Generation README).
 import { reportGenerationWorkflow } from "../workflows/report-generation-workflow";
 import { processRefundWorkflow } from "../workflows/refund-workflow";
+import { startFollowUpWorkflow } from "./follow-up";
 import { logger } from "../shared/logger.js";
 
 export interface ReconciliationSummary {
@@ -41,6 +43,43 @@ export interface ReconciliationSummary {
   resumedStaleRefunds: number;
   redeliveredGuestReports: number;
   reclaimedStaleInProgressJobs: number;
+  /** Orders Stripe reports paid whose webhook never confirmed them (check 6). */
+  confirmedMissedPayments: number;
+  /** Orders whose Checkout Session Stripe reports expired unpaid (check 6). */
+  expiredAbandonedOrders: number;
+}
+
+/** A webhook normally lands within seconds; two minutes without one is a miss. No maximum age: a paid Checkout Session is recoverable however old, and the pending set drains (paid -> PAID, expired -> EXPIRED). */
+export const STALE_PENDING_ORDER_MIN_AGE_MS = 2 * 60 * 1000;
+export const STALE_PENDING_ORDER_BATCH = 50;
+
+/**
+ * Check 6 (2026-10-12, launch-blocking checkout defect): PENDING Orders past the webhook grace period are asked about at Stripe, least-recently-checked first so a
+ * large unresolved backlog cannot starve later orders (each checked-and-unresolved order goes to the back of the queue). A paid session is confirmed by the same
+ * transaction the webhook runs (so the fulfillment workflow starts exactly once whichever path gets there first); an expired one is closed out. Injectable for tests.
+ */
+export async function reconcileStalePendingOrders(
+  db: Db,
+  stripeClient: Pick<StripeClient, "retrieveCheckoutSession">,
+  startWorkflow: (work: WebhookFollowUpWorkflow) => Promise<void> = startFollowUpWorkflow,
+  options: { minAgeMs?: number; limit?: number } = {}
+): Promise<{ confirmed: number; expired: number; checked: number }> {
+  const stale = await listStalePendingOrders(db, options.minAgeMs ?? STALE_PENDING_ORDER_MIN_AGE_MS, options.limit ?? STALE_PENDING_ORDER_BATCH);
+  let confirmed = 0;
+  let expired = 0;
+  for (const order of stale) {
+    const result = await reconcileOrderWithStripe(db, stripeClient, order);
+    if (result.outcome === "CONFIRMED") {
+      confirmed++;
+      logger.info("PAYMENT_RECONCILIATION_ORDER_CONFIRMED", { orderId: order.id });
+      if (result.startWorkflow) await startWorkflow(result.startWorkflow);
+    } else if (result.outcome === "EXPIRED") {
+      expired++;
+    } else {
+      await markPendingOrderChecked(db, order.id);
+    }
+  }
+  return { confirmed, expired, checked: stale.length };
 }
 
 /**
@@ -89,7 +128,19 @@ export async function runReconciliation(): Promise<ReconciliationSummary> {
     resumedStaleRefunds: 0,
     redeliveredGuestReports: 0,
     reclaimedStaleInProgressJobs: 0,
+    confirmedMissedPayments: 0,
+    expiredAbandonedOrders: 0,
   };
+
+  // Check 6: PENDING Orders Stripe may already have settled. Run first - a payment the webhook missed is the customer-visible emergency; the rest follow from it.
+  try {
+    const pending = await reconcileStalePendingOrders(db, createStripeClient());
+    summary.confirmedMissedPayments = pending.confirmed;
+    summary.expiredAbandonedOrders = pending.expired;
+  } catch (err) {
+    // A missing Stripe key or an outage must not stop the other checks.
+    logger.error("PAYMENT_RECONCILIATION_STRIPE_UNAVAILABLE", { reason: err instanceof Error ? err.message : "Unknown error." });
+  }
 
   // Check 1: ReportGenerationJob rows QUEUED past the grace period.
   const stuckJobIds = await listStuckQueuedJobIds(db);

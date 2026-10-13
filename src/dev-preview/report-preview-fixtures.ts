@@ -15,6 +15,7 @@
  * uses. Never import this module from customer-facing code.
  */
 
+import { previewExplanation } from "./preview-explanation.js";
 import { evaluateProject } from "../regulatory-rules-engine/evaluate.js";
 import { assembleFindingsToPersist, permitRequirementEvidenceEntry, existingStructureCoverageEvidenceEntry, shedLotCoverageEvidenceEntry } from "../report-generation-orchestrator/pipeline.js";
 import { buildExistingStructureCoverageFact } from "../property-intelligence/existing-structures.js";
@@ -156,7 +157,7 @@ export interface PreviewReport {
   id: string;
   findings: ReturnType<typeof assembleFindingsToPersist>;
   evidence: { factType: string; value?: unknown; provenance: { qualityCaveat?: string } }[];
-  explanation: null;
+  explanation: unknown;
   generatedAt: string;
 }
 
@@ -185,7 +186,7 @@ export function buildPreviewReport(scenario: PreviewScenarioDefinition): Preview
   if (permitEntry) evidence.push(permitEntry);
   const coverageEntry = shedLotCoverageEvidenceEntry(outcome);
   if (coverageEntry) evidence.push(coverageEntry);
-  return { id: `preview-${scenario.id}`, findings: assembleFindingsToPersist(outcome), evidence, explanation: null, generatedAt: "2026-01-01T00:00:00.000Z" };
+  return { id: `preview-${scenario.id}`, findings: assembleFindingsToPersist(outcome), evidence, explanation: previewExplanation(assembleFindingsToPersist(outcome)), generatedAt: "2026-01-01T00:00:00.000Z" };
 }
 
 /** Shape `renderReportHtml` reads (EvidenceReportArtifactRow) - constructed from the same

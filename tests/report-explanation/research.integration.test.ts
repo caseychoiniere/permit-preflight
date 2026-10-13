@@ -32,7 +32,7 @@ describe.skipIf(!hasKey)("Report Explanation live Anthropic integration", () => 
     const result = await explainFindings(sampleFindings, ai);
     expect(result.outcome).toBe("AVAILABLE");
     if (result.outcome === "AVAILABLE") {
-      expect(result.explanation.text.length).toBeGreaterThan(0);
+      expect(result.explanation.summary.length).toBeGreaterThan(0);
     }
   }, 30000);
 });

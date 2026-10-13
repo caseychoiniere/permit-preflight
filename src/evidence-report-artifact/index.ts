@@ -4,6 +4,7 @@
  * new, separate row.
  */
 
+import type { Explanation } from "../report-explanation/structured.js";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { evidenceReportArtifacts, type EvidenceReportArtifactRow } from "../db/schema.js";
@@ -20,10 +21,8 @@ export interface EvidenceEntry {
   provenance: Record<string, unknown>;
 }
 
-export interface ExplanationResult {
-  text: string;
-  referencedFindingIds: string[];
-}
+/** The stored explanation: the structured version-2 shape for new reports (see report-explanation/structured.ts). */
+export type ExplanationResult = Explanation;
 
 export interface CreateArtifactInput {
   screeningRequestId: string;

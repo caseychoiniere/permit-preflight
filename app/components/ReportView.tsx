@@ -9,6 +9,7 @@
  * decides how it is allowed to obtain that data.
  */
 
+import { ExplanationSections } from "./ExplanationSections.js";
 import { ADU_DECLARED_NOTE, ADU_HEADLINE_LABEL, ADU_SCREENING_NOTE, ADU_SECTION_TITLES, type AduFeasibilityDisplay } from "../../src/report-generation-orchestrator/adu-display.js";
 import { uncoveredConstraintNotice } from "../../src/regulatory-rules-engine/zoning-applicability.js";
 import { ReportMap } from "./ReportMap.js";
@@ -36,7 +37,8 @@ export interface Report {
   id: string;
   findings: Finding[];
   evidence: EvidenceEntry[];
-  explanation: { text: string; referencedFindingIds: string[] } | null;
+  /** Structured (version 2) for new reports, `{ text, referencedFindingIds }` for older ones - app/components/ExplanationSections.tsx renders both. */
+  explanation: unknown;
   generatedAt: string;
 }
 
@@ -671,9 +673,7 @@ export function ReportView({ report, pdfHref, headingLevel = "h2" }: Props) {
       )}
 
       <h3 className="mb-3 text-base font-semibold text-slate-900">Explanation</h3>
-      <p className="mb-8 text-sm text-slate-600">
-        {report.explanation ? report.explanation.text : <em>Plain-language synthesis is temporarily unavailable.</em>}
-      </p>
+      <ExplanationSections explanation={report.explanation} findings={report.findings} />
 
       {caveats.length > 0 && (
         <>

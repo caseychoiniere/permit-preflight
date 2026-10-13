@@ -5,6 +5,7 @@
  * assembleDeckEvidence. Never import this from customer-facing code.
  */
 
+import { previewExplanation } from "./preview-explanation.js";
 import { evaluateDeck } from "../regulatory-rules-engine/evaluate-deck.js";
 import type { DeckProjectDetails } from "../regulatory-rules-engine/deck-types.js";
 import { assembleDeckEvidence } from "../report-generation-orchestrator/deck-evidence.js";
@@ -21,7 +22,7 @@ export interface DeckPreviewReport {
   id: string;
   findings: Finding[];
   evidence: { factType: string; value?: unknown; provenance: { qualityCaveat?: string } }[];
-  explanation: null;
+  explanation: unknown;
   generatedAt: string;
 }
 
@@ -121,7 +122,7 @@ export function buildDeckReportForProject(project: DeckProjectDetails, id = "cus
     id: `preview-${id}`,
     findings: outcome.findings,
     evidence: [{ factType: "environmental-constraints", value: CLEAR_ECA, provenance: {} }, ...assembleDeckEvidence(outcome)] as DeckPreviewReport["evidence"],
-    explanation: null,
+    explanation: previewExplanation(outcome.findings),
     generatedAt: "2026-01-01T00:00:00.000Z",
   };
 }

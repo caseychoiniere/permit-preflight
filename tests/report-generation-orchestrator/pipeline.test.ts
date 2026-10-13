@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  explainWithDurableRefs,
   selectFindingsForExplanation,
   assembleFindingsToPersist,
   deriveDwellingSeparationEvidenceGapReason,
@@ -14,6 +15,7 @@ import {
   deriveIsInRequiredSetback,
   type RequiredSetbackDerivationContext,
 } from "../../src/report-generation-orchestrator/pipeline.js";
+import { explainFindings } from "../../src/report-explanation/index.js";
 import { evaluateProject } from "../../src/regulatory-rules-engine/evaluate.js";
 import { MultipleFrontageAnswer } from "../../src/screening-request/types.js";
 import type { Finding } from "../../src/regulatory-rules-engine/types.js";
@@ -454,5 +456,33 @@ describe("assembleFindingsToPersist - P2b accessoryHeightLimitFinding survives t
     expect(outcome.accessoryHeightLimitFinding).toBeUndefined();
     expect(assembleFindingsToPersist(outcome)).toEqual(outcome.findings);
     expect(assembleFindingsToPersist(outcome).some((f) => f.subject === "Accessory structure height limit")).toBe(false);
+  });
+});
+
+
+describe("explainWithDurableRefs (2026-10-13): explanation items trace to the exact stored finding", () => {
+  const failing: Finding = { subject: "Setback", classification: "KNOWN", complianceOutcome: "FAIL", explanationBasis: "Side setback is 2 ft; 5 ft is required.", supportingEvidence: [] };
+  const passing: Finding = { subject: "Setback", classification: "KNOWN", complianceOutcome: "PASS", explanationBasis: "Front setback is 20 ft.", supportingEvidence: [] };
+  const eca: Finding = { subject: "Critical area: wetlands", classification: "REQUIRES_VERIFICATION", explanationBasis: "Mapped wetland nearby.", supportingEvidence: [] };
+  const height: Finding = { subject: "Height", classification: "REQUIRES_VERIFICATION", explanationBasis: "Height could not be confirmed.", supportingEvidence: [] };
+  // The stored array keeps the critical-area finding, which the model never sees, so the model's indices differ from the stored ones.
+  const persisted = [passing, eca, failing, height];
+
+  it("the stored evidenceRefs index the artifact's findings array, not the filtered list the model was given", async () => {
+    const deps = { generateExplanation: (explained: Finding[]) => explainFindings(explained, { completeStructured: async () => ({ summary: "Context.", notes: [] }) }) };
+    const result = await explainWithDurableRefs(deps as never, "job-1", selectFindingsForExplanation(persisted), persisted);
+    expect(result.outcome).toBe("AVAILABLE");
+    if (result.outcome !== "AVAILABLE") return;
+    const e = result.explanation;
+    expect(e.issues[0]!.evidenceRefs).toEqual([2]);
+    expect(persisted[e.issues[0]!.evidenceRefs[0]!]).toBe(failing); // the FAIL "Setback", not the PASS one that shares its subject
+    expect(e.requiresVerification[0]!.evidenceRefs).toEqual([3]);
+    expect(persisted[e.requiresVerification[0]!.evidenceRefs[0]!]).toBe(height);
+  });
+  it("an unavailable explanation stays unavailable, and no client configured degrades without failing", async () => {
+    const down = await explainWithDurableRefs({ generateExplanation: async () => ({ outcome: "UNAVAILABLE", reason: "down" }) } as never, "job-1", persisted, persisted);
+    expect(down).toEqual({ outcome: "UNAVAILABLE", reason: "down" });
+    const none = await explainWithDurableRefs({} as never, "job-1", persisted, persisted);
+    expect(none.outcome).toBe("UNAVAILABLE");
   });
 });

@@ -1,4 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { ReportView } from "../../app/components/ReportView.js";
 import { renderReportHtml } from "../../src/report-pdf-rendering/render.js";
 import type { EvidenceReportArtifactRow } from "../../src/db/schema.js";
 
@@ -205,5 +208,44 @@ describe("renderReportHtml - Capability C existing-coverage caveat (BR-U6B-11 pa
   });
   it("omits the caveat paragraph when no existing-structure-coverage entry exists", () => {
     expect(renderReportHtml(fakeArtifact({ evidence: [coverageEntry] }))).not.toContain("over-counts");
+  });
+});
+
+describe("structured explanation: the web report and the PDF render the same sections (2026-10-13)", () => {
+  const norm = (h: string) => h.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  const explanation = {
+    version: 2 as const,
+    summary: "This screening found 1 requirement this proposal does not currently meet and 2 more that need verification. 3 requirements appear to be met. The details are below.",
+    satisfied: [{ title: "ADU use", text: "ADUs are allowed in this zoning context.", evidenceRefs: [0], subjects: ["Accessory dwelling units allowed on this lot"] }],
+    issues: [{ title: "Separation", text: "The ADU is 3.2 ft from the principal structure; 5 ft is required.", evidenceRefs: [1], subjects: ["Separation from the principal structure"] }],
+    requiresVerification: [{ title: "Size", text: "Maximum ADU size could not be confirmed.", evidenceRefs: [2], subjects: ["ADU size"] }],
+    additionalConsiderations: [],
+    aboutScreening: "This is an automated screening. SDCI makes the final determination.",
+  };
+  it("a full artifact renders every explanation heading, item and the about text in both, in the same order, with no empty section and no markdown", () => {
+    const artifact = fakeArtifact({ explanation });
+    const pdf = norm(renderReportHtml(artifact));
+    const web = norm(renderToStaticMarkup(createElement(ReportView, { report: { id: "a", findings: [], evidence: [], explanation, generatedAt: "2026-01-01T00:00:00Z" } as never })));
+    const expected = ["Overall assessment", "Requirements that appear satisfied", "ADU use", "Issues that need attention", "Separation", "Requires verification", "Maximum ADU size could not be confirmed.", "About this screening", "SDCI makes the final determination."];
+    for (const out of [web, pdf]) {
+      let at = -1;
+      for (const piece of expected) {
+        const i = out.indexOf(piece, at + 1);
+        expect(i, piece).toBeGreaterThan(at);
+        at = i;
+      }
+      expect(out).not.toContain("Other requirements to be aware of");
+      expect(out).not.toContain("**");
+    }
+  });
+  it("a report generated before the structured contract still renders (as sections, not one escaped blob) in both", () => {
+    const legacy = { text: "**Good News**\n\nSetbacks are met.\n\n**Issues That Need Attention**\n\n- Too close to the house.", referencedFindingIds: [] };
+    const pdf = norm(renderReportHtml(fakeArtifact({ explanation: legacy })));
+    const web = norm(renderToStaticMarkup(createElement(ReportView, { report: { id: "a", findings: [], evidence: [], explanation: legacy, generatedAt: "2026-01-01T00:00:00Z" } as never })));
+    for (const out of [web, pdf]) {
+      expect(out).toContain("Issues That Need Attention");
+      expect(out).toContain("Too close to the house.");
+      expect(out).not.toContain("**");
+    }
   });
 });

@@ -5,6 +5,7 @@
  * production assembleFenceEvidence. Never import this from customer-facing code.
  */
 
+import { previewExplanation } from "./preview-explanation.js";
 import { evaluateFence } from "../regulatory-rules-engine/evaluate-fence.js";
 import type { FenceProjectDetails } from "../regulatory-rules-engine/fence-types.js";
 import { assembleFenceEvidence } from "../report-generation-orchestrator/fence-evidence.js";
@@ -21,7 +22,7 @@ export interface FencePreviewReport {
   id: string;
   findings: Finding[];
   evidence: { factType: string; value?: unknown; provenance: { qualityCaveat?: string } }[];
-  explanation: null;
+  explanation: unknown;
   generatedAt: string;
 }
 
@@ -128,7 +129,7 @@ export function buildFenceReportForProject(project: FenceProjectDetails, id = "c
     id: `preview-${id}`,
     findings: outcome.findings,
     evidence: [{ factType: "environmental-constraints", value: CLEAR_ECA, provenance: {} }, ...assembleFenceEvidence(outcome)] as FencePreviewReport["evidence"],
-    explanation: null,
+    explanation: previewExplanation(outcome.findings),
     generatedAt: "2026-01-01T00:00:00.000Z",
   };
 }

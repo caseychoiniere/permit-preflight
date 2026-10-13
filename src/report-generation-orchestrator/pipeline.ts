@@ -69,6 +69,7 @@ import { LifecycleState, toApplicabilityScope } from "../regulatory-rule-governa
 import type { RegulatoryRule, InferencePolicy } from "../regulatory-rule-governance/types.js";
 import { CandidateParcelSource, ParcelIdentityProvenance, ParcelResolutionStatus } from "../parcel-resolution/types.js";
 import type { ExplanationResult } from "../report-explanation/index.js";
+import { remapEvidenceRefs } from "../report-explanation/structured.js";
 import { createEvidenceReportArtifact } from "../evidence-report-artifact/index.js";
 import { markJobComplete, markJobFailed } from "../report-generation-job/repository.js";
 import { withStageTiming } from "./stage-timing.js";
@@ -140,6 +141,22 @@ export function assembleFindingsToPersist(outcome: { findings: Finding[]; access
  */
 export function selectFindingsForExplanation(findings: Finding[]): Finding[] {
   return findings.filter((f) => !isCriticalAreaFinding(f.subject));
+}
+
+/**
+ * Report Explanation for one report, with durable evidence references. The model is given `explained` (which can be a filtered subset of what is persisted, in generation
+ * order); its items' `evidenceRefs` come back as indices into that list, which is transient. They are remapped here to indices into `persisted`, the findings array
+ * stored in the immutable artifact, so each explanation item stays traceable to the exact stored finding. Never fails the job (BR-U2-8): unavailable stays unavailable.
+ */
+export async function explainWithDurableRefs(
+  deps: PipelineDependencies,
+  jobId: string,
+  explained: Finding[],
+  persisted: Finding[]
+): Promise<ExplanationResult> {
+  if (!deps.generateExplanation) return { outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." };
+  const result = await withStageTiming("REPORT_EXPLANATION", jobId, () => deps.generateExplanation!(explained));
+  return result.outcome === "AVAILABLE" ? { outcome: "AVAILABLE", explanation: remapEvidenceRefs(result.explanation, explained, persisted) } : result;
 }
 
 /** Maintenance correction (2026-09-15, RC-4/RC-7) - the exact, exhaustive set of reasons
@@ -1031,9 +1048,7 @@ export async function runReportGenerationPipeline(db: Db, job: ReportGenerationJ
 
     // Report Explanation (AI, optional) - never fails the job on unavailability (BR-U2-8).
     const findingsForExplanation = selectFindingsForExplanation(findingsToPersist);
-    const explanationResult = deps.generateExplanation
-      ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(findingsForExplanation))
-      : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+    const explanationResult = await explainWithDurableRefs(deps, job.id, findingsForExplanation, findingsToPersist);
 
     // Evidence & Report Artifact - immutable, generates the first access credential. `value` is
     // included (not just provenance) so ReportMap can present this snapshot's actual geometry
@@ -1134,9 +1149,7 @@ async function runFencePipeline(
     evaluateFence({ project, candidateActiveRules: withExtraRules(activeRuleRows, ProjectType.FENCE, deps), ecaFindings, zoningContext })
   );
 
-  const explanationResult = deps.generateExplanation
-    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
-    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+  const explanationResult = await explainWithDurableRefs(deps, job.id, outcome.findings, outcome.findings);
 
   const evidence = [
     ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
@@ -1183,9 +1196,7 @@ async function runDeckPipeline(
 
   const outcome = await withStageTiming("RULES_ENGINE", job.id, async () => evaluateDeck({ project, candidateActiveRules: withExtraRules(activeRuleRows, ProjectType.DECK, deps), zoningContext }));
 
-  const explanationResult = deps.generateExplanation
-    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(outcome.findings))
-    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+  const explanationResult = await explainWithDurableRefs(deps, job.id, outcome.findings, outcome.findings);
 
   const evidence = [
     ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
@@ -1441,9 +1452,7 @@ async function runAduPipeline(
   );
 
   const findingsForExplanation = selectFindingsForExplanation(outcome.findings);
-  const explanationResult = deps.generateExplanation
-    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!(findingsForExplanation))
-    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+  const explanationResult = await explainWithDurableRefs(deps, job.id, findingsForExplanation, outcome.findings);
 
   const evidence = [
     ...propertyContext.facts.map((f) => ({ factType: f.factType, value: f.value, provenance: f.provenance as unknown as Record<string, unknown> })),
@@ -1585,9 +1594,8 @@ async function runVacantLandPipeline(
     )
   );
 
-  const explanationResult = deps.generateExplanation
-    ? await withStageTiming("REPORT_EXPLANATION", job.id, () => deps.generateExplanation!([...outcome.buildabilityFindings, ...outcome.diligenceRisks]))
-    : ({ outcome: "UNAVAILABLE", reason: "No Report Explanation client configured." } as const);
+  const vacantLandFindings = [...outcome.buildabilityFindings, ...outcome.diligenceRisks];
+  const explanationResult = await explainWithDurableRefs(deps, job.id, vacantLandFindings, vacantLandFindings);
 
   const evidence = [
     { factType: "vacant-land-screening-intent", value: snapshot.screeningIntent, provenance: {} },
@@ -1599,7 +1607,7 @@ async function runVacantLandPipeline(
     createEvidenceReportArtifact(db, {
       screeningRequestId,
       reportGenerationJobId: job.id,
-      findings: [...outcome.buildabilityFindings, ...outcome.diligenceRisks],
+      findings: vacantLandFindings,
       evidence,
       explanation: explanationResult.outcome === "AVAILABLE" ? explanationResult.explanation : undefined,
       ruleVersionsUsed: activeVacantLandRuleRows.map((r) => r.id),

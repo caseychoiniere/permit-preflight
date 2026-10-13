@@ -8,6 +8,7 @@
  * ANTHROPIC_API_KEY, never run here) - this file only ever fakes fetch, never calls the real API.
  */
 
+import { deterministicSummary } from "../../src/report-explanation/structured.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateReportExplanation } from "../../src/report-explanation/anthropic-wiring.js";
 import type { Finding } from "../../src/regulatory-rules-engine/types.js";
@@ -65,7 +66,7 @@ describe("generateReportExplanation (deterministic, no real network)", () => {
     process.env["ANTHROPIC_API_KEY"] = "sk-ant-test-only-not-a-real-key";
     const fakeFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
       new Response(
-        JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ text: "Plain-language explanation.", referencedFindingIds: ["0"] }) }] }),
+        JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ summary: "The rear setback meets the required minimum.", notes: [] }) }] }),
         { status: 200, headers: { "content-type": "application/json" } }
       )
     );
@@ -76,7 +77,9 @@ describe("generateReportExplanation (deterministic, no real network)", () => {
 
     expect(result.outcome).toBe("AVAILABLE");
     if (result.outcome === "AVAILABLE") {
-      expect(result.explanation.text).toBe("Plain-language explanation.");
+      // The deterministic result leads; the model's (grounded) context paragraph follows it.
+      expect(result.explanation.summary).toBe(`${deterministicSummary(sampleFindings)}\n\nThe rear setback meets the required minimum.`);
+      expect(result.explanation.version).toBe(2);
     }
     expect(fakeFetch).toHaveBeenCalledTimes(1);
     // The request itself carries the key (as it must, to authenticate to Anthropic) - confirming

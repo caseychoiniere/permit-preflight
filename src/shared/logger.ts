@@ -21,6 +21,7 @@ export type LogEvent =
   | "PAYMENT_RECONCILIATION_ORDER_CONFIRMED"
   | "PAYMENT_SESSION_ORDER_MISMATCH"
   | "CHECKOUT_STATUS_READ_FAILED"
+  | "REPORT_EXPLANATION_ADJUSTED"
   // Unit 2 additions (NFR Design Pattern 4 / Infrastructure Design's required event list). Never
   // include a raw access token, tokenHash, or any credential value in `detail` for these events.
   | "STAGE_TIMING"

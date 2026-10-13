@@ -26,6 +26,7 @@
  * existing external-verification-tracker item).
  */
 
+import { explanationHtml } from "./explanation-html.js";
 import { ADU_DECLARED_NOTE, ADU_HEADLINE_LABEL, ADU_SCREENING_NOTE, ADU_SECTION_TITLES, type AduFeasibilityDisplay } from "../report-generation-orchestrator/adu-display.js";
 import { uncoveredConstraintNotice } from "../regulatory-rules-engine/zoning-applicability.js";
 import type { EvidenceReportArtifactRow } from "../db/schema.js";
@@ -119,7 +120,6 @@ function coveragePercentForPdf(estimatedCoverageSqFt: number, parcelAreaSqFt: nu
  * prototype's minimal PDF template, which omits the map entirely rather than fake one). */
 export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   const findings = artifact.findings as Finding[];
-  const explanation = artifact.explanation as { text: string } | null;
   // Unit 6B Capability B - report/PDF consistency: the same "shed-permit-requirement" evidence
   // entry pipeline.ts adds (present only once evaluateProject's dormancy gate is satisfied) is
   // rendered here as the complete block, matching ReportView.tsx's web section element-for-element
@@ -338,7 +338,7 @@ export function renderReportHtml(artifact: EvidenceReportArtifactRow): string {
   ${uncoveredHtml}
   ${permitHtml}
   ${lotCoverageHtml}
-  ${explanation ? `<h2>Explanation</h2><p>${escapeHtml(explanation.text)}</p>` : "<h2>Explanation</h2><p><em>Plain-language synthesis is temporarily unavailable.</em></p>"}
+  ${explanationHtml(artifact.explanation, findings)}
 </body>
 </html>`;
 }

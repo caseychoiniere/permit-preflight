@@ -6,6 +6,7 @@
  * this from customer-facing code.
  */
 
+import { previewExplanation } from "./preview-explanation.js";
 import { evaluateAdu } from "../regulatory-rules-engine/evaluate-adu.js";
 import { AduRuleType } from "../regulatory-rules-engine/adu-types.js";
 import type { AduProjectDetails, AduSiteFacts } from "../regulatory-rules-engine/adu-types.js";
@@ -66,7 +67,7 @@ export interface AduPreviewReport {
   id: string;
   findings: Finding[];
   evidence: { factType: string; value?: unknown; provenance: { qualityCaveat?: string } }[];
-  explanation: null;
+  explanation: unknown;
   generatedAt: string;
 }
 
@@ -246,7 +247,7 @@ export function buildAduPreviewReport(scenario: AduPreviewScenarioDefinition): A
     id: `preview-${scenario.id}`,
     findings: outcome.findings,
     evidence: [{ factType: "environmental-constraints", value: site.ecaFindings, provenance: {} }, ...assembleAduEvidence(outcome)] as AduPreviewReport["evidence"],
-    explanation: null,
+    explanation: previewExplanation(outcome.findings),
     generatedAt: "2026-01-01T00:00:00.000Z",
   };
 }

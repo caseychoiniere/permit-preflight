@@ -64,9 +64,10 @@ const STEPS: { key: Step; label: string }[] = [
 function StepTracker({ step, steps = STEPS }: { step: Step; steps?: { key: Step; label: string }[] }) {
   const currentIndex = steps.findIndex((s) => s.key === step);
   return (
-    <ol className="mb-8 flex items-center gap-2 text-xs font-medium text-slate-400 sm:text-sm">
+    <ol className="mb-8 flex w-full items-center gap-2 text-xs font-medium text-slate-400 sm:text-sm">
       {steps.map((s, i) => (
-        <li key={s.key} className="flex items-center gap-2">
+        // Every step but the last grows to fill its share of the row (with its connector), so the tracker spans the full card width at any number of steps.
+        <li key={s.key} className={i < steps.length - 1 ? "flex flex-1 items-center gap-2" : "flex items-center"}>
           <span
             className={
               i < currentIndex
@@ -89,7 +90,7 @@ function StepTracker({ step, steps = STEPS }: { step: Step; steps?: { key: Step;
             </span>
             <span className="hidden sm:inline">{s.label}</span>
           </span>
-          {i < steps.length - 1 && <span className="h-px w-4 bg-slate-200 sm:w-8" aria-hidden="true" />}
+          {i < steps.length - 1 && <span className="h-px min-w-3 flex-1 bg-slate-200" aria-hidden="true" />}
         </li>
       ))}
     </ol>

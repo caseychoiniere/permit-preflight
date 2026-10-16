@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Logo } from "./components/Logo.js";
 
 export const metadata = {
   title: "Permit Preflight - Shed Screening (Prototype)",
@@ -10,7 +11,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
         <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-6xl items-center gap-2.5 px-4 py-3 sm:px-6 lg:px-8">
+            <Logo size={26} />
             <span className="text-base font-semibold tracking-tight text-slate-900">Permit Preflight</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Prototype</span>
           </div>
